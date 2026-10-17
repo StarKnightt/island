@@ -30,6 +30,8 @@ export class Engine {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 30000);
   pipeline!: THREE.RenderPipeline;
+  private lastDraws = 0;
+  private lastTris = 0;
   private updaters: Updater[] = [];
   /** game time (s), frame count */
   time = 0;
@@ -95,6 +97,8 @@ export class Engine {
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // counted over the whole frame (every pass), reset by the loop
+    this.renderer.info.autoReset = false;
     container.appendChild(this.renderer.domElement);
     window.addEventListener('resize', () => this.resize());
   }
@@ -166,8 +170,11 @@ export class Engine {
       aa = t;
     }
     const hdrClamped = aa.rgb.min(vec3(64));
-    const withBloom = Q.bloom ? hdrClamped.add(bloom(vec4(hdrClamped, 1), 1, 0.45, 1.6).rgb.mul(grade.bloomStrength.mul(16))) : hdrClamped;
-    const exposed = withBloom.mul(grade.exposure);
+    // bloom thresholds the exposed image (mid-grey ~0.2, sunlit sand ~0.6): glints, the sun, lamps and the moon
+    // bloom by day and by night alike, bright sand and surf do not veil the picture
+    const lit = hdrClamped.mul(grade.exposure);
+    // (its input is clamped so the sun disc gives a glare around it, not a blown-out third of the frame)
+    const exposed = Q.bloom ? lit.add(bloom(vec4(lit.min(vec3(10)), 1), 0.6, 0.22, 1.5).rgb.mul(grade.bloomStrength.mul(16))) : lit;
     const display = renderOutput(vec4(exposed, 1), THREE.AgXToneMapping, THREE.SRGBColorSpace);
     const lum = dot(display.rgb, vec3(0.2126, 0.7152, 0.0722));
     let c = mix(vec3(lum), display.rgb, grade.saturation);
@@ -229,8 +236,11 @@ export class Engine {
       last = now;
       const dt = Math.min(interval / 1000, 1 / 15);
       this.time = this.frozenTime ?? this.time + dt;
+      this.renderer.info.reset();
       for (const u of this.updaters) u(dt, this.time);
       this.pipeline.render();
+      this.lastDraws = this.renderer.info.render.drawCalls;
+      this.lastTris = this.renderer.info.render.triangles;
       this.frame++;
       const cpu = performance.now() - now;
       this.push(this.wall, interval);
@@ -302,8 +312,9 @@ export class Engine {
       refreshHz: this.refreshHz,
       preset,
       renderScale: this.renderScale,
-      drawCalls: this.renderer.info.render.drawCalls,
-      triangles: this.renderer.info.render.triangles,
+      // every pass of the last frame: shadow cascades, the scene, the post chain
+      drawCalls: this.lastDraws,
+      triangles: this.lastTris,
     };
   }
 }

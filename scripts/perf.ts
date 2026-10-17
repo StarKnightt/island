@@ -4,6 +4,7 @@
  * E:\shots\island\<round>\perf\.
  *
  *   pnpm perf --round round-01 [--spots ...] [--conditions ...] [--seconds 5] [--fps auto|0|60] [--dev] [--uncapped]
+ *             [--q "extra=url&params"]
  *
  * --uncapped launches Chrome without vsync or a frame limit (headroom measurement); otherwise the game's own cap
  * applies (an integer divisor of the display refresh, >= 60 fps).
@@ -30,7 +31,8 @@ const server = await ensureServer(a.has('dev') ? 'dev' : 'preview');
 const L = await launch({ uncapped: a.has('uncapped') });
 const rows: Record<string, unknown>[] = [];
 try {
-  await L.page.goto(`${server.url}?test=1&hud=0&mute=1&freeze=1&fps=${fps}&spot=${spots[0]}`, { waitUntil: 'domcontentloaded' });
+  const extra = a.get('q', '');
+  await L.page.goto(`${server.url}?test=1&hud=0&mute=1&freeze=1&fps=${fps}&spot=${spots[0]}${extra ? `&${extra}` : ''}`, { waitUntil: 'domcontentloaded' });
   await L.page.waitForFunction(() => typeof (window as unknown as { __island?: { ready?: unknown } }).__island?.ready === 'function' || !!(window as unknown as { __island?: { error?: string } }).__island?.error, null, { timeout: 180000 });
   await L.page.evaluate(() => (window as unknown as { __island: { ready: () => Promise<boolean> } }).__island.ready());
   for (const cond of conditions) for (const spot of spots) {

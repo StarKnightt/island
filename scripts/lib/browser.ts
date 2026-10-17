@@ -15,8 +15,8 @@ export const PREVIEW_PORT = 5231;
 
 export interface Launch { browser: Browser; context: BrowserContext; page: Page; console: string[] }
 
-export async function launch(opts: { width?: number; height?: number; dsf?: number; uncapped?: boolean; audio?: boolean } = {}): Promise<Launch> {
-  const width = opts.width ?? 1920, height = opts.height ?? 1080;
+/** Chrome flags: second monitor, the high-performance GPU, never throttled in the background */
+export function chromeArgs(opts: { uncapped?: boolean; audio?: boolean } = {}) {
   const args = [
     '--window-position=1930,20',
     '--window-size=1060,900',
@@ -33,6 +33,12 @@ export async function launch(opts: { width?: number; height?: number; dsf?: numb
   ];
   if (!opts.audio) args.push('--mute-audio');
   if (opts.uncapped) args.push('--disable-gpu-vsync', '--disable-frame-rate-limit');
+  return args;
+}
+
+export async function launch(opts: { width?: number; height?: number; dsf?: number; uncapped?: boolean; audio?: boolean } = {}): Promise<Launch> {
+  const width = opts.width ?? 1920, height = opts.height ?? 1080;
+  const args = chromeArgs(opts);
   const browser = await chromium.launch({ channel: 'chrome', headless: false, args });
   const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: opts.dsf ?? 1 });
   await context.addInitScript(() => {

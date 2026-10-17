@@ -29,6 +29,8 @@ const rainU = {
 
 export class Weather {
   kind: WeatherKind = 'clear';
+  /** frames left in which the rain is drawn even when dry, so its pipelines compile up front */
+  prime = 0;
   /** 0..1 progress through the current phase */
   private t = 0;
   private dur = 300;
@@ -135,7 +137,9 @@ export class Weather {
     oceanU.rain.value = this.rain;
     oceanU.storm.value = THREE.MathUtils.smoothstep(this.wind, 0.4, 0.9);
     rainU.intensity.value = this.rain;
-    this.group.visible = this.rain > 0.004;
+    // drawn in the first frames even when dry (prime), so the rain's pipelines compile behind the loading screen
+    this.group.visible = this.rain > 0.004 || this.prime > 0;
+    if (this.prime > 0) this.prime--;
     rainU.flash.value = this.flash;
     const wd = wetness.windDir.value as THREE.Vector2;
     rainU.wind.value.set(wd.x * this.wind * 3.5, wd.y * this.wind * 3.5);

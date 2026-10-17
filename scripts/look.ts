@@ -18,6 +18,8 @@ mkdirSync(outDir, { recursive: true });
 
 const server = await ensureServer(kind);
 const L = await launch();
+const initFile = a.get('initfile', '');
+if (initFile) await L.context.addInitScript({ content: readFileSync(initFile, 'utf8') });
 try {
   const t0 = Date.now();
   await L.page.goto(`${server.url}?test=1&hud=0&freeze=1&${q}`, { waitUntil: 'domcontentloaded' });

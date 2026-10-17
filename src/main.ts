@@ -22,13 +22,19 @@ import { Player } from './player/Player';
 import { Vegetation, vegU } from './veg/Vegetation';
 import { buildCanopy } from './veg/Canopy';
 import { Hud } from './ui/Hud';
+import { DebugOverlay } from './ui/DebugOverlay';
 import { River } from './water/River';
 import { Village } from './world/Village';
 import { Lighthouse } from './world/Lighthouse';
 import { Weather } from './sky/Weather';
 import { AudioSystem } from './audio/Audio';
+import { mark, timeline } from './core/timeline';
+
+/** diagnostics: ?skip=terrain,ocean,oceansim,river,village,lighthouse,veg,canopy leaves those systems out */
+const skip = new Set((new URLSearchParams(location.search).get('skip') ?? '').split(','));
 
 async function boot() {
+  mark('boot');
   const loading = new Loading();
   loading.gpu(gpuName ? `${gpuName} · ${preset}` : preset);
   loading.status('Starting the renderer');
@@ -47,14 +53,17 @@ async function boot() {
     loading.progress(0.05 + 0.4 * Math.min(1, got / Heightfield.BYTES));
   });
   const colliders = new Colliders();
+  mark('heightfield');
 
   // ---- light and sky
   loading.status('Lighting the sky');
   const sunLight = new THREE.DirectionalLight(0xffffff, 10);
-  sunLight.castShadow = true;
+  sunLight.castShadow = !new URLSearchParams(location.search).has('noshadow');
   sunLight.shadow.mapSize.set(Q.shadowMap, Q.shadowMap);
   sunLight.shadow.camera.near = 1;
-  sunLight.shadow.camera.far = 2400;
+  // the cascades sit lightMargin (400 m) toward the sun from their receivers and need their own depth beyond that;
+  // a longer box only adds casters behind the receivers (with a low sun: whole strips of the island, the village)
+  sunLight.shadow.camera.far = 1100;
   sunLight.shadow.bias = -0.0003;
   sunLight.shadow.normalBias = 0.5;
   const csm = new CSMShadowNode(sunLight, { cascades: Q.cascades, maxFar: Q.shadowFar, mode: 'practical', lightMargin: 400 });
@@ -74,22 +83,22 @@ async function boot() {
   loading.status('Raising the terrain');
   const terrainM = createTerrainMaterial(hf);
   const terrain = new Terrain(hf, terrainM.material);
-  scene.add(terrain.mesh);
+  if (!skip.has('terrain')) scene.add(terrain.mesh);
   loading.status('Filling the sea');
   const ocean = new Ocean(hf);
-  if (!new URLSearchParams(location.search).has('noocean')) scene.add(ocean.mesh);
+  if (!new URLSearchParams(location.search).has('noocean') && !skip.has('ocean')) scene.add(ocean.mesh);
 
   // ---- fresh water
   const river = new River(hf);
-  scene.add(river.group);
+  if (!skip.has('river')) scene.add(river.group);
 
   // ---- the village and the lighthouse
   loading.status('Building the village');
   const village = new Village(hf, colliders);
   village.build();
-  scene.add(village.group);
+  if (!skip.has('village')) scene.add(village.group);
   const lighthouse = new Lighthouse(hf, colliders);
-  scene.add(lighthouse.group);
+  if (!skip.has('lighthouse')) scene.add(lighthouse.group);
 
   // ---- weather and sound
   const weather = new Weather(hf);
@@ -111,20 +120,24 @@ async function boot() {
   const tv = performance.now();
   veg.build();
   console.log(`vegetation built in ${(performance.now() - tv).toFixed(0)} ms`);
-  scene.add(veg.group);
-  scene.add(buildCanopy(hf));
+  mark('vegetation built');
+  if (!skip.has('veg')) scene.add(veg.group);
+  if (!skip.has('canopy')) scene.add(buildCanopy(hf));
   // rocks stream in with the props
   const rocksReady = (async () => {
     const out: { geometry: THREE.BufferGeometry; material: THREE.Material; radius: number; big: boolean }[] = [];
     const tinted = new Set<THREE.Material>();
-    // tints take each scan's mean albedo (namaqualand 0.37/0.26/0.15, boulder 0.16/0.11/0.07, moss 0.05/0.03/0.015
-    // linear) to the island's dark grey basalt (~0.07) so they match the cliff rock; the moss keeps some of its green
-    for (const [name, big, tint] of [['rock_moss_set_01', false, [1.0, 1.15, 1.4]], ['namaqualand_boulder_05', true, [0.19, 0.26, 0.44]], ['boulder_01', true, [0.46, 0.67, 1.0]]] as [string, boolean, [number, number, number]][]) {
+    // tints take each scan's mean albedo (namaqualand 0.37/0.26/0.15, moss 0.05/0.03/0.015 linear) to the island's
+    // dark grey basalt (~0.07) so they match the cliff rock; the moss keeps some of its green
+    for (const [name, big, tint] of [['rock_moss_set_01', false, [1.0, 1.15, 1.4]], ['namaqualand_boulder_05', true, [0.19, 0.26, 0.44]]] as [string, boolean, [number, number, number]][]) {
       const g = await loadGLTF(`assets/props/${name}.glb`);
       g.scene.updateMatrixWorld(true);
+      let kept = 0;
       g.scene.traverse((o) => {
         const m = o as THREE.Mesh;
         if (!m.isMesh) return;
+        // three of the moss set's six rocks: each kept rock is its own species (draw calls in every pass)
+        if (!big && kept++ % 2 === 1) return;
         // quantized (normalized int16, often interleaved) attributes would clamp to +-1 once transformed to metres
         const geo = toFloatGeometry(m.geometry);
         geo.applyMatrix4(m.matrixWorld);
@@ -144,6 +157,7 @@ async function boot() {
       });
     }
     veg.addRocks(out);
+    mark('rocks');
   })().catch((e) => console.warn('rocks', e));
 
   // ---- player and camera
@@ -161,6 +175,7 @@ async function boot() {
   player.onSplash = (s, p) => audio.splash(s, p);
   const spot = SPOTS.find((s) => s.name === (params.spot ?? 'beach')) ?? SPOTS[0];
   await playerLoad;
+  mark('character');
   loading.progress(0.6);
   player.place(spot.player[0], spot.player[1], spot.yaw);
   rig.snapBehind(spot.yaw);
@@ -174,6 +189,19 @@ async function boot() {
 
   engine.setupPost();
   const hud = new Hud(params.hud);
+  const dbg = new DebugOverlay({
+    adapter: gpuName || engine.adapterInfo.description || engine.adapterInfo.vendor || 'unknown GPU',
+    backend: engine.backendName,
+    preset,
+    stats: () => engine.stats(),
+    extra: () => ({
+      pos: player.pos.toArray().map((v) => v.toFixed(1)).join(' '),
+      player: `${player.state_().state} · ${player.surface} · ${player.speed.toFixed(1)} m/s`,
+      time: `${tod.hour.toFixed(2)} h${tod.frozen ? ' (frozen)' : ''}`,
+      weather: `${weather.kind} · rain ${weather.rain.toFixed(2)} · wind ${weather.wind.toFixed(2)}`,
+      veg: `${veg.visible} instances`,
+    }),
+  }, params.debug);
   let photo = false;
   const setPhoto = (on: boolean) => {
     photo = on;
@@ -183,12 +211,21 @@ async function boot() {
   if (params.photo) setPhoto(true);
 
   // ---- frame
+  let canopyK = 0, glareK = 0;
+  const fwd = new THREE.Vector3();
   engine.addUpdater((dt, t) => {
     const intent = input.read(dt);
     if (input.hit('KeyP') || input.hit('KeyF')) setPhoto(!photo);
     if (input.hit('KeyM')) audio.mute(!audio.muted);
     if (photo && input.hit('BracketLeft')) { rig.baseFov = Math.max(15, rig.baseFov - 5); camera.fov = rig.baseFov; camera.updateProjectionMatrix(); }
     if (photo && input.hit('BracketRight')) { rig.baseFov = Math.min(90, rig.baseFov + 5); camera.fov = rig.baseFov; camera.updateProjectionMatrix(); }
+    // the near cascade renders every frame, the middle and far ones take turns (a frame of lag there is invisible
+    // and it saves a third of the shadow cost; a cascade's lookup matrix only changes when its map is redrawn)
+    const cascades = (csm as unknown as { lights: THREE.DirectionalLight[] }).lights;
+    if (cascades && cascades.length >= 3) {
+      for (let i = 1; i < cascades.length; i++) cascades[i].shadow.autoUpdate = false;
+      cascades[1 + (engine.frame % (cascades.length - 1))].shadow.needsUpdate = true;
+    }
     weather.update(dt);
     tod.overcast = weather.cover * 0.9;
     player.rainWet = weather.wet * 0.85;
@@ -204,7 +241,16 @@ async function boot() {
     terrainU.time.value = t;
     wetness.time.value = t;
     oceanU.time.value = t;
-    grade.exposure.value = tod.exposure * (1 + weather.flash * 2.5);
+    // exposure is metered for open ground: under the canopy at night the eye opens up further; looking into a low
+    // sun (sunrise, sunset) the bright half of the view sets it, as a centre-weighted camera meter would
+    const under = camera.position.y < hf.height(camera.position.x, camera.position.z) + 18 ? hf.forest(camera.position.x, camera.position.z) : 0;
+    canopyK += (under - canopyK) * (1 - Math.exp(-dt * 2.0));
+    camera.getWorldDirection(fwd);
+    const sd = atmo.sunDir.value as THREE.Vector3;
+    const facing = (fwd.x * sd.x + fwd.z * sd.z) / ((Math.hypot(fwd.x, fwd.z) || 1) * (Math.hypot(sd.x, sd.z) || 1));
+    const glare = THREE.MathUtils.smoothstep(facing, 0.2, 0.92) * (1 - THREE.MathUtils.smoothstep(sd.y, 0.12, 0.45)) * (sd.y > -0.04 ? 1 : 0) * (1 - weather.cover);
+    glareK += (glare - glareK) * (1 - Math.exp(-dt * 2.0));
+    grade.exposure.value = tod.exposure * (1 + weather.flash * 2.5) * (1 + canopyK * 2.0 * tod.night) * (1 - 0.6 * glareK);
     audio.update(dt, camera, { night: tod.night, rain: weather.rain, wind: weather.wind, underwater: camera.position.y < player.waterLevel - 0.05 });
     camera.updateMatrixWorld();
     terrain.update(camera, Q.shadowFar);
@@ -214,20 +260,27 @@ async function boot() {
     village.update(t, (i) => ocean.sim.probe(i));
     lighthouse.update(dt, tod.night);
     hud.update(dt, player.pos.x, player.pos.z, tod.hour, weather.kind);
+    dbg.update(dt);
     vegU.sunColor.value.copy(sunLight.color).multiplyScalar(sunLight.intensity);
+    // the farthest shadow cascade (texels of tens of cm, moving cm per frame) renders every other frame
+    const farCascade = (csm as unknown as { lights?: THREE.DirectionalLight[] }).lights?.[Q.cascades - 1];
+    if (farCascade && Q.cascades > 1) {
+      farCascade.shadow.autoUpdate = false;
+      if (engine.frame % 2 === 0) farCascade.shadow.needsUpdate = true;
+    }
     sky.update(dt, scene);
-    ocean.update(renderer, camera, t, dt);
+    if (!skip.has('oceansim')) ocean.update(renderer, camera, t, dt);
   });
 
   // stream the terrain layer textures after the first frames
   let streaming = 3;
   rocksReady.then(() => streaming--);
   const done = () => streaming--;
-  terrainM.loadLayers().then(done, (e) => {
+  terrainM.loadLayers().then(() => { mark('terrain layers'); done(); }, (e) => {
     console.warn('terrain layers', e);
     done();
   });
-  veg.loadTextures().then(done, (e) => {
+  veg.loadTextures().then(() => { mark('foliage textures'); done(); }, (e) => {
     console.warn('foliage textures', e);
     done();
   });
@@ -239,10 +292,24 @@ async function boot() {
   if (sky.envRT) river.setEnvironment(sky.envRT.texture);
   terrain.update(camera, Q.shadowFar);
   veg.update(camera, 60, true);
-  await renderer.compileAsync(scene, camera);
+  // No compileAsync: in three r186 the pipelines it builds do not match the ones the post pipeline's MRT pass uses
+  // on the first frame (their uniform grouping differs), so it doubled the start-up. The first frame compiles the
+  // shaders once, behind the loading screen, which stays up until that frame has been presented.
+  mark('scene ready');
+  // the priming frames draw everything once, out of view or not (frustum culling off), so every pipeline compiles
+  // behind the loading screen instead of stalling the first time the falls, the village or the lighthouse come into view
+  const unculled: THREE.Object3D[] = [];
+  scene.traverse((o) => {
+    if (((o as THREE.Mesh).isMesh || (o as THREE.Sprite).isSprite) && o.frustumCulled) {
+      o.frustumCulled = false;
+      unculled.push(o);
+    }
+  });
+  veg.prime = weather.prime = lighthouse.prime = 3;
+  rocksReady.then(() => (veg.prime = 3));
   engine.start();
   Object.assign(ctx, {
-    hf, terrain, sky, csm, ocean, player, cameraRig: rig, input, colliders, veg, village, lighthouse, weather, audio, hud,
+    hf, terrain, sky, csm, ocean, player, cameraRig: rig, input, colliders, veg, village, lighthouse, weather, audio, hud, dbg,
     rts: { transmittance: transmittanceRT, skyView: skyViewRT, cloud: cloudRT },
     isBusy: () => streaming > 0 || assetProgress.pending > assetProgress.done,
   });
@@ -273,7 +340,13 @@ async function boot() {
     state: () => player.state_(),
   };
   installHarness(ctx);
+  ctx.timeline = timeline;
+  // the first frames compile every pipeline: the loading screen stays up until they have been presented
+  loading.progress(0.9);
+  while (engine.frame < 3) await new Promise((r) => setTimeout(r, 50));
+  for (const o of unculled) o.frustumCulled = true;
   loading.progress(1);
+  mark('first frame');
   setTimeout(() => loading.done(), 250);
 }
 

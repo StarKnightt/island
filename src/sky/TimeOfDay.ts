@@ -70,7 +70,8 @@ export class TimeOfDay {
     const dir = sunUp ? this.sun : this.moon;
     this.light.position.copy(dir).multiplyScalar(1000);
     this.light.target.position.set(0, 0, 0);
-    const shade = 1 - this.overcast * 0.88;
+    // a thick overcast leaves almost no direct sun (no shadows in the rain), a thin one only dims it
+    const shade = Math.pow(1 - this.overcast, 1.7);
     if (sunUp) {
       sunTransmittanceCPU(this.sunElevation, atmo.mieScatter.value as number, this.sunColor);
       const lum = Math.max(1e-6, this.sunColor.r * 0.2126 + this.sunColor.g * 0.7152 + this.sunColor.b * 0.0722);
@@ -89,7 +90,8 @@ export class TimeOfDay {
     atmo.lightE.value = E;
     // luminance of a mid-grey (18 %) surface, adapted with an exponent < 1 so sunsets and nights keep their mood
     const L = (E * 0.18) / Math.PI;
-    this.exposureTarget = THREE.MathUtils.clamp(0.22 / Math.pow(L, 0.75), 0.15, 14);
+    // under a storm overcast the eye does not fully open up: rain stays moody instead of a bright flat day
+    this.exposureTarget = THREE.MathUtils.clamp(0.22 / Math.pow(L, 0.75), 0.15, 14) * (1 - 0.32 * this.overcast);
     void clouds;
   }
 }

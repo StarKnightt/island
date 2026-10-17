@@ -15,6 +15,7 @@ import { HALF_WORLD, WORLD_SIZE } from './layout';
 import type { Heightfield } from './Heightfield';
 import { heightLookup } from './Terrain';
 import { cloudShadow } from '../sky/Sky';
+import { atmo } from '../sky/Atmosphere';
 import { wetness } from './weatherUniforms';
 import { loadKTX2, placeholderArray, toArray } from '../core/Assets';
 
@@ -181,9 +182,11 @@ export function createTerrainMaterial(hf: Heightfield) {
   // ---- caustics on the lagoon floor
   const depthW = max(float(0).sub(h), 0);
   const ct = terrainU.time.mul(0.55);
-  const c1 = mx_noise_float(vec3(xz.mul(0.95), ct));
-  const c2 = mx_noise_float(vec3(xz.mul(0.95).add(13.1), ct.mul(1.13).add(4)));
-  const caustic = pow(max(float(1).sub(abs(c1.sub(c2))), 0), 9).mul(smoothstep(0.1, 1.0, depthW)).mul(exp(depthW.mul(-0.25))).mul(1.3);
+  const c1 = mx_noise_float(vec3(xz.mul(1.2), ct));
+  const c2 = mx_noise_float(vec3(xz.mul(1.2).add(13.1), ct.mul(1.13).add(4)));
+  // caustics are focused sunlight: thin bright lines, gone under an overcast or a low sun
+  const sunVis = pow(float(1).sub(atmo.overcast), 2).mul(smoothstep(0.02, 0.25, atmo.sunDir.y));
+  const caustic = pow(max(float(1).sub(abs(c1.sub(c2))), 0), 14).mul(smoothstep(0.1, 1.0, depthW)).mul(exp(depthW.mul(-0.25))).mul(1.2).mul(sunVis);
   const cloud = cloudShadow(p);
 
   m.colorNode = vec4(albedo.mul(float(1).add(caustic.mul(cloud))).mul(mix(float(0.62), float(1), cloud)), 1);

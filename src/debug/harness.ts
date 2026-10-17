@@ -24,11 +24,19 @@ export function installHarness(ctx: Ctx) {
         const busy = ctx.isBusy?.() ?? false;
         if (!busy && engine.frame > 30) {
           if (!readyAt) readyAt = performance.now();
-          if (performance.now() - readyAt > 400) return true;
+          if (performance.now() - readyAt > 400) {
+            if (!ctx.timeline?.some((m: { name: string }) => m.name === 'ready')) ctx.timeline?.push({ name: 'ready', ms: Math.round(performance.now()) });
+            return true;
+          }
         } else readyAt = 0;
         if (performance.now() - t0 > timeoutMs) return false;
         await new Promise((r) => setTimeout(r, 100));
       }
+    },
+    /** load milestones in ms since navigation start: boot, heightfield, vegetation, character, shaders, first frame,
+     *  streamed groups (terrain layers, foliage textures, rocks), ready */
+    timeline() {
+      return ctx.timeline ?? [];
     },
     /** frame-time statistics since the last reset (ms) */
     stats() {
@@ -76,6 +84,11 @@ export function installHarness(ctx: Ctx) {
     },
     hud(show: boolean) {
       ctx.hud?.show(show);
+      return show;
+    },
+    /** the debug overlay (adapter, fps, frame / CPU / GPU ms, draws, position): also ?debug=1 or F3 */
+    debugOverlay(show: boolean) {
+      ctx.dbg?.show(show);
       return show;
     },
     mute(m: boolean) {

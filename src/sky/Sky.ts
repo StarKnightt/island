@@ -161,6 +161,7 @@ export class Sky {
   private pmrem: THREE.PMREMGenerator;
   envRT: THREE.RenderTarget | null = null;
   private envAge = 1e9;
+  private n = 0;
   private lastSun = new THREE.Vector3();
 
   constructor(private renderer: THREE.WebGPURenderer, scene: THREE.Scene) {
@@ -171,11 +172,15 @@ export class Sky {
 
   /** per frame: atmosphere LUTs and the cloud map; the environment map when the light has changed */
   update(dt: number, scene: THREE.Scene, force = false) {
-    renderAtmosphereLUTs(this.renderer);
-    const prev = this.renderer.getRenderTarget();
-    this.renderer.setRenderTarget(cloudRT);
-    cloudQuad.render(this.renderer);
-    this.renderer.setRenderTarget(prev);
+    // the sun, the haze and the clouds change slowly: the LUTs every third frame, the cloud map every second
+    this.n++;
+    if (force || this.n % 3 === 0) renderAtmosphereLUTs(this.renderer);
+    if (force || this.n % 2 === 0) {
+      const prev = this.renderer.getRenderTarget();
+      this.renderer.setRenderTarget(cloudRT);
+      cloudQuad.render(this.renderer);
+      this.renderer.setRenderTarget(prev);
+    }
     this.envAge += dt;
     const sun = atmo.sunDir.value as THREE.Vector3;
     const moved = sun.angleTo(this.lastSun) > 0.004;

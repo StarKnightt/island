@@ -8,7 +8,7 @@ import * as THREE from 'three/webgpu';
 import {
   Fn, attribute, cameraPosition, float, length, mix, mx_noise_float, mx_worley_noise_float, mx_fractal_noise_float,
   normalize, positionWorld, smoothstep, texture, transformNormalToView, vec2, vec3, vec4, varying, hash, floor,
-  screenCoordinate, Discard, If, uniform, type N,
+  screenCoordinate, Discard, If, uniform, select, type N,
 } from '../core/tsl';
 import type { Heightfield } from '../world/Heightfield';
 import { HALF_WORLD, WORLD_SIZE } from '../world/layout';
@@ -53,7 +53,7 @@ export function buildCanopy(hf: Heightfield) {
     const f = forestTex(xz);
     const big = mx_fractal_noise_float(vec3(xz.mul(1 / 160), 0.7), 2, 2, 0.5).mul(0.5).add(0.5);
     const mid = mx_noise_float(vec3(xz.mul(1 / 24), 2.1)).mul(0.5).add(0.5);
-    const cells = float(1).sub(mx_worley_noise_float(vec3(xz.mul(1 / 9.5), 0.3)).clamp(0, 1));
+    const cells = float(1).sub(mx_worley_noise_float(xz.mul(1 / 9.5)).clamp(0, 1));
     const h = float(13).add(big.mul(12)).add(mid.mul(4)).add(cells.mul(3.5));
     return h.mul(smoothstep(0.08, 0.5, f));
   };
@@ -68,7 +68,10 @@ export function buildCanopy(hf: Heightfield) {
     vNormal.assign(normalize(vec3(hx2.sub(hx), e * 2, hz2.sub(hz))));
     const ground = heightAt(xz);
     // tuck the shell into the ground where the forest ends
-    return vec3(xz.x, ground.add(hc).sub(smoothstep(0.3, 0.05, forestTex(xz)).mul(3)), xz.y);
+    const shell = vec3(xz.x, ground.add(hc).sub(smoothstep(0.3, 0.05, forestTex(xz)).mul(3)), xz.y);
+    // well inside the hand-over distance the shell is never seen: collapse it onto the camera, so those triangles
+    // have no area and cost no fragments (the ones crossing the line are slivers inside the dithered-out band)
+    return select(length(shell.sub(cameraPosition)).lessThan(canopyU.near.sub(25)), cameraPosition, shell);
   })();
   const p = positionWorld;
   const dist = length(p.sub(cameraPosition));
@@ -80,7 +83,7 @@ export function buildCanopy(hf: Heightfield) {
       Discard();
     });
     const xz = p.xz;
-    const w = mx_worley_noise_float(vec3(xz.mul(1 / 9.5), 0.3)).clamp(0, 1);
+    const w = mx_worley_noise_float(xz.mul(1 / 9.5)).clamp(0, 1);
     const gap = smoothstep(0.55, 0.95, w);
     const tint = mx_fractal_noise_float(vec3(xz.mul(1 / 70), 3.3), 3, 2, 0.5).mul(0.5).add(0.5);
     const leaf = mx_noise_float(vec3(xz.mul(1.3), 1.1)).mul(0.5).add(0.5);
@@ -91,7 +94,7 @@ export function buildCanopy(hf: Heightfield) {
     return vec4(col.mul(mix(float(0.6), float(1), cloudShadow(p))), 1);
   })();
   // per-pixel crown relief: the gradient of the crown field tilts the normal over each crown
-  const crownF = (xz: N) => float(1).sub(mx_worley_noise_float(vec3(xz.mul(1 / 9.5), 0.3)).clamp(0, 1)).pow(0.7).mul(4.5)
+  const crownF = (xz: N) => float(1).sub(mx_worley_noise_float(xz.mul(1 / 9.5)).clamp(0, 1)).pow(0.7).mul(4.5)
     .add(mx_noise_float(vec3(xz.mul(0.45), 4.4)).mul(0.6));
   const e = 0.8;
   const c0 = crownF(p.xz);
@@ -103,6 +106,9 @@ export function buildCanopy(hf: Heightfield) {
   const mesh = new THREE.Mesh(g, m);
   mesh.name = 'canopy';
   mesh.frustumCulled = false;
+  // after the terrain and the trees, so the depth test rejects every shell pixel they already cover (its bounding
+  // sphere sits at the island's centre and would otherwise sort it first, shading the whole hidden shell)
+  mesh.renderOrder = 2;
   mesh.receiveShadow = true;
   mesh.castShadow = false;
   console.log(`[island] canopy shell: ${(pos.length / 3).toFixed(0)} vertices, ${(idx.length / 3).toFixed(0)} triangles`);

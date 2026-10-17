@@ -232,10 +232,11 @@ export class Vegetation {
     const noise = new Noise2(31);
     const D = Q.density;
     const lodK = Q.lodScale;
-    // ---- coconut palms: 6 variants
+    // ---- coconut palms: 4 variants (per-instance scale adds the rest of the variety; every variant is a draw call
+    // per LOD part and shadow cascade)
     const palms: Species[] = [];
-    for (let v = 0; v < 6; v++) {
-      const height = 9 + v * 1.6;
+    for (let v = 0; v < 4; v++) {
+      const height = 9 + v * 2.1;
       const lean = 0.12 + (v % 3) * 0.07;
       const lods: Lod[] = [
         { maxDist: 70 * lodK, parts: palm(100 + v, { height, lean, fronds: 18, segments: 9, sides: 9, dead: 2 + (v % 2), nuts: !new URLSearchParams(location.search).has('nonuts') }), shadow: true },
@@ -248,22 +249,23 @@ export class Vegetation {
       { maxDist: 60 * lodK, parts: palm(150, { height: 1.2, lean: 0.05, fronds: 9, segments: 6, sides: 6, dead: 1, nuts: false }), shadow: true },
       { maxDist: 140 * lodK, parts: palm(150, { height: 1.2, lean: 0.05, fronds: 6, segments: 3, sides: 4, dead: 0, nuts: false }), shadow: false },
     ], 3);
-    // ---- canopy trees: 5 variants
+    // ---- canopy trees: 3 variants
     const trees: Species[] = [];
-    for (let v = 0; v < 5; v++) {
-      const height = 17 + v * 2.6;
+    for (let v = 0; v < 3; v++) {
+      const height = 17 + v * 3.9;
       const lods: Lod[] = [
-        { maxDist: 85 * lodK, parts: canopyTree(300 + v, { height, spread: 8 + v * 0.8, cards: 150, sides: 9, lod: 0 }), shadow: true },
-        { maxDist: 330 * lodK, parts: canopyTree(300 + v, { height, spread: 8 + v * 0.8, cards: 60, sides: 5, lod: 1 }), shadow: false },
+        { maxDist: 85 * lodK, parts: canopyTree(300 + v, { height, spread: 8 + v * 1.2, cards: 150, sides: 9, lod: 0 }), shadow: true },
+        { maxDist: 330 * lodK, parts: canopyTree(300 + v, { height, spread: 8 + v * 1.2, cards: 60, sides: 5, lod: 1 }), shadow: false },
       ];
       trees.push(this.addSpecies(`tree${v}`, lods, height));
     }
     // ---- understory
     const bushes: Species[] = [];
-    for (let v = 0; v < 3; v++) {
+    // (bushes cast no shadows: low under the canopy, AO grounds them, and they would be drawn in every cascade)
+    for (let v = 0; v < 2; v++) {
       bushes.push(this.addSpecies(`bush${v}`, [
-        { maxDist: 55 * lodK, parts: bush(400 + v, 1.4 + v * 0.5, 16), shadow: true },
-        { maxDist: 110 * lodK, parts: bush(400 + v, 1.4 + v * 0.5, 6), shadow: false },
+        { maxDist: 55 * lodK, parts: bush(400 + v, 1.4 + v * 0.75, 16), shadow: false },
+        { maxDist: 110 * lodK, parts: bush(400 + v, 1.4 + v * 0.75, 6), shadow: false },
       ], 2));
     }
     const bananas = this.addSpecies('banana', [
@@ -379,7 +381,13 @@ export class Vegetation {
       const g = m.geometry.clone();
       if (!g.getAttribute('wind')) g.setAttribute('wind', new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 3), 3));
       if (!g.getAttribute('color')) g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 3).fill(1), 3));
-      const sp = this.addSpecies(`rock${i}`, [{ maxDist: m.big ? 520 : 260, parts: [{ geometry: g, part: 'rock', material: m.material }], shadow: true }], m.radius * 2);
+      const g1 = clusterSimplify(g, m.radius * 0.14);
+      for (const k of ['wind', 'color']) g1.setAttribute(k, new THREE.BufferAttribute(new Float32Array(g1.getAttribute('position').count * 3).fill(k === 'color' ? 1 : 0), 3));
+      // (only the big boulders cast shadows; the small stones are grounded by the AO)
+      const sp = this.addSpecies(`rock${i}`, [
+        { maxDist: 50, parts: [{ geometry: g, part: 'rock', material: m.material }], shadow: m.big },
+        { maxDist: m.big ? 520 : 260, parts: [{ geometry: g1, part: 'rock', material: m.material }], shadow: false },
+      ], m.radius * 2, m.radius * 2 * 3.8);
       spOf.set(m, sp);
     }
     const lists = new Map<Species, number[]>();
@@ -440,7 +448,7 @@ export class Vegetation {
     const sps = models.map((m, i) => ({
       m,
       sp: this.addSpecies(`cliffrock${i}`, [
-        { maxDist: 120, parts: [{ geometry: withAttrs(m.geometry.clone()), part: 'rock', material: m.material }], shadow: true },
+        { maxDist: 80, parts: [{ geometry: withAttrs(m.geometry.clone()), part: 'rock', material: m.material }], shadow: true },
         { maxDist: 950, parts: [{ geometry: withAttrs(clusterSimplify(m.geometry, m.radius * 0.17)), part: 'rock', material: m.material }], shadow: true },
       ], m.radius * 2, RMAX * 2 + 2),
     }));
@@ -481,14 +489,32 @@ export class Vegetation {
 
   update(camera: THREE.PerspectiveCamera, shadowNear: number, force = false) {
     this.frame++;
+    const priming = this.prime > 0;
+    if (priming) this.prime--;
     const cam = camera.position;
     const dir = this.tmpP;
     camera.getWorldDirection(dir);
-    const moved = cam.distanceTo(this.lastCam) > 0.8 || dir.angleTo(this.lastDir) > 0.035;
-    if (!force && !moved && this.frame % 20 !== 0) return;
+    // culled against a frustum 6 degrees wider than the view, so the camera can turn ~3 degrees (or walk 1.2 m)
+    // before the lists need rebuilding: fewer instance-buffer uploads while the camera swings
+    const moved = cam.distanceTo(this.lastCam) > 1.2 || dir.angleTo(this.lastDir) > 0.05;
+    // the frame after priming re-culls so the collapsed instances go away
+    if (!force && !priming && !moved && this.frame % 20 !== 0 && !this.unprime) return;
+    this.unprime = priming;
     this.lastCam.copy(cam);
     this.lastDir.copy(dir);
-    this.pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    const cc = this.cullCam;
+    const camX = camera as unknown as { coordinateSystem: number; _reversedDepth: boolean };
+    const ccX = cc as unknown as { coordinateSystem: number; _reversedDepth: boolean };
+    if (cc.fov !== camera.fov + 6 || cc.aspect !== camera.aspect || cc.far !== camera.far || ccX.coordinateSystem !== camX.coordinateSystem) {
+      cc.fov = camera.fov + 6;
+      cc.aspect = camera.aspect;
+      cc.near = camera.near;
+      cc.far = camera.far;
+      ccX.coordinateSystem = camX.coordinateSystem;
+      ccX._reversedDepth = camX._reversedDepth;
+      cc.updateProjectionMatrix();
+    }
+    this.pv.multiplyMatrices(cc.projectionMatrix, camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.pv, THREE.WebGPUCoordinateSystem);
     let vis = 0;
     const counts: number[] = [];
@@ -553,22 +579,34 @@ export class Vegetation {
       for (let l = 0; l < nL; l++) {
         const row = sp.meshes[l];
         if (!row.length) continue;
+        let n = counts[l];
+        if (priming && n === 0 && sp.count > 0) {
+          // one collapsed instance, so this mesh's pipelines compile now (behind the loading screen) and not with a
+          // hitch the first time the species or LOD comes into view
+          mats[l].fill(0, 0, 16);
+          n = 1;
+        }
         const im = row[0].mesh.instanceMatrix;
         im.needsUpdate = true;
         im.clearUpdateRanges();
-        im.addUpdateRange(0, counts[l] * 16);
+        im.addUpdateRange(0, n * 16);
         row[0].data.needsUpdate = true;
         row[0].data.clearUpdateRanges();
-        row[0].data.addUpdateRange(0, counts[l] * 4);
+        row[0].data.addUpdateRange(0, n * 4);
         for (const e of row) {
-          e.mesh.count = counts[l];
-          e.mesh.visible = counts[l] > 0;
+          e.mesh.count = n;
+          e.mesh.visible = n > 0;
         }
         vis += counts[l];
       }
     }
     this.visible = vis;
   }
+
+  /** frames left in which every mesh is drawn (collapsed if empty) so all pipelines compile up front */
+  prime = 0;
+  private unprime = false;
+  private cullCam = new THREE.PerspectiveCamera();
 }
 
 function name_isBush(n: string) {

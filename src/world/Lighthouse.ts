@@ -16,6 +16,8 @@ export const lighthouseU = { angle: uniform(0), on: uniform(0) };
 
 export class Lighthouse {
   readonly group = new THREE.Group();
+  /** frames left in which the beam is drawn by day, so its pipeline compiles up front */
+  prime = 0;
   readonly lampPos = new THREE.Vector3();
   readonly galleryY: number;
   private beam!: THREE.Mesh;
@@ -221,7 +223,9 @@ export class Lighthouse {
     lighthouseU.on.value = THREE.MathUtils.smoothstep(night, 0.25, 0.7);
     lighthouseU.angle.value += dt * 0.55;
     this.beam.rotation.set(0, lighthouseU.angle.value as number, -0.035);
-    this.beam.visible = (lighthouseU.on.value as number) > 0.01;
+    // drawn in the first frames by day too (prime), so its pipeline compiles behind the loading screen
+    this.beam.visible = (lighthouseU.on.value as number) > 0.01 || this.prime > 0;
+    if (this.prime > 0) this.prime--;
     this.lamp.intensity = (lighthouseU.on.value as number) * 400;
   }
 }
