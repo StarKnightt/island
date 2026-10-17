@@ -5,7 +5,8 @@
 Same outputs as bake_piece.py (work/bake/<name>.npz: mask, diff, nrm, arm), but the hi material is built from
 tileable Poly Haven scan textures in box (triplanar) projection, object space, sizes from the kit's "material":
   albedo = mix of two fine rock textures by a low-frequency noise, times the luminance of a large-scale rock texture,
-           darkened along vertical water-stain streaks and tinted per bedding band (the hi 'band' attribute)
+           darkened along vertical water-stain streaks, tinted per bedding band (the hi 'band' attribute) and
+           darkened by the sculpted stains (the hi 'stain' attribute, strength MAT['stain'])
   normal = hi geometry + a bump from the fine texture's displacement
   arm    = R: local AO (AO node, this object only), G: the fine texture's roughness, B: 0
 """
@@ -24,7 +25,10 @@ name = args[1]
 RES = int(args[2]) if len(args) > 2 else 4096
 SAMPLES = int(args[3]) if len(args) > 3 else 16
 P = next(p for p in cfg['pieces'] if p['name'] == name)
-MAT = dict(cfg.get('material', {}), **P.get('material', {}))
+MAT = dict(cfg.get('material', {}))
+if P.get('material_set'):
+    MAT.update(cfg.get(P['material_set'] + '_material', {}))
+MAT.update(P.get('material', {}))
 W = R.WORK + '/work'
 OUT = W + '/bake'
 TEXDIR = 'E:/tmp/island/raw/polyhaven/textures'
@@ -124,18 +128,19 @@ nz = N.new('ShaderNodeTexNoise')
 nz.inputs['Scale'].default_value = MAT.get('mix_scale', 0.12)
 nz.inputs['Detail'].default_value = 3.0
 L.new(co, nz.inputs['Vector'])
-f = fmath(N, L, 'MULTIPLY_ADD', nz.outputs['Fac'], 3.0, clamp=True)       # (fac * 3 - 1.2) clamped to 0..1
-f = fmath(N, L, 'SUBTRACT', f, 1.2, clamp=True)
+f = fmath(N, L, 'SUBTRACT', nz.outputs['Fac'], 0.4)                      # noise 0.4 .. 0.7 -> mix 0 .. 1
+f = fmath(N, L, 'MULTIPLY', f, 3.3, clamp=True)
 col = vmath(N, L, 'ADD', ia.outputs['Color'],
             vmath(N, L, 'SCALE', vmath(N, L, 'SUBTRACT', ib.outputs['Color'], ia.outputs['Color']), scale=f))
 bw = N.new('ShaderNodeRGBToBW')
 L.new(ig.outputs['Color'], bw.inputs['Color'])
 gm = fmath(N, L, 'MULTIPLY_ADD', bw.outputs['Val'], MAT.get('big_gain', 1.0))
-N[gm.node.name].inputs[2].default_value = MAT.get('big_bias', 0.62)
+gm.node.inputs[2].default_value = MAT.get('big_bias', 0.62)
 col = vmath(N, L, 'SCALE', col, scale=gm)
 # vertical water-stain streaks
 mp = N.new('ShaderNodeMapping')
-mp.inputs['Scale'].default_value = (1 / 1.4, 1 / 1.4, 1 / 18.0)
+sh, sv = MAT.get('streak_scale', [1.4, 18.0])
+mp.inputs['Scale'].default_value = (1 / sh, 1 / sh, 1 / sv)
 L.new(co, mp.inputs['Vector'])
 sn = N.new('ShaderNodeTexNoise')
 sn.inputs['Scale'].default_value = 1.0
@@ -153,6 +158,13 @@ bt = fmath(N, L, 'SUBTRACT', at.outputs['Fac'], 0.5)
 bt = fmath(N, L, 'MULTIPLY', bt, MAT.get('band_tint', 0.2))
 tint = vmath(N, L, 'ADD', (1.0, 1.0, 1.0), vmath(N, L, 'SCALE', (0.9, 0.15, -0.7), scale=bt))
 col = vmath(N, L, 'MULTIPLY', col, tint)
+# sculpted water stains (the hi 'stain' attribute; absent on older bodies, where it reads 0)
+sa = N.new('ShaderNodeAttribute')
+sa.attribute_type = 'GEOMETRY'
+sa.attribute_name = 'stain'
+sf = fmath(N, L, 'MULTIPLY', sa.outputs['Fac'], -MAT.get('stain', 0.0))
+sf = fmath(N, L, 'ADD', sf, 1.0, clamp=True)
+col = vmath(N, L, 'SCALE', col, scale=sf)
 bs = N.new('ShaderNodeBsdfPrincipled')
 L.new(col, bs.inputs['Base Color'])
 bs.inputs['Roughness'].default_value = 0.9

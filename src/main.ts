@@ -16,6 +16,7 @@ import { SPOTS, LIGHTHOUSE } from './world/layout';
 import { wetness } from './world/weatherUniforms';
 import { Ocean, oceanU } from './water/Ocean';
 import { Spray, sprayU } from './water/Spray';
+import { toFloatGeometry } from './veg/glb';
 import { Colliders } from './world/Colliders';
 import { Input } from './player/Input';
 import { CameraRig } from './player/CameraRig';
@@ -124,7 +125,11 @@ async function boot() {
   const veg = new Vegetation(hf, colliders);
   const tv = performance.now();
   veg.build();
-  console.log(`vegetation built in ${(performance.now() - tv).toFixed(0)} ms`);
+  // the plants (helpers' GLBs) load and scatter while the rest of the island comes up
+  const plantsReady = veg.buildGlb().then(() => {
+    console.log(`plants in ${(performance.now() - tv).toFixed(0)} ms`);
+    mark('plants');
+  }, (e) => console.warn('plants', e));
   mark('vegetation built');
   if (!skip.has('veg')) scene.add(veg.group);
   if (!skip.has('canopy')) scene.add(buildCanopy(hf));
@@ -299,6 +304,8 @@ async function boot() {
     done();
   });
 
+  loading.status('Growing the jungle');
+  await plantsReady;
   loading.status('Compiling shaders');
   loading.progress(0.85);
   await engine.measureRefresh();
@@ -363,20 +370,6 @@ async function boot() {
   loading.progress(1);
   mark('first frame');
   setTimeout(() => loading.done(), 250);
-}
-
-/** a copy of the geometry with every attribute as plain (de-normalized, de-interleaved) Float32 */
-function toFloatGeometry(src: THREE.BufferGeometry) {
-  const geo = new THREE.BufferGeometry();
-  for (const [name, a] of Object.entries(src.attributes)) {
-    const n = a.count, k = a.itemSize;
-    const f = new Float32Array(n * k);
-    const get = [a.getX, a.getY, a.getZ, a.getW];
-    for (let i = 0; i < n; i++) for (let c = 0; c < k; c++) f[i * k + c] = get[c].call(a, i);
-    geo.setAttribute(name, new THREE.BufferAttribute(f, k));
-  }
-  if (src.index) geo.setIndex(src.index.clone());
-  return geo;
 }
 
 boot().catch((e) => {

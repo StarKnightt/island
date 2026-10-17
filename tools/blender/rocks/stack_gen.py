@@ -137,13 +137,26 @@ PR.voxel_remesh(body, P.get('base_voxel', 0.25))
 for i, tdef in enumerate(P.get('tunnels', [])):
     v, f = tunnel(**tdef)
     cut = PR.mesh_object(f'tun{i}', v, f)
+    bm = bmesh.new()
+    bm.from_mesh(cut.data)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    bm.to_mesh(cut.data)
+    bm.free()
     PR.apply_mod(cut, 'SUBSURF', levels=1, render_levels=1)
+    nv = len(body.data.vertices)
     PR.boolean(body, cut, 'DIFFERENCE')
+    R.log(name, 'tunnel', i, 'verts', nv, '->', len(body.data.vertices))
     bpy.data.objects.remove(cut)
     PR.voxel_remesh(body, P.get('base_voxel', 0.25))
 PR.apply_mod(body, 'SMOOTH', factor=0.6, iterations=int(P.get('base_smooth', 3)))
 PR.voxel_remesh(body, P.get('hi_voxel', 0.06))
 R.log(name, 'base remeshed, verts', len(body.data.vertices))
+# origin at the centre of the base footprint (bounding box of the lowest 3 m)
+co0 = PR.get_co(body)
+foot = co0[co0[:, 2] < co0[:, 2].min() + 3.0]
+off = np.array([(foot[:, 0].min() + foot[:, 0].max()) / 2, (foot[:, 1].min() + foot[:, 1].max()) / 2, 0.0])
+PR.set_co(body, co0 - off.astype(np.float32))
+R.log(name, 'recentred by', off.round(2))
 
 # ---------------------------------------------------------------- displacement
 co = PR.get_co(body).astype(np.float64)
@@ -209,7 +222,11 @@ if 'notch' in D:
     c = D['notch']
     tz = co[:, 2] - c['z']
     f = np.where(tz < 0, np.exp(-0.5 * (tz / c['h_down']) ** 2), np.exp(-0.5 * (tz / c['h_up']) ** 2))
-    depth = c['depth'] * f * (0.8 + 0.4 * PR.fbm(co / c.get('scale', 4.0), 3, seed=c.get('seed', 5)))
+    # deepest on the side facing the swell ('dir', azimuth in degrees), patchy elsewhere
+    var = c.get('var', 0.7)
+    patch = sm(0.5 + 1.2 * PR.fbm(co / c.get('scale', 5.0), 3, seed=c.get('seed', 5)))
+    facing = 0.5 + 0.5 * np.cos(np.arctan2(n[:, 1], n[:, 0]) - math.radians(c.get('dir', 270)))
+    depth = c['depth'] * f * np.clip((1 - var) + var * 1.5 * (0.45 * patch + 0.55 * facing), 0.15, 1.3)
     nh = n.copy()
     nh[:, 2] = 0
     new -= nh * depth[:, None]

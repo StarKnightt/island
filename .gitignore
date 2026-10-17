@@ -10,3 +10,5 @@ dist/
 /raw/
 /shots/
 /.agent-notes/
+__pycache__/
+*.pyc

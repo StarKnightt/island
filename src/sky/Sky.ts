@@ -123,20 +123,25 @@ export const cloudAt = Fn(([xz]: N[]) => {
  */
 function cloudDensity(p: N, h: N, detail = true) {
   const m = cloudAt(p.xz);
-  const q = p.xz.add(clouds.drift);
-  const deck = clouds.thickness;
-  // billows from true 3D gradient noise (2D noise shifted with height extrudes into tall sheets that read as
-  // streaks): |noise| has rounded crowns and sharp creases between them
-  const P3 = vec3(q.x, p.y.mul(1.4), q.y);
-  const b1 = abs(mx_noise_float(P3.div(430)));
-  const b2 = detail ? abs(mx_noise_float(P3.div(150).add(7.1))) : float(0.32);
-  const f1 = texture(erosion, q.div(2600).add(0.71)).r;
-  const top = pow(m.y, 0.7).mul(mix(float(0.8), float(1.0), deck)).mul(f1.mul(0.5).add(0.75));
-  const bulge = b1.mul(0.65).add(b2.mul(0.35)).sub(0.3).mul(1.6);
-  const up = smoothstep(0.12, 0.6, h);
-  const inside = top.sub(h).add(bulge.mul(mix(float(0.46), float(0.22), deck)).mul(mix(float(0.55), float(1.0), up)));
-  const baseEdge = smoothstep(0.0, mix(float(0.02), float(0.08), deck), h.add(bulge.mul(mix(float(0.012), float(0.09), deck))));
-  return smoothstep(0.0, 0.06, inside).mul(baseEdge).mul(mix(float(0.55), float(1.0), m.x));
+  const out = float(0).toVar();
+  // most samples of a fair-weather sky fall where the map has no cloud: no noise there
+  If(m.x.greaterThan(0.001), () => {
+    const q = p.xz.add(clouds.drift);
+    const deck = clouds.thickness;
+    // billows from true 3D gradient noise (2D noise shifted with height extrudes into tall sheets that read as
+    // streaks): |noise| has rounded crowns and sharp creases between them
+    const P3 = vec3(q.x, p.y.mul(1.4), q.y);
+    const b1 = abs(mx_noise_float(P3.div(430)));
+    const b2 = detail ? abs(mx_noise_float(P3.div(150).add(7.1))) : float(0.32);
+    const f1 = texture(erosion, q.div(2600).add(0.71)).level(0).r;
+    const top = pow(m.y, 0.7).mul(mix(float(0.8), float(1.0), deck)).mul(f1.mul(0.5).add(0.75));
+    const bulge = b1.mul(0.65).add(b2.mul(0.35)).sub(0.3).mul(1.6);
+    const up = smoothstep(0.12, 0.6, h);
+    const inside = top.sub(h).add(bulge.mul(mix(float(0.46), float(0.22), deck)).mul(mix(float(0.55), float(1.0), up)));
+    const baseEdge = smoothstep(0.0, mix(float(0.02), float(0.08), deck), h.add(bulge.mul(mix(float(0.012), float(0.09), deck))));
+    out.assign(smoothstep(0.0, 0.06, inside).mul(baseEdge).mul(mix(float(0.55), float(1.0), m.x)));
+  });
+  return out;
 }
 
 /**

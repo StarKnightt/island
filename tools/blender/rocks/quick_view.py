@@ -57,8 +57,11 @@ c = (mn + mx) / 2
 size = float(np.max(mx - mn))
 tgt = (c[0], c[1], c[2] * 0.8)
 views = dict(fl=(-0.7, -1.0, 0.35), fr=(0.8, -0.9, 0.12), side=(1.0, 0.05, 0.3), top=(0.05, -0.5, 1.4), back=(0.3, 1.0, 0.6))
+rad = float(np.linalg.norm(mx - mn)) / 2
 for nm, (dx, dy, dz) in views.items():
-    d = size * 1.25 + 4
+    # fit the bounding sphere in the vertical field of view (35 mm lens, 16:9: half angle ~16 deg)
+    d = max(size * 1.25 + 4, rad / math.sin(math.radians(15.5)))
+    d /= math.sqrt(dx * dx + dy * dy + dz * dz)
     R.add_camera(scene, (c[0] + dx * d, c[1] + dy * d, c[2] + dz * d), tgt, lens=35, name=nm)
     scene.render.filepath = f'{out_prefix}_{nm}.png'
     bpy.ops.render.render(write_still=True)

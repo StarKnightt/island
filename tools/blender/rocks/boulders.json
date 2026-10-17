@@ -1,0 +1,659 @@
+{
+ "kit": "boulder",
+ "file": "boulders.glb",
+ "family": "rock",
+ "double_sided": false,
+ "lod_tris": [
+  null,
+  1500,
+  400
+ ],
+ "grade": {
+  "ao_delight": 0.0,
+  "large_keep": 0.85
+ },
+ "material": {
+  "fine_a": {
+   "tex": "dark_rock_02",
+   "tile": 1.6
+  },
+  "fine_b": {
+   "tex": "dark_rock",
+   "tile": 2.0
+  },
+  "big": {
+   "tex": "aerial_rocks_02",
+   "tile": 8.0
+  },
+  "streaks": 0.2,
+  "streak_scale": [
+   0.5,
+   5.0
+  ],
+  "stain": 0.35,
+  "band_tint": 0.15,
+  "bump": 0.45,
+  "bump_dist": 0.02,
+  "extrude": 0.12,
+  "raydist": 0.35,
+  "ao_dist": 0.6
+ },
+ "granite_material": {
+  "fine_a": {
+   "tex": "rock_01",
+   "tile": 1.5
+  },
+  "fine_b": {
+   "tex": "rock_surface",
+   "tile": 1.8
+  },
+  "big": {
+   "tex": "rock_surface",
+   "tile": 7.0
+  },
+  "big_gain": 0.5,
+  "big_bias": 0.75,
+  "streaks": 0.15,
+  "streak_scale": [
+   0.32,
+   3.5
+  ],
+  "stain": 0.55,
+  "band_tint": 0.35,
+  "bump": 0.3,
+  "bump_dist": 0.012,
+  "extrude": 0.15,
+  "raydist": 0.4,
+  "ao_dist": 0.8
+ },
+ "granite_grade": {
+  "y_mean": 0.16,
+  "y_std": 0.3,
+  "w_mean": 0.2,
+  "w_std": 0.09,
+  "rust_push": 0.32,
+  "g_mean": 0.0,
+  "g_std": 0.02,
+  "w_max": 0.7
+ },
+ "manifest": {
+  "textures": {
+   "albedo": "2048 sRGB KTX2",
+   "normal": "2048 OpenGL KTX2",
+   "orm": "2048 KTX2 (R AO, G roughness, B 0)"
+  },
+  "notes": "closed single-sided meshes; origin at the centre of the footprint at the ground line: the part below y = 0 (the 'bury' fraction of the height) is meant to be inside the terrain / sand / water; granite_* use a lighter grey to rust-tan granite palette, basalt_* and pebbles_a / pebbles_b the cliff-kit basalt palette, pebbles_c the granite palette"
+ },
+ "pieces": [
+  {
+   "name": "granite_a",
+   "kind": "granite",
+   "type": "boulder",
+   "use": "rounded granite boulder (Seychelles type), small wedge",
+   "seed": 11,
+   "size": [
+    2.4,
+    1.8,
+    1.7
+   ],
+   "form": "box",
+   "pillow": 3.0,
+   "chips": 2,
+   "bury": 0.2,
+   "lumps": 0.015,
+   "steps": 0,
+   "step_t": 0.03,
+   "fine": {
+    "tex": "rock_01",
+    "tile": 1.4,
+    "amp": 0.01
+   },
+   "fine2": {
+    "tex": "rock_surface",
+    "tile": 3.0,
+    "amp": 0.015
+   },
+   "lod0_tris": 6000,
+   "lod_tris": [
+    null,
+    1500
+   ],
+   "scale": [
+    0.6,
+    2.0
+   ],
+   "material_set": "granite",
+   "axis_tilt": 24,
+   "round_r": 0.3
+  },
+  {
+   "name": "granite_b",
+   "kind": "granite",
+   "type": "boulder",
+   "use": "rounded granite boulder, tilted block with exfoliation steps",
+   "seed": 21,
+   "size": [
+    3.8,
+    2.8,
+    2.9
+   ],
+   "form": "wedge",
+   "axis_tilt": 12,
+   "pillow": 3.0,
+   "chips": 3,
+   "bury": 0.22,
+   "lumps": 0.015,
+   "steps": 1,
+   "step_t": 0.02,
+   "fine": {
+    "tex": "rock_01",
+    "tile": 1.4,
+    "amp": 0.012
+   },
+   "fine2": {
+    "tex": "rock_surface",
+    "tile": 3.5,
+    "amp": 0.02
+   },
+   "lod0_tris": 6000,
+   "scale": [
+    0.6,
+    1.8
+   ],
+   "material_set": "granite",
+   "wedge_deg": 22,
+   "round_r": 0.25,
+   "runnels": {
+    "spacing": 0.4,
+    "depth": 0.05,
+    "len": [
+     0.45,
+     0.9
+    ],
+    "reach": 0.85,
+    "sectors": [
+     [
+      90,
+      60
+     ]
+    ],
+    "seed": 22
+   },
+   "streak_relief": 0.003
+  },
+  {
+   "name": "granite_c",
+   "kind": "granite",
+   "type": "boulder",
+   "use": "large granite loaf boulder with water-stain runnels",
+   "seed": 31,
+   "size": [
+    5.2,
+    3.0,
+    2.8
+   ],
+   "bury": 0.25,
+   "lumps": 0.015,
+   "steps": 1,
+   "step_t": 0.02,
+   "fine": {
+    "tex": "rock_01",
+    "tile": 1.5,
+    "amp": 0.014
+   },
+   "fine2": {
+    "tex": "rock_surface",
+    "tile": 4.0,
+    "amp": 0.022
+   },
+   "lod0_tris": 6000,
+   "scale": [
+    0.6,
+    1.6
+   ],
+   "material_set": "granite",
+   "scan": {
+    "id": "namaqualand_boulder_06",
+    "rot": [
+     0,
+     0,
+     0
+    ],
+    "vox_div": 80,
+    "smooth": 14
+   },
+   "streak_relief": 0.004,
+   "streak_amt": 0.85
+  },
+  {
+   "name": "granite_d",
+   "kind": "granite",
+   "type": "boulder",
+   "use": "huge granite boulder with a joint line, exfoliation steps and water-stain runnels (Seychelles beach landmark)",
+   "seed": 41,
+   "size": [
+    6.2,
+    6.2,
+    4.7
+   ],
+   "bury": 0.25,
+   "lumps": 0.015,
+   "steps": 2,
+   "step_t": 0.02,
+   "fine": {
+    "tex": "rock_01",
+    "tile": 1.6,
+    "amp": 0.016
+   },
+   "fine2": {
+    "tex": "rock_surface",
+    "tile": 4.5,
+    "amp": 0.025
+   },
+   "lod0_tris": 6000,
+   "scale": [
+    0.6,
+    1.5
+   ],
+   "material_set": "granite",
+   "scan": {
+    "id": "namaqualand_boulder_04",
+    "rot": [
+     0,
+     0,
+     0
+    ],
+    "vox_div": 90,
+    "smooth": 12
+   },
+   "streak_relief": 0.004,
+   "streak_amt": 0.85
+  },
+  {
+   "name": "basalt_a",
+   "kind": "block",
+   "type": "block",
+   "use": "angular fallen basalt block, small (scree, pool rim)",
+   "seed": 51,
+   "size": [
+    1.3,
+    0.9,
+    0.75
+   ],
+   "chips": 5,
+   "facets": 7,
+   "tilt": 20,
+   "bury": 0.25,
+   "round_k": 0.012,
+   "steps": 1,
+   "step_t": 0.012,
+   "step_soft": 0.006,
+   "step_lip": false,
+   "big": {
+    "tex": "aerial_rocks_02",
+    "tile": 2.5,
+    "amp": 0.012,
+    "rel": true
+   },
+   "fine": {
+    "tex": "dark_rock_02",
+    "tile": 0.6,
+    "amp": 0.012,
+    "rel": true
+   },
+   "lumps": 0.006,
+   "lod0_tris": 3000,
+   "lod_tris": [
+    null,
+    750
+   ],
+   "scale": [
+    0.6,
+    2.0
+   ],
+   "material": {
+    "fine_a": {
+     "tex": "dark_rock_02",
+     "tile": 1.0
+    },
+    "fine_b": {
+     "tex": "dark_rock",
+     "tile": 1.3
+    },
+    "big": {
+     "tex": "aerial_rocks_02",
+     "tile": 5.0
+    },
+    "extrude": 0.05,
+    "raydist": 0.15,
+    "ao_dist": 0.3,
+    "bump_dist": 0.01
+   },
+   "jitter": 22,
+   "facet_depth": [
+    0.05,
+    0.14
+   ],
+   "step_nz": 1.5
+  },
+  {
+   "name": "basalt_b",
+   "kind": "block",
+   "type": "block",
+   "use": "angular fallen basalt block, medium",
+   "seed": 61,
+   "size": [
+    2.1,
+    1.5,
+    1.2
+   ],
+   "chips": 5,
+   "facets": 8,
+   "tilt": 25,
+   "bury": 0.25,
+   "round_k": 0.012,
+   "steps": 1,
+   "step_t": 0.012,
+   "step_soft": 0.006,
+   "step_lip": false,
+   "big": {
+    "tex": "aerial_rocks_02",
+    "tile": 2.5,
+    "amp": 0.012,
+    "rel": true
+   },
+   "fine": {
+    "tex": "dark_rock_02",
+    "tile": 0.6,
+    "amp": 0.012,
+    "rel": true
+   },
+   "lumps": 0.006,
+   "lod0_tris": 4500,
+   "lod_tris": [
+    null,
+    1100
+   ],
+   "scale": [
+    0.6,
+    2.0
+   ],
+   "material": {
+    "fine_a": {
+     "tex": "dark_rock_02",
+     "tile": 1.3
+    },
+    "fine_b": {
+     "tex": "dark_rock",
+     "tile": 1.6
+    },
+    "big": {
+     "tex": "aerial_rocks_02",
+     "tile": 6.0
+    },
+    "extrude": 0.08,
+    "raydist": 0.25,
+    "ao_dist": 0.45
+   },
+   "jitter": 22,
+   "facet_depth": [
+    0.05,
+    0.14
+   ],
+   "step_nz": 1.5
+  },
+  {
+   "name": "basalt_c",
+   "kind": "block",
+   "type": "block",
+   "use": "large angular basalt block (cliff foot)",
+   "seed": 71,
+   "size": [
+    3.3,
+    2.3,
+    1.9
+   ],
+   "chips": 6,
+   "facets": 9,
+   "tilt": 15,
+   "bury": 0.25,
+   "round_k": 0.011,
+   "steps": 2,
+   "step_t": 0.01,
+   "step_soft": 0.005,
+   "step_lip": false,
+   "big": {
+    "tex": "aerial_rocks_02",
+    "tile": 2.5,
+    "amp": 0.012,
+    "rel": true
+   },
+   "fine": {
+    "tex": "dark_rock_02",
+    "tile": 0.6,
+    "amp": 0.012,
+    "rel": true
+   },
+   "lumps": 0.006,
+   "lod0_tris": 6000,
+   "scale": [
+    0.6,
+    1.8
+   ],
+   "jitter": 22,
+   "facet_depth": [
+    0.05,
+    0.14
+   ],
+   "step_nz": 1.5
+  },
+  {
+   "name": "basalt_d",
+   "kind": "block",
+   "type": "block",
+   "use": "large tilted basalt slab block (cliff foot, washed by foam)",
+   "seed": 81,
+   "size": [
+    5.0,
+    3.1,
+    2.2
+   ],
+   "chips": 6,
+   "facets": 10,
+   "tilt": 12,
+   "bury": 0.22,
+   "round_k": 0.01,
+   "steps": 2,
+   "step_t": 0.01,
+   "step_soft": 0.005,
+   "step_lip": false,
+   "big": {
+    "tex": "aerial_rocks_02",
+    "tile": 2.5,
+    "amp": 0.012,
+    "rel": true
+   },
+   "fine": {
+    "tex": "dark_rock_02",
+    "tile": 0.6,
+    "amp": 0.012,
+    "rel": true
+   },
+   "lumps": 0.006,
+   "lod0_tris": 6000,
+   "scale": [
+    0.6,
+    1.6
+   ],
+   "jitter": 22,
+   "facet_depth": [
+    0.05,
+    0.14
+   ],
+   "step_nz": 1.5
+  },
+  {
+   "name": "pebbles_a",
+   "kind": "cluster",
+   "type": "pebbles",
+   "use": "rounded basalt river cobbles (stream bed, waterfall pool edge)",
+   "seed": 91,
+   "stone": "round",
+   "count": 11,
+   "sizes": [
+    0.08,
+    0.38
+   ],
+   "spread": 0.5,
+   "bury": 0.3,
+   "hi_div": 110,
+   "fine": {
+    "tex": "rock_01",
+    "tile": 0.45,
+    "amp": 0.003
+   },
+   "lod0_tris": 1500,
+   "lod_tris": [
+    null,
+    400
+   ],
+   "scale": [
+    0.7,
+    2.5
+   ],
+   "material": {
+    "fine_a": {
+     "tex": "rock_01",
+     "tile": 0.6
+    },
+    "fine_b": {
+     "tex": "dark_rock",
+     "tile": 0.8
+    },
+    "big": {
+     "tex": "rock_surface",
+     "tile": 2.0
+    },
+    "streaks": 0.0,
+    "bump": 0.25,
+    "bump_dist": 0.004,
+    "extrude": 0.02,
+    "raydist": 0.05,
+    "ao_dist": 0.12
+   },
+   "grade": {
+    "y_mean": 0.075
+   }
+  },
+  {
+   "name": "pebbles_b",
+   "kind": "cluster",
+   "type": "pebbles",
+   "use": "angular basalt rubble / scree stones (cliff foot, jungle floor)",
+   "seed": 101,
+   "stone": "angular",
+   "count": 13,
+   "sizes": [
+    0.06,
+    0.42
+   ],
+   "spread": 0.5,
+   "bury": 0.3,
+   "hi_div": 110,
+   "chips": 4,
+   "facets": 3,
+   "tilt": 25,
+   "round_k": 0.02,
+   "big": {
+    "tex": "aerial_rocks_02",
+    "tile": 2.5,
+    "amp": 0.015,
+    "rel": true
+   },
+   "fine": {
+    "tex": "dark_rock_02",
+    "tile": 0.6,
+    "amp": 0.012,
+    "rel": true
+   },
+   "lod0_tris": 1500,
+   "lod_tris": [
+    null,
+    400
+   ],
+   "scale": [
+    0.7,
+    2.5
+   ],
+   "material": {
+    "fine_a": {
+     "tex": "dark_rock_02",
+     "tile": 0.6
+    },
+    "fine_b": {
+     "tex": "dark_rock",
+     "tile": 0.8
+    },
+    "big": {
+     "tex": "aerial_rocks_02",
+     "tile": 3.0
+    },
+    "streaks": 0.0,
+    "bump_dist": 0.005,
+    "extrude": 0.02,
+    "raydist": 0.05,
+    "ao_dist": 0.12
+   }
+  },
+  {
+   "name": "pebbles_c",
+   "kind": "cluster",
+   "type": "pebbles",
+   "use": "rounded granite beach stones (sandy shore, at the feet of granite boulders)",
+   "seed": 111,
+   "stone": "round",
+   "count": 6,
+   "sizes": [
+    0.2,
+    0.65
+   ],
+   "spread": 0.6,
+   "bury": 0.35,
+   "hi_div": 110,
+   "fine": {
+    "tex": "rock_01",
+    "tile": 0.6,
+    "amp": 0.004
+   },
+   "lod0_tris": 1500,
+   "lod_tris": [
+    null,
+    400
+   ],
+   "scale": [
+    0.7,
+    2.5
+   ],
+   "material_set": "granite",
+   "material": {
+    "fine_a": {
+     "tex": "rock_01",
+     "tile": 0.8
+    },
+    "fine_b": {
+     "tex": "rock_surface",
+     "tile": 1.0
+    },
+    "big": {
+     "tex": "rock_surface",
+     "tile": 3.0
+    },
+    "streaks": 0.15,
+    "bump_dist": 0.005,
+    "extrude": 0.03,
+    "raydist": 0.08,
+    "ao_dist": 0.2
+   }
+  }
+ ]
+}

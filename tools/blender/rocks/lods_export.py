@@ -33,6 +33,9 @@ try:
     mat.use_nodes = True
 except Exception:
     pass
+# glTF doubleSided = not backface culling; closed bodies (stacks, boulders, shelves) are single-sided,
+# the cliff pieces are open shells (top / back) and stay double-sided
+mat.use_backface_culling = not cfg.get('double_sided', True)
 nt = mat.node_tree
 N, L = nt.nodes, nt.links
 N.clear()
@@ -80,7 +83,7 @@ for P in cfg['pieces']:
     lo.data.polygons.foreach_set('material_index', np.zeros(len(lo.data.polygons), np.int32))
     lo.data.polygons.foreach_set('use_smooth', np.ones(len(lo.data.polygons), bool))
     lods = [lo]
-    for k, tgt in enumerate(TARGETS[1:], start=1):
+    for k, tgt in enumerate(P.get('lod_tris', TARGETS)[1:], start=1):
         o = lo.copy()
         o.data = lo.data.copy()
         scene.collection.objects.link(o)

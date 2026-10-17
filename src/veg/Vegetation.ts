@@ -12,17 +12,19 @@ import {
 import { Rng, Noise2 } from '../core/noise';
 import type { Heightfield } from '../world/Heightfield';
 import { HALF_WORLD } from '../world/layout';
-import { palm, canopyTree, bush, banana, grassClump, type PartGeo } from './geometry';
+import { grassClump, type PartGeo } from './geometry';
 import { wetness } from '../world/weatherUniforms';
 import { loadKTX2, configureTex } from '../core/Assets';
 import { atmo } from '../sky/Atmosphere';
 import { cloudShadow } from '../sky/Sky';
 import { Q } from '../core/quality';
 import type { Colliders } from '../world/Colliders';
+import { glbU, loadVariants, plantMaterial, crownProxy, crownMaterial, type GlbVariant, type PlantLook } from './glb';
 
 const CELL = 32;
 
-export const vegU = { time: uniform(0), sunColor: uniform(new THREE.Color(1, 1, 1)) };
+export const vegU = glbU;
+void uniform;
 
 interface Lod { maxDist: number; parts: PartGeo[]; shadow: boolean }
 interface Species {
@@ -36,6 +38,8 @@ interface Species {
   radius: number;
   /** how far an instance may reach out of its 32 m cell (scaled instances reach further than `radius`) */
   pad: number;
+  /** lie on the slope (flat ground covers such as leaf litter) instead of standing upright */
+  tilt?: boolean;
 }
 
 // ---------------------------------------------------------------- materials
@@ -144,6 +148,9 @@ export class Vegetation {
   private lastDir = new THREE.Vector3();
   private frame = 0;
   private tmpP = new THREE.Vector3();
+  private tmpUp = new THREE.Vector3();
+  private tmpAx = new THREE.Vector3();
+  private tmpAz = new THREE.Vector3();
   private sphere = new THREE.Sphere();
   private box = new THREE.Box3();
   visible = 0;
@@ -158,12 +165,7 @@ export class Vegetation {
   /** stream the foliage textures and swap them in */
   async loadTextures() {
     const files: Record<string, [string, boolean]> = {
-      palm_frond: ['assets/foliage/palm_frond.ktx2', true],
-      palm_bark: ['assets/foliage/palm_bark.ktx2', true],
-      canopy: ['assets/foliage/canopy.ktx2', true],
-      banana_leaf: ['assets/foliage/banana_leaf.ktx2', true],
       grass: ['assets/foliage/grass.ktx2', true],
-      bark: ['assets/tex/bark_a.ktx2', true],
     };
     await Promise.all(Object.entries(files).map(async ([key, [url, srgb]]) => {
       const t = configureTex(await loadKTX2(url), srgb);
@@ -209,6 +211,9 @@ export class Vegetation {
         mesh.frustumCulled = false;
         mesh.castShadow = lod.shadow;
         mesh.receiveShadow = true;
+        // every instanced mesh sits at the origin, so the renderer cannot sort them near to far: near LODs first, so
+        // the far ones are mostly rejected by the depth test before they shade
+        mesh.renderOrder = l - 4;
         mesh.name = `${sp.name}_l${l}_${part.part}`;
         this.group.add(mesh);
         row.push({ lod: l, mesh, data });
@@ -226,51 +231,10 @@ export class Vegetation {
     return (Math.floor((x + HALF_WORLD) / CELL) << 8) | Math.floor((z + HALF_WORLD) / CELL);
   }
 
-  /** grow the species and scatter them over the island */
+  /** the grass clumps (procedural); the plants come from the helpers' GLBs in buildGlb() */
   build() {
     const hf = this.hf;
-    const noise = new Noise2(31);
     const D = Q.density;
-    const lodK = Q.lodScale;
-    // ---- coconut palms: 4 variants (per-instance scale adds the rest of the variety; every variant is a draw call
-    // per LOD part and shadow cascade)
-    const palms: Species[] = [];
-    for (let v = 0; v < 4; v++) {
-      const height = 9 + v * 2.1;
-      const lean = 0.12 + (v % 3) * 0.07;
-      const lods: Lod[] = [
-        { maxDist: 70 * lodK, parts: palm(100 + v, { height, lean, fronds: 18, segments: 9, sides: 9, dead: 2 + (v % 2), nuts: !new URLSearchParams(location.search).has('nonuts') }), shadow: true },
-        { maxDist: 260 * lodK, parts: palm(100 + v, { height, lean, fronds: 12, segments: 5, sides: 6, dead: 1, nuts: false }), shadow: false },
-        { maxDist: 1600, parts: palm(100 + v, { height, lean, fronds: 8, segments: 3, sides: 4, dead: 0, nuts: false }), shadow: false },
-      ];
-      palms.push(this.addSpecies(`palm${v}`, lods, height));
-    }
-    const young = this.addSpecies('palm_young', [
-      { maxDist: 60 * lodK, parts: palm(150, { height: 1.2, lean: 0.05, fronds: 9, segments: 6, sides: 6, dead: 1, nuts: false }), shadow: true },
-      { maxDist: 140 * lodK, parts: palm(150, { height: 1.2, lean: 0.05, fronds: 6, segments: 3, sides: 4, dead: 0, nuts: false }), shadow: false },
-    ], 3);
-    // ---- canopy trees: 3 variants
-    const trees: Species[] = [];
-    for (let v = 0; v < 3; v++) {
-      const height = 17 + v * 3.9;
-      const lods: Lod[] = [
-        { maxDist: 85 * lodK, parts: canopyTree(300 + v, { height, spread: 8 + v * 1.2, cards: 150, sides: 9, lod: 0 }), shadow: true },
-        { maxDist: 330 * lodK, parts: canopyTree(300 + v, { height, spread: 8 + v * 1.2, cards: 60, sides: 5, lod: 1 }), shadow: false },
-      ];
-      trees.push(this.addSpecies(`tree${v}`, lods, height));
-    }
-    // ---- understory
-    const bushes: Species[] = [];
-    // (bushes cast no shadows: low under the canopy, AO grounds them, and they would be drawn in every cascade)
-    for (let v = 0; v < 2; v++) {
-      bushes.push(this.addSpecies(`bush${v}`, [
-        { maxDist: 55 * lodK, parts: bush(400 + v, 1.4 + v * 0.75, 16), shadow: false },
-        { maxDist: 110 * lodK, parts: bush(400 + v, 1.4 + v * 0.75, 6), shadow: false },
-      ], 2));
-    }
-    const bananas = this.addSpecies('banana', [
-      { maxDist: 70 * lodK, parts: banana(500, 2.8), shadow: true },
-    ], 3);
     const grass: Species[] = [];
     for (let v = 0; v < 2; v++) grass.push(this.addSpecies(`grass${v}`, [{ maxDist: Q.grassFar, parts: grassClump(600 + v, 0.5 + v * 0.2, 5), shadow: false }], 0.6));
 
@@ -283,78 +247,13 @@ export class Vegetation {
       l.push(x, y, z, yaw, scale, phase);
     };
     const r = new Rng(2024);
-    // palms: the strip behind every beach, leaning out to sea; scattered at the jungle edge
-    const STEP = 4.5 / Math.sqrt(D);
-    for (let z = -700; z < 700; z += STEP) for (let x = -950; x < 950; x += STEP) {
-      const px = x + r.range(-STEP, STEP) * 0.5, pz = z + r.range(-STEP, STEP) * 0.5;
-      const s = hf.shoreDist(px, pz);
-      if (s < 6 || s > 140) continue;
-      const h = hf.height(px, pz);
-      if (h < 1.2 || h > 60) continue;
-      const sand = hf.sand(px, pz), forest = hf.forest(px, pz), rock = hf.rock(px, pz);
-      if (rock > 0.4 || hf.water(px, pz) > 0.2) continue;
-      const n = hf.normal(px, pz);
-      if (n.y < 0.8) continue;
-      // strongest where sand meets jungle, a band 10-70 m inland
-      const band = THREE.MathUtils.smoothstep(s, 8, 22) * (1 - THREE.MathUtils.smoothstep(s, 55, 120));
-      const edge = Math.max(sand * 0.9, 0.35) * (1 - forest * 0.55);
-      const clump = 0.55 + 0.45 * noise.fbm(px / 40, pz / 40, 2);
-      const p = band * edge * clump * 0.36;
-      if (r.next() > p) continue;
-      // lean toward the sea: down the shore-distance gradient
-      const gx = hf.shoreDist(px + 4, pz) - hf.shoreDist(px - 4, pz), gz = hf.shoreDist(px, pz + 4) - hf.shoreDist(px, pz - 4);
-      const toSea = Math.atan2(-gz, -gx);
-      // the trunk leans along local +x: yaw so +x points to the sea, with spread
-      const yaw = -toSea + r.range(-0.7, 0.7);
-      push(r.pick(palms), px, pz, yaw, r.range(0.85, 1.2), r.next(), 0.1);
-      if (r.next() < 0.18) push(young, px + r.range(-4, 4), pz + r.range(-4, 4), r.next() * 6.28, r.range(0.7, 1.4), r.next());
-    }
-    // keep the pool and the falls open: the clearing round the plunge pool
-    const pool = hf.meta.pool, falls = hf.meta.falls;
-    const clearing = (x: number, z: number, extra = 0) => Math.hypot(x - pool.p[0], z - pool.p[1]) < pool.r + 14 + extra || Math.hypot(x - falls.lip[0], z - falls.lip[1]) < 16 + extra;
-    // canopy trees: jittered grid over the forest mask
-    const TS = 8.5 / Math.sqrt(D);
-    for (let z = -700; z < 700; z += TS) for (let x = -950; x < 950; x += TS) {
-      const px = x + r.range(-0.45, 0.45) * TS, pz = z + r.range(-0.45, 0.45) * TS;
-      const f = hf.forest(px, pz);
-      if (f < 0.35 || r.next() > f * 1.1 || clearing(px, pz, 6)) continue;
-      const n = hf.normal(px, pz);
-      if (n.y < 0.75) continue;
-      const h = hf.height(px, pz);
-      if (h < 2.5) continue;
-      if (r.next() < 0.12) {
-        // a palm among the broadleaves
-        push(r.pick(palms), px, pz, r.next() * 6.28, r.range(0.9, 1.3), r.next(), 0.1);
-        continue;
-      }
-      const sp = r.pick(trees);
-      push(sp, px, pz, r.next() * 6.28, r.range(0.75, 1.2) * (1 - THREE.MathUtils.smoothstep(h, 120, 170) * 0.4), r.next(), 0.3);
-      this.colliders.circle(px, pz, 0.55 * 1.2, h - 1, h + 8);
-    }
-    // understory: denser grid, bushes / bananas / young palms under and between the trees
-    const US = 3.2 / Math.sqrt(D);
-    for (let z = -700; z < 700; z += US) for (let x = -950; x < 950; x += US) {
-      const px = x + r.range(-0.5, 0.5) * US, pz = z + r.range(-0.5, 0.5) * US;
-      const f = hf.forest(px, pz);
-      const g = hf.grass(px, pz);
-      if ((f < 0.2 && g < 0.4) || clearing(px, pz, -6)) continue;
-      const n = hf.normal(px, pz);
-      if (n.y < 0.7 || hf.dirt(px, pz) > 0.4 || hf.water(px, pz) > 0.1) continue;
-      const h = hf.height(px, pz);
-      if (h < 1.5) continue;
-      const k = r.next();
-      if (f > 0.3) {
-        if (k < 0.42 * f) push(r.pick(bushes), px, pz, r.next() * 6.28, r.range(0.7, 1.4), r.next(), 0.1);
-        else if (k < 0.5 * f) push(bananas, px, pz, r.next() * 6.28, r.range(0.75, 1.15), r.next());
-        else if (k < 0.56 * f) push(young, px, pz, r.next() * 6.28, r.range(0.8, 1.6), r.next());
-      } else if (k < 0.3 * g) push(r.pick(bushes), px, pz, r.next() * 6.28, r.range(0.5, 0.9), r.next(), 0.15);
-    }
     // grass clumps (dense, only drawn near the camera)
     const GS = 0.9 / Math.sqrt(D);
     for (let z = -700; z < 700; z += GS) for (let x = -950; x < 950; x += GS) {
       const px = x + r.range(-0.5, 0.5) * GS, pz = z + r.range(-0.5, 0.5) * GS;
       const g = hf.grass(px, pz), f = hf.forest(px, pz), sand = hf.sand(px, pz);
-      const w = Math.max(g, f * 0.35, sand > 0.3 && sand < 0.8 && hf.shoreDist(px, pz) > 40 ? 0.3 : 0);
+      // (under the forest the litter, ferns and herbs cover the floor: little grass there)
+      const w = Math.max(g * (1 - f * 0.7), f * 0.12, sand > 0.3 && sand < 0.8 && hf.shoreDist(px, pz) > 40 ? 0.3 : 0);
       if (w < 0.15 || r.next() > w) continue;
       if (hf.dirt(px, pz) > 0.5 || hf.rock(px, pz) > 0.5 || hf.water(px, pz) > 0.05) continue;
       if (hf.height(px, pz) < 1.0) continue;
@@ -364,6 +263,238 @@ export class Vegetation {
     let total = 0;
     for (const sp of this.species) total += sp.count;
     console.log('vegetation', this.species.map((s) => `${s.name}:${s.count}`).join(' '), 'total', total);
+    return total;
+  }
+
+  /** one species from a helper GLB variant: its LODs at these distances, shadows from the LODs flagged */
+  private glbSpecies(v: GlbVariant, dists: number[], shadows: boolean[], look: PlantLook, opts: { maxScale?: number; tilt?: boolean } = {}) {
+    const lods: Lod[] = [];
+    for (let k = 0; k < dists.length && k < v.lods.length; k++) {
+      lods.push({
+        maxDist: dists[k],
+        shadow: shadows[k] ?? false,
+        parts: v.lods[k].map((p) => ({ geometry: p.geometry, part: 'leaf' as const, material: p.override ?? this.matFor(p.src, look) })),
+      });
+    }
+    const reach = Math.max(v.height, v.radius) * (opts.maxScale ?? 1.25);
+    const sp = this.addSpecies(v.name, lods, Math.max(v.height, v.radius * 2), reach);
+    sp.tilt = opts.tilt;
+    return sp;
+  }
+
+  private glbMats = new Map<string, THREE.Material>();
+  private matFor(src: THREE.MeshStandardMaterial, look: PlantLook) {
+    const key = `${src.uuid}:${look.sway}:${look.height}`;
+    let m = this.glbMats.get(key);
+    if (!m) this.glbMats.set(key, (m = plantMaterial(src, look)));
+    return m;
+  }
+
+  /**
+   * The island's plants, from the helpers' GLBs, in layers: coconut palms leaning out over every beach with young
+   * palms and sea-front scrub on the berm; rainforest on the forest mask (emergent dipterocarps and kapoks over a
+   * closed canopy of strangler figs and leaning broadleaves, a midstorey between their trunks, tree ferns, bananas,
+   * aroids, rattan and fan palms below, ferns and herbs on the ground, leaf litter, logs and surface roots).
+   */
+  async buildGlb() {
+    const hf = this.hf;
+    const D = Q.density;
+    const K = Q.lodScale;
+    const [coco, young, scrub, canopy, mid, under, floor] = await Promise.all([
+      loadVariants('assets/veg/palms/coconut.glb', { palm_nut: 'palm_bark' }),
+      loadVariants('assets/veg/palms/coconut_young.glb', { palm_nut: 'palm_bark' }),
+      loadVariants('assets/veg/palms/scrub.glb'),
+      loadVariants('assets/veg/jungle/canopy_trees.glb'),
+      loadVariants('assets/veg/jungle/midstorey_trees.glb'),
+      loadVariants('assets/veg/jungle/understory.glb'),
+      loadVariants('assets/veg/jungle/floor.glb'),
+    ]);
+    const get = (m: Map<string, GlbVariant>, n: string) => {
+      const v = m.get(n);
+      if (!v) throw new Error(`vegetation: no ${n}`);
+      return v;
+    };
+    const palmLook: PlantLook = { sway: 0.055, height: 16, translucent: 0.4 };
+    const treeLook: PlantLook = { sway: 0.02, height: 28, translucent: 0.3 };
+    const midLook: PlantLook = { sway: 0.03, height: 10, translucent: 0.25 };
+    const lowLook: PlantLook = { sway: 0.06, height: 2.5, translucent: 0.18 };
+    const groundLook: PlantLook = { sway: 0.06, height: 0.8, translucent: 0.15 };
+    // every variant x LOD x material is a draw call in every pass it is in: few variants, shadows from lod0 only
+    const palms = ['a', 'b', 'd', 'e', 'f'].map((k) => this.glbSpecies(get(coco, `coconut_${k}`), [60 * K, 210 * K, 1500], [true, false, false], palmLook));
+    const youngs = ['a', 'b', 'c'].map((k) => this.glbSpecies(get(young, `coconut_young_${k}`), [40 * K, 110 * K], [true, false], { ...palmLook, height: 4 }));
+    // (the scrub's stems only show close up: its distant LODs keep the leaves)
+    const scrubVar = ['a', 'b', 'd'].map((k) => get(scrub, `scrub_${k}`));
+    for (const v of scrubVar) for (let k = 1; k < v.lods.length; k++) v.lods[k] = v.lods[k].filter((p) => p.mat !== 'scrub_wood');
+    const scrubs = scrubVar.map((v) => this.glbSpecies(v, [40 * K, 130 * K, 420], [true, false, false], lowLook));
+    // far canopy trees: the crown as lumpy opaque ellipsoids over the lod2 bark (see crownProxy)
+    const greens: Record<string, [number, number, number]> = { a: [0.04, 0.066, 0.018], b: [0.028, 0.05, 0.014], c: [0.045, 0.072, 0.02], d: [0.034, 0.058, 0.016] };
+    const trees = ['a', 'b', 'c', 'd'].map((k) => {
+      const v = get(canopy, `rainforest_${k}`);
+      const bark = v.lods[2].filter((p) => p.mat === 'canopy_bark');
+      v.lods[3] = [...bark, { geometry: crownProxy(v, 'canopy_leaf', 12), mat: 'crown_proxy', src: bark[0].src, override: crownMaterial(greens[k], treeLook) }];
+      return this.glbSpecies(v, [50 * K, 150 * K, 270 * K, 1500], [true, false, false, false], treeLook);
+    });
+    const mids = ['a', 'b'].map((k) => this.glbSpecies(get(mid, `midstorey_${k}`), [30 * K, 90 * K, 190 * K], [true, false, false], midLook));
+    const unders = ['banana_a', 'alocasia_a', 'treefern_a', 'rattan_a', 'licuala_a']
+      .map((k) => this.glbSpecies(get(under, k), [26 * K, 70 * K], [false, false], lowLook));
+    // the scanned herbs' full meshes are 4500 triangles: their second LOD is plenty on the forest floor
+    for (const k of ['anthurium_a']) { const v = get(under, k); v.lods = [v.lods[1]]; }
+    const grounds = ['fern_a', 'fern_b', 'anthurium_a'].map((k) => this.glbSpecies(get(under, k), [30 * K], [false], groundLook));
+    const litter = ['litter_a', 'litter_b', 'litter_c'].map((k) => this.glbSpecies(get(floor, k), [44 * K], [false], groundLook, { tilt: true }));
+    const logs = ['log_a', 'log_b', 'roots_a'].map((k) => this.glbSpecies(get(floor, k), [35 * K, 90 * K], [true, false], groundLook, { tilt: true }));
+
+    const noise = new Noise2(31);
+    const r = new Rng(2024);
+    const lists = new Map<Species, number[]>();
+    const push = (sp: Species, x: number, z: number, yaw: number, scale: number, sink = 0) => {
+      let l = lists.get(sp);
+      if (!l) lists.set(sp, (l = []));
+      l.push(x, hf.height(x, z) - sink, z, yaw, scale, r.next());
+    };
+    // trunks claim their ground so the next layer does not grow through them
+    const taken = new Map<number, [number, number, number][]>();
+    const tkey = (x: number, z: number) => (Math.floor(x / 8) + 512) * 4096 + Math.floor(z / 8) + 512;
+    const free = (x: number, z: number, rad: number) => {
+      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+        for (const [tx, tz, tr] of taken.get(tkey(x + i * 8, z + j * 8)) ?? []) if (Math.hypot(tx - x, tz - z) < tr + rad) return false;
+      }
+      return true;
+    };
+    const claim = (x: number, z: number, rad: number) => {
+      const k = tkey(x, z);
+      (taken.get(k) ?? taken.set(k, []).get(k)!).push([x, z, rad]);
+    };
+    const pool = hf.meta.pool, falls = hf.meta.falls;
+    const clearing = (x: number, z: number, extra = 0) => Math.hypot(x - pool.p[0], z - pool.p[1]) < pool.r + 14 + extra || Math.hypot(x - falls.lip[0], z - falls.lip[1]) < 16 + extra;
+    const toSea = (x: number, z: number) => {
+      const gx = hf.shoreDist(x + 4, z) - hf.shoreDist(x - 4, z), gz = hf.shoreDist(x, z + 4) - hf.shoreDist(x, z - 4);
+      return Math.atan2(-gz, -gx);
+    };
+
+    // ---- the beach front: palms in loose groves 8-120 m inland (short leaners near the sea, tall straight ones
+    // behind), young palms and fallen nuts sprouting among them, scrub mounds on the berm
+    const STEP = 4.2 / Math.sqrt(D);
+    for (let z = -700; z < 700; z += STEP) for (let x = -950; x < 950; x += STEP) {
+      const px = x + r.range(-0.5, 0.5) * STEP, pz = z + r.range(-0.5, 0.5) * STEP;
+      const s = hf.shoreDist(px, pz);
+      if (s < 6 || s > 150) continue;
+      const h = hf.height(px, pz);
+      if (h < 1.2 || h > 70) continue;
+      const sand = hf.sand(px, pz), forest = hf.forest(px, pz), rock = hf.rock(px, pz);
+      if (rock > 0.4 || hf.water(px, pz) > 0.2) continue;
+      if (hf.normal(px, pz).y < 0.8) continue;
+      const band = THREE.MathUtils.smoothstep(s, 7, 20) * (1 - THREE.MathUtils.smoothstep(s, 60, 140));
+      const edge = Math.max(sand * 0.95, 0.35) * (1 - forest * 0.5);
+      const grove = THREE.MathUtils.smoothstep(noise.fbm(px / 55, pz / 55, 3), -0.35, 0.35);
+      const p = band * edge * (0.25 + 0.75 * grove) * 0.42;
+      if (r.next() > p || !free(px, pz, 1.2)) continue;
+      // near the sea the short leaners (a, b), behind them the tall ones (d, e, f)
+      const inland = THREE.MathUtils.smoothstep(s, 15, 70);
+      const pick = r.next() < 0.6 - inland * 0.45 ? r.pick([palms[0], palms[0], palms[1]]) : r.pick([palms[2], palms[3], palms[4], palms[1]]);
+      const yaw = -toSea(px, pz) + r.range(-0.65, 0.65);
+      const sc = r.range(0.85, 1.12);
+      push(pick, px, pz, yaw, sc, 0.05);
+      claim(px, pz, 1.0);
+      this.colliders.circle(px, pz, 0.36 * sc, h - 1, h + 7);
+      if (r.next() < 0.3) {
+        const a = r.next() * 6.28, d = r.range(2.5, 6);
+        const yx = px + Math.cos(a) * d, yz = pz + Math.sin(a) * d;
+        if (free(yx, yz, 0.6)) push(r.pick(youngs), yx, yz, r.next() * 6.28, r.range(0.8, 1.25), 0.05);
+      }
+    }
+    // scrub on the berm and the dune crest: clumps of two or three mounds, wind-pruned toward the sea
+    const SS = 3.4 / Math.sqrt(D);
+    for (let z = -700; z < 700; z += SS) for (let x = -950; x < 950; x += SS) {
+      const px = x + r.range(-0.5, 0.5) * SS, pz = z + r.range(-0.5, 0.5) * SS;
+      const s = hf.shoreDist(px, pz);
+      if (s < 9 || s > 45) continue;
+      const h = hf.height(px, pz);
+      if (h < 1.0 || hf.rock(px, pz) > 0.5 || hf.water(px, pz) > 0.1 || hf.dirt(px, pz) > 0.5) continue;
+      const kind = hf.coastKind(px, pz);
+      const berm = THREE.MathUtils.smoothstep(s, 9, 16) * (1 - THREE.MathUtils.smoothstep(s, 30, 45));
+      const patch = THREE.MathUtils.smoothstep(noise.fbm(px / 22 + 7, pz / 22, 2), -0.1, 0.4);
+      if (r.next() > berm * patch * (kind < 0.4 ? 0.5 : 0.3) || !free(px, pz, 1.5)) continue;
+      // scrub_d is pruned low on its +x side: face that to the sea
+      const sp = r.pick(scrubs);
+      push(sp, px, pz, sp === scrubs[2] ? -toSea(px, pz) : r.next() * 6.28, r.range(0.75, 1.25), 0.15);
+    }
+
+    // ---- the rainforest: canopy trees on a jittered grid (emergents rarer), each claiming its trunk's ground
+    const TS = 11 / Math.sqrt(D);
+    for (let z = -700; z < 700; z += TS) for (let x = -950; x < 950; x += TS) {
+      const px = x + r.range(-0.45, 0.45) * TS, pz = z + r.range(-0.45, 0.45) * TS;
+      const f = hf.forest(px, pz);
+      if (f < 0.35 || r.next() > f * 1.15 || clearing(px, pz, 6)) continue;
+      if (hf.normal(px, pz).y < 0.72) continue;
+      const h = hf.height(px, pz);
+      if (h < 2.5) continue;
+      if (r.next() < 0.08) {
+        // a palm among the broadleaves
+        push(r.pick([palms[2], palms[3], palms[4]]), px, pz, r.next() * 6.28, r.range(0.95, 1.25), 0.05);
+        claim(px, pz, 1.0);
+        continue;
+      }
+      // emergents (a dipterocarp, c kapok) stand out of the canopy; high on the mountain the trees are shorter
+      const k = r.next();
+      const sp = k < 0.14 ? trees[0] : k < 0.28 ? trees[2] : k < 0.58 ? trees[1] : trees[3];
+      const alt = 1 - THREE.MathUtils.smoothstep(h, 110, 175) * 0.45;
+      const sc = r.range(0.8, 1.12) * alt;
+      push(sp, px, pz, r.next() * 6.28, sc, 0.3);
+      claim(px, pz, (sp === trees[0] || sp === trees[2] ? 3.6 : 2.0) * sc);
+      this.colliders.circle(px, pz, (sp === trees[0] || sp === trees[2] ? 0.75 : 0.5) * sc, h - 1, h + 10);
+    }
+    // midstorey between the trunks
+    const MS = 8.5 / Math.sqrt(D);
+    for (let z = -700; z < 700; z += MS) for (let x = -950; x < 950; x += MS) {
+      const px = x + r.range(-0.5, 0.5) * MS, pz = z + r.range(-0.5, 0.5) * MS;
+      const f = hf.forest(px, pz);
+      if (f < 0.3 || r.next() > f * 0.6 || clearing(px, pz, 2)) continue;
+      if (hf.normal(px, pz).y < 0.7 || hf.height(px, pz) < 2 || !free(px, pz, 1.5)) continue;
+      const sc = r.range(0.75, 1.15);
+      push(r.pick(mids), px, pz, r.next() * 6.28, sc, 0.2);
+      claim(px, pz, 0.8);
+      this.colliders.circle(px, pz, 0.28 * sc, hf.height(px, pz) - 1, hf.height(px, pz) + 6);
+    }
+    // understory: tree ferns and fan palms in the shade, bananas and aroids in gaps and along the edges
+    const US = 3.4 / Math.sqrt(D);
+    for (let z = -700; z < 700; z += US) for (let x = -950; x < 950; x += US) {
+      const px = x + r.range(-0.5, 0.5) * US, pz = z + r.range(-0.5, 0.5) * US;
+      const f = hf.forest(px, pz), g = hf.grass(px, pz);
+      if ((f < 0.22 && g < 0.45) || clearing(px, pz, -8)) continue;
+      if (hf.normal(px, pz).y < 0.68 || hf.dirt(px, pz) > 0.45 || hf.water(px, pz) > 0.1 || hf.height(px, pz) < 1.5) continue;
+      const edge = 1 - THREE.MathUtils.smoothstep(f, 0.35, 0.8);
+      const k = r.next();
+      if (k > 0.82 * Math.max(f, g * 0.5) || !free(px, pz, 0.5)) continue;
+      // bananas and aroids in the gaps and at the edges, tree ferns, rattan and fan palms in the shade
+      const q = r.next();
+      const sp = q < 0.16 + edge * 0.14 ? unders[0] : q < 0.36 + edge * 0.08 ? unders[1] : q < 0.62 ? unders[2] : q < 0.78 ? unders[3] : unders[4];
+      push(sp, px, pz, r.next() * 6.28, r.range(0.75, 1.3), 0.08);
+    }
+    // ground: ferns and herbs, and the leaf litter that covers the forest floor
+    const GS = 1.8 / Math.sqrt(D);
+    for (let z = -700; z < 700; z += GS) for (let x = -950; x < 950; x += GS) {
+      const px = x + r.range(-0.5, 0.5) * GS, pz = z + r.range(-0.5, 0.5) * GS;
+      const f = hf.forest(px, pz);
+      if (f < 0.3 || clearing(px, pz, -10) || hf.water(px, pz) > 0.05 || hf.height(px, pz) < 1.5) continue;
+      if (hf.normal(px, pz).y < 0.66) continue;
+      const k = r.next();
+      if (k < 0.32 * f) push(r.pick(grounds), px, pz, r.next() * 6.28, r.range(0.7, 1.35), 0.03);
+    }
+    const LS = 2.9 / Math.sqrt(D);
+    for (let z = -700; z < 700; z += LS) for (let x = -950; x < 950; x += LS) {
+      const px = x + r.range(-0.4, 0.4) * LS, pz = z + r.range(-0.4, 0.4) * LS;
+      const f = hf.forest(px, pz);
+      if (f < 0.3 || hf.water(px, pz) > 0.05 || hf.dirt(px, pz) > 0.6 || hf.height(px, pz) < 1.5) continue;
+      if (hf.normal(px, pz).y < 0.8 || r.next() > f * 0.85) continue;
+      push(r.pick(litter), px, pz, r.next() * 6.28, r.range(0.85, 1.2), 0.02);
+      if (r.next() < 0.02 && free(px, pz, 2)) push(r.pick(logs), px, pz, r.next() * 6.28, r.range(0.8, 1.2), 0.1);
+    }
+    let total = 0;
+    for (const sp of [...palms, ...youngs, ...scrubs, ...trees, ...mids, ...unders, ...grounds, ...litter, ...logs]) {
+      this.setInstances(sp, lists.get(sp) ?? []);
+      total += sp.count;
+    }
+    console.log('vegetation (glb)', [...lists.entries()].map(([s, l]) => `${s.name}:${l.length / 6}`).join(' '), 'total', total);
     return total;
   }
 
@@ -565,9 +696,21 @@ export class Vegetation {
           const s = inst[o + 4], yaw = inst[o + 3];
           const c = Math.cos(yaw) * s, sn = Math.sin(yaw) * s;
           const m = mats[l], b = k * 16;
-          m[b] = c; m[b + 1] = 0; m[b + 2] = -sn; m[b + 3] = 0;
-          m[b + 4] = 0; m[b + 5] = s; m[b + 6] = 0; m[b + 7] = 0;
-          m[b + 8] = sn; m[b + 9] = 0; m[b + 10] = c; m[b + 11] = 0;
+          if (sp.tilt) {
+            // the yawed frame tilted onto the ground's slope: y along the terrain normal
+            const nrm = this.hf.normal(x, z);
+            const up = this.tmpUp.set(nrm.x, nrm.y, nrm.z);
+            const ax = this.tmpAx.set(Math.cos(yaw), 0, -Math.sin(yaw));
+            const az = this.tmpAz.crossVectors(ax, up).normalize();
+            ax.crossVectors(up, az);
+            m[b] = ax.x * s; m[b + 1] = ax.y * s; m[b + 2] = ax.z * s; m[b + 3] = 0;
+            m[b + 4] = up.x * s; m[b + 5] = up.y * s; m[b + 6] = up.z * s; m[b + 7] = 0;
+            m[b + 8] = az.x * s; m[b + 9] = az.y * s; m[b + 10] = az.z * s; m[b + 11] = 0;
+          } else {
+            m[b] = c; m[b + 1] = 0; m[b + 2] = -sn; m[b + 3] = 0;
+            m[b + 4] = 0; m[b + 5] = s; m[b + 6] = 0; m[b + 7] = 0;
+            m[b + 8] = sn; m[b + 9] = 0; m[b + 10] = c; m[b + 11] = 0;
+          }
           m[b + 12] = x; m[b + 13] = y; m[b + 14] = z; m[b + 15] = 1;
           const da = datas[l], q = k * 4;
           da[q] = yaw;

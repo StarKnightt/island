@@ -1,0 +1,16 @@
+{
+ "tag": "stack_sea",
+ "sea": true,
+ "sea_z": 0.0,
+ "items": [
+  {"obj": "stack_c_lod0", "s": 1.0, "x": -48, "y": 30, "z": -4.5, "yaw": 20},
+  {"obj": "stack_a_lod0", "s": 1.0, "x": 0, "y": 0, "z": -4.5, "yaw": 0},
+  {"obj": "stack_b_lod0", "s": 1.0, "x": 42, "y": -18, "z": -5.0, "yaw": 0}
+ ],
+ "views": {
+  "boat": {"cam": [0, -135, 3], "at": [0, 0, 14], "lens": 32, "hdri_rot": -270.8},
+  "close": {"cam": [24, -52, 2.2], "at": [40, -18, 7], "lens": 30, "hdri_rot": -270.8},
+  "backlit": {"cam": [0, -135, 3], "at": [0, 0, 14], "lens": 32, "hdri_rot": -75.8, "hdri_strength": 0.45,
+              "sun": [8, 190, 3.5]}
+ }
+}

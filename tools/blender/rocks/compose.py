@@ -25,12 +25,7 @@ KIT = cfg['kit']
 WORK = 'E:/tmp/island/helpers/rocks/work'
 OUT = WORK + '/tex'
 os.makedirs(OUT, exist_ok=True)
-G = cfg.get('grade', {})
-T_LOGY = np.log(G.get('y_mean', 0.068))      # linear luminance of the basalt base
-T_STD = G.get('y_std', 0.28)                 # log-luminance spread
-LARGE_KEEP = G.get('large_keep', 0.55)       # fraction of large-scale (>~1 m) luminance variation kept
-W_MEAN, W_STD = G.get('w_mean', 0.12), G.get('w_std', 0.08)
-G_MEAN, G_STD = G.get('g_mean', 0.03), G.get('g_std', 0.025)
+G_KIT = cfg.get('grade', {})
 LUMA = np.array([0.2126, 0.7152, 0.0722], np.float32)
 t0 = time.time()
 
@@ -52,6 +47,16 @@ def robust(x):
 
 
 for k, P in enumerate(cfg['pieces']):
+    # palette targets: kit grade, then the piece's material set (e.g. granite_grade), then the piece's own grade
+    G = dict(G_KIT)
+    if P.get('material_set'):
+        G.update(cfg.get(P['material_set'] + '_grade', {}))
+    G.update(P.get('grade', {}))
+    T_LOGY = np.log(G.get('y_mean', 0.068))      # linear luminance of the base rock (basalt default)
+    T_STD = G.get('y_std', 0.28)                 # log-luminance spread
+    LARGE_KEEP = G.get('large_keep', 0.55)       # fraction of large-scale (>~1 m) luminance variation kept
+    W_MEAN, W_STD = G.get('w_mean', 0.12), G.get('w_std', 0.08)
+    G_MEAN, G_STD = G.get('g_mean', 0.03), G.get('g_std', 0.025)
     d = np.load(f'{WORK}/bake/{P["name"]}.npz')
     assert int(d['res']) == RES, 'bake resolution mismatch'
     idx = d['idx']
@@ -67,7 +72,8 @@ for k, P in enumerate(cfg['pieces']):
     nrm[idx] = d['nrm'][:, :3].astype(np.float32)
     # ---- de-light
     ao = np.clip(A[:, 0], 0.05, 1)
-    rgb = np.clip(D[:, :3], 1e-4, None) / np.clip(ao, 0.35, 1)[:, None] ** 0.5
+    # scans carry their own occlusion in the albedo: divide part of it out (procedural bodies have none: exponent 0)
+    rgb = np.clip(D[:, :3], 1e-4, None) / np.clip(ao, 0.35, 1)[:, None] ** G.get('ao_delight', 0.5)
     Y = rgb @ LUMA
     logY = np.log(np.maximum(Y, 1e-4))
     wv = (rgb[:, 0] - rgb[:, 2]) / Y

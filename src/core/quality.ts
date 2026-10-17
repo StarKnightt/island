@@ -70,3 +70,9 @@ export const gpuName = cleanGpuName(webglRendererName());
 const forced = params.quality as Preset | null;
 export const preset: Preset = forced && PRESETS.includes(forced) ? forced : params.test ? 'high' : Math.min(PRESETS.indexOf(guess(gpuName)), 2) >= 0 ? PRESETS[Math.min(PRESETS.indexOf(guess(gpuName)), 2)] : 'high';
 export const Q: Knobs = { ...TABLE[preset] };
+// single knobs can be overridden from the URL for A/B measurements, e.g. ?q.lodScale=0.8&q.cloudSteps=12
+for (const [k, v] of new URLSearchParams(location.search)) {
+  const key = k.startsWith('q.') ? (k.slice(2) as keyof Knobs) : null;
+  if (!key || !(key in Q)) continue;
+  (Q as unknown as Record<string, number | boolean>)[key] = typeof Q[key] === 'boolean' ? v === '1' || v === 'true' : Number(v);
+}

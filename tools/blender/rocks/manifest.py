@@ -52,6 +52,14 @@ for path in sys.argv[1:]:
             mn, mx = e['bbox']['min'], e['bbox']['max']
             e.update(face_width=round(mx[0] - mn[0], 2), top_height=round(mx[1], 2), base_y=0.0,
                      bottom_y=round(mn[1], 2), face_dir='+Z', source_scan=pm['scan'])
+        if kit == 'stack':
+            mn, mx = e['bbox']['min'], e['bbox']['max']
+            e.update(height=round(mx[1], 2), base_y=0.0, footprint=[round(mx[0] - mn[0], 1), round(mx[2] - mn[2], 1)],
+                     waterline_y=P.get('waterline'), deep_notch_side=K.get('deep_notch_side'))
+        if kit in ('boulder', 'shelf'):
+            mn, mx = e['bbox']['min'], e['bbox']['max']
+            e.update(height_above_ground=round(mx[1], 2), depth_below_ground=round(-mn[1], 2),
+                     footprint=[round(mx[0] - mn[0], 2), round(mx[2] - mn[2], 2)])
         for k in ('lod_dist', 'bury', 'notes', 'source_scan'):
             if k in P:
                 e[k] = P[k]

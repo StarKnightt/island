@@ -12,6 +12,16 @@
     "orm": "2048 KTX2 (R AO, G roughness, B 0)"
    },
    "notes": "faces look toward +Z, width along X, base line at y = 0 with a skirt down to y = -4.5 to sink into sea bed / terrain; back (-Z) and top are open shells; the left/right ends bend back (-Z) and are lower than the middle, so a taller overlapping neighbour hides the cut edges"
+  },
+  "stack": {
+   "file": "stacks.glb",
+   "material": "rock_stack",
+   "textures": {
+    "albedo": "2048 sRGB KTX2",
+    "normal": "2048 OpenGL KTX2",
+    "orm": "2048 KTX2 (R AO, G roughness, B 0)"
+   },
+   "notes": "free-standing closed single-sided meshes, origin at the centre of the base footprint, y = 0 is the base (geometry continues ~1-1.7 m below it); sink each stack by its waterline_y (4.6-5 m at scale 1, times the scale) so the wave-cut notch sits at the sea surface; the notch is deepest on the +Z side (face it toward the open sea / swell); stack_b has a sea arch through its foot (about 4.5 m wide, open from the waterline to ~8 m); tops are rough and ledged for shrubs"
   }
  },
  "pieces": {
@@ -280,6 +290,126 @@
    "bottom_y": -4.5,
    "face_dir": "+Z",
    "source_scan": "coastal_cliff_01"
+  },
+  "stack_a": {
+   "kit": "stack",
+   "file": "stacks.glb",
+   "nodes": [
+    "stack_a_lod0",
+    "stack_a_lod1",
+    "stack_a_lod2"
+   ],
+   "tris": [
+    19500,
+    4900,
+    980
+   ],
+   "bbox": {
+    "min": [
+     -10.088,
+     -1.735,
+     -7.665
+    ],
+    "max": [
+     13.272,
+     32.514,
+     8.321
+    ]
+   },
+   "scale": [
+    0.6,
+    1.6
+   ],
+   "use": "jagged sea stack of tilted slabs (cs16 / p019): spire, angled broken tops, overhangs, small notch",
+   "type": "stack",
+   "height": 32.51,
+   "base_y": 0.0,
+   "footprint": [
+    23.4,
+    16.0
+   ],
+   "waterline_y": 4.6,
+   "deep_notch_side": "+Z"
+  },
+  "stack_b": {
+   "kit": "stack",
+   "file": "stacks.glb",
+   "nodes": [
+    "stack_b_lod0",
+    "stack_b_lod1",
+    "stack_b_lod2"
+   ],
+   "tris": [
+    19500,
+    4900,
+    980
+   ],
+   "bbox": {
+    "min": [
+     -11.119,
+     -1.016,
+     -8.133
+    ],
+    "max": [
+     10.424,
+     21.388,
+     7.849
+    ]
+   },
+   "scale": [
+    0.6,
+    1.6
+   ],
+   "use": "broad stack with a deep wave-cut notch at the waterline and a small sea arch through its foot; flat-ish ledged top for shrubs",
+   "type": "stack",
+   "height": 21.39,
+   "base_y": 0.0,
+   "footprint": [
+    21.5,
+    16.0
+   ],
+   "waterline_y": 5.0,
+   "deep_notch_side": "+Z"
+  },
+  "stack_c": {
+   "kit": "stack",
+   "file": "stacks.glb",
+   "nodes": [
+    "stack_c_lod0",
+    "stack_c_lod1",
+    "stack_c_lod2"
+   ],
+   "tris": [
+    19500,
+    4900,
+    980
+   ],
+   "bbox": {
+    "min": [
+     -8.93,
+     -1.184,
+     -6.41
+    ],
+    "max": [
+     8.425,
+     43.545,
+     6.579
+    ]
+   },
+   "scale": [
+    0.6,
+    1.6
+   ],
+   "use": "tall fluted karst / volcanic tower with a spire, a few ledges and a notch",
+   "type": "stack",
+   "height": 43.55,
+   "base_y": 0.0,
+   "footprint": [
+    17.4,
+    13.0
+   ],
+   "waterline_y": 4.6,
+   "deep_notch_side": "+Z"
   }
  }
 }

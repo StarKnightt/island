@@ -93,6 +93,8 @@ export class Terrain {
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.mesh.name = 'terrain';
+    // after the near plants (which hide much of the ground), before the far ones (which the hills hide)
+    this.mesh.renderOrder = -2.5;
   }
 
   /** min/max height per node, every level (for culling and LOD distance) */
