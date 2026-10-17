@@ -1,0 +1,76 @@
+{
+  "kit": "stack",
+  "file": "stacks.glb",
+  "family": "rock",
+  "lod0_tris": 19500,
+  "lod_tris": [null, 4900, 980],
+  "grade": {"ao_delight": 0.0},
+  "material": {
+    "fine_a": {"tex": "dark_rock_02", "tile": 3.0},
+    "fine_b": {"tex": "dark_rock", "tile": 3.7},
+    "big": {"tex": "aerial_rocks_02", "tile": 30.0},
+    "streaks": 0.3,
+    "band_tint": 0.22,
+    "bump": 0.45
+  },
+  "manifest": {
+    "scale": [0.6, 1.6],
+    "textures": {"albedo": "2048 sRGB KTX2", "normal": "2048 OpenGL KTX2", "orm": "2048 KTX2 (R AO, G roughness, B 0)"},
+    "notes": "free-standing closed meshes, origin at the base centre (y = 0 is the bottom, meant to sit 3-6 m below the sea surface); the wave-cut notch is built at y = 4.5-5 m, so sink the base about 4.5 m for the notch to sit at the waterline; tops are rough and ledged for shrubs"
+  },
+  "pieces": [
+    {"name": "stack_a", "type": "stack", "use": "jagged sea stack of tilted slabs (cs16 / p019): spire, angled broken tops, overhangs, small notch", "waterline": 4.5,
+     "columns": [
+       {"c": [0, 0], "z": [0, 27], "r": [6.5, 3.6], "sides": 7, "aspect": 1.35, "rot": 15, "jag": 0.28, "seed": 101, "tilt": [9, 200], "cap": [32, 30], "wobble": 0.35},
+       {"c": [4.8, 1.2], "z": [0, 20], "r": [4.6, 2.4], "sides": 6, "aspect": 1.2, "rot": -20, "jag": 0.3, "seed": 102, "tilt": [15, 10], "cap": [40, 190]},
+       {"c": [-4.6, -1.0], "z": [0, 15], "r": [5.0, 3.2], "sides": 7, "aspect": 1.3, "rot": 40, "jag": 0.25, "seed": 103, "tilt": [10, 160], "cap": [25, 340]},
+       {"c": [-0.8, 0.6], "z": [16, 31], "r": [2.6, 0.9], "sides": 6, "aspect": 1.3, "rot": 0, "jag": 0.3, "seed": 104, "tilt": [10, 220], "cap": [45, 60]},
+       {"c": [1.5, -3.4], "z": [0, 11], "r": [3.2, 1.8], "sides": 5, "aspect": 1.4, "rot": 70, "jag": 0.3, "seed": 105, "tilt": [18, 270], "cap": [35, 120]}
+     ],
+     "disp": {
+       "big": {"amp": 1.0, "tile": 30, "seed": 1},
+       "fine": {"amp": 0.15, "tile": 3.0, "seed": 2},
+       "lumps": {"amp": 0.35, "scale": 6.0, "seed": 3},
+       "strata": {"amp": 0.45, "thick": [0.6, 1.8], "tilt": [22, 30], "warp": 0.4, "edge": 0.1, "seed": 4},
+       "flutes": {"amp": 0.2, "lh": 1.6, "lv": 7.0, "seed": 5},
+       "notch": {"z": 4.6, "depth": 1.3, "h_down": 1.0, "h_up": 0.6, "seed": 6},
+       "top": {"amp": 0.3, "scale": 2.5, "seed": 7}
+     }},
+    {"name": "stack_b", "type": "stack", "use": "broad stack with a deep wave-cut notch at the waterline and a small sea arch through its foot; flat-ish ledged top for shrubs", "waterline": 4.5,
+     "columns": [
+       {"c": [0, 0], "z": [0, 18], "r": [8.0, 6.5], "sides": 9, "aspect": 1.3, "rot": 10, "jag": 0.16, "seed": 201, "tilt": [3, 90], "cap": [8, 200], "wobble": 0.3},
+       {"c": [4.5, -2.5], "z": [0, 14.5], "r": [5.5, 4.4], "sides": 8, "aspect": 1.1, "rot": 30, "jag": 0.2, "seed": 202, "tilt": [5, 330], "cap": [12, 40]},
+       {"c": [-5.5, 1.5], "z": [0, 12], "r": [4.6, 3.6], "sides": 7, "aspect": 1.2, "rot": -10, "jag": 0.2, "seed": 203, "tilt": [4, 150], "cap": [15, 160]}
+     ],
+     "blocks": [
+       {"c": [1.0, 0.5, 18.4], "size": [4.5, 3.2, 2.4], "rot": [6, -4, 25]},
+       {"c": [-2.5, -1.5, 17.6], "size": [3.0, 2.6, 2.0], "rot": [-5, 8, -30]}
+     ],
+     "tunnels": [{"c": [-1.5, 0.0, 3.8], "az": 78, "r": [2.3, 4.2], "length": 28, "seed": 205}],
+     "disp": {
+       "big": {"amp": 0.9, "tile": 28, "seed": 11},
+       "fine": {"amp": 0.15, "tile": 3.0, "seed": 12},
+       "lumps": {"amp": 0.3, "scale": 6.0, "seed": 13},
+       "strata": {"amp": 0.5, "thick": [0.8, 2.4], "tilt": [4, 0], "warp": 0.5, "edge": 0.12, "seed": 14},
+       "flutes": {"amp": 0.15, "lh": 1.8, "lv": 8.0, "seed": 15},
+       "notch": {"z": 5.0, "depth": 2.6, "h_down": 1.6, "h_up": 0.7, "seed": 16},
+       "top": {"amp": 0.35, "scale": 3.0, "seed": 17}
+     }},
+    {"name": "stack_c", "type": "stack", "use": "tall fluted karst / volcanic tower with a spire, a few ledges and a notch", "waterline": 4.5,
+     "columns": [
+       {"c": [0, 0], "z": [0, 41], "r": [6.2, 3.4], "sides": 9, "aspect": 1.15, "rot": 0, "jag": 0.18, "seed": 301, "tilt": [4, 120], "cap": [20, 300], "wobble": 0.35, "seg": 2.0},
+       {"c": [3.2, 1.4], "z": [0, 33], "r": [4.4, 2.2], "sides": 8, "aspect": 1.2, "rot": 30, "jag": 0.22, "seed": 302, "tilt": [6, 30], "cap": [30, 210]},
+       {"c": [-2.8, -2.0], "z": [0, 25], "r": [4.2, 2.6], "sides": 8, "aspect": 1.1, "rot": -15, "jag": 0.2, "seed": 303, "tilt": [5, 230], "cap": [25, 50]},
+       {"c": [-0.6, 0.4], "z": [34, 44.5], "r": [2.4, 0.8], "sides": 6, "aspect": 1.2, "rot": 10, "jag": 0.25, "seed": 304, "tilt": [6, 100], "cap": [40, 280]}
+     ],
+     "disp": {
+       "big": {"amp": 0.8, "tile": 30, "seed": 21},
+       "fine": {"amp": 0.15, "tile": 3.0, "seed": 22},
+       "lumps": {"amp": 0.3, "scale": 6.0, "seed": 23},
+       "strata": {"amp": 0.3, "thick": [1.5, 4.0], "tilt": [3, 0], "warp": 0.6, "edge": 0.12, "seed": 24},
+       "flutes": {"amp": 0.7, "lh": 2.4, "lv": 16.0, "width": 0.32, "seed": 25},
+       "notch": {"z": 4.6, "depth": 1.6, "h_down": 1.1, "h_up": 0.6, "seed": 26},
+       "top": {"amp": 0.3, "scale": 2.5, "seed": 27}
+     }}
+  ]
+}

@@ -200,7 +200,9 @@ export const SPOTS: Spot[] = [
   { name: 'village', player: [-452, 318], yaw: Math.PI },
   // on the cliff top above the north coast, looking west along the cliffs
   { name: 'cliffs', player: [-58, -577], yaw: -1.42 },
-  { name: 'lighthouse', player: [-296.9, -297.6], yaw: 2.2 },
+  // on the gallery deck inside the railing (2.6 m from the tower axis), walking clockwise round it toward the
+  // view over the island (the railing stops anyone walking straight out)
+  { name: 'lighthouse', player: [-300 + Math.cos(2.46) * 2.6, -300 + Math.sin(2.46) * 2.6], yaw: 2.46 },
 ];
 
 /** the spawn: on the beach at sunrise, facing the sea and the rising sun */

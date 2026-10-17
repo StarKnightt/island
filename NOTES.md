@@ -29,7 +29,8 @@ src/
   ui/                     Loading screen, Hud, DebugOverlay
   debug/harness.ts        window.__island test API
 scripts/                  harness runners (shots, perf, clip, look, poses) and asset builders (build-assets,
-                          fetch-audio); lib/browser.ts launches Chrome on the second monitor
+                          fetch-audio); lib/browser.ts launches Chrome on the monitor picked from the layout at
+                          launch (the primary unless ISLAND_DISPLAY says otherwise)
 tools/                    offline bakers: gen-island.ts (heightmap + masks), gen_foliage.py (foliage atlases),
                           retarget.ts (animation retargeting), optimize-glb.ts, build-props.sh, prep_audio.py,
                           blender/rocketbox_to_glb.py
@@ -132,8 +133,9 @@ public/assets/            game assets (KTX2 textures, meshopt GLBs, Ogg audio)
 * TSL gotchas met: JS `/` on nodes produces `NaN`; `pow` of negative bases is NaN (wrap with `max(..., 0)`);
   lazily evaluated `assign` needs `.toVar()` to snapshot; avoid named arrow functions inside `page.evaluate` under
   tsx (it injects `__name`).
-* The harness renders a true 1920x1080 viewport inside a narrower window on the portrait monitor (Playwright
-  viewport emulation), so captures are 16:9 at full resolution.
+* The harness reads the monitor layout at every launch. On a 1920x1080 display (DISPLAY1, the primary) the window
+  goes borderless fullscreen and renders a real 1920x1080 viewport; on any other display size it falls back to
+  Playwright viewport emulation, so captures are always 16:9 at full resolution.
 
 ## Known issues and what is still weak (round 1)
 

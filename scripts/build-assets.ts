@@ -42,6 +42,10 @@ export const PROP_TEXTURES: { id: string; src: string; target?: [number, number,
   { id: 'bark_smooth', src: 'fever_tree_bark', target: [0.25, 0.22, 0.17] },
   { id: 'stone', src: 'stone_wall', target: [0.3, 0.29, 0.27] },
   { id: 'coral_stone', src: 'coral_stone_wall', target: [0.45, 0.42, 0.36] },
+  { id: 'roof_tiles', src: 'clay_roof_tiles_02', target: [0.3, 0.1, 0.055] },
+  { id: 'tin', src: 'rusty_corrugated_iron', target: [0.22, 0.12, 0.07] },
+  { id: 'plaster_blue', src: 'blue_plaster_weathered' },
+  { id: 'stucco', src: 'white_stucco_02', target: [0.74, 0.72, 0.68] },
 ];
 
 const toLin = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
@@ -164,7 +168,8 @@ async function main() {
   }
   if (what === 'tex' || what === 'all') {
     console.log('material textures:');
-    for (const T of PROP_TEXTURES) await packMaterial(T.src, T.id, join(OUT, 'tex'), T.size ?? 1024, T.target);
+    const only = process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1].split(',') : null;
+    for (const T of PROP_TEXTURES) if (!only || only.includes(T.id)) await packMaterial(T.src, T.id, join(OUT, 'tex'), T.size ?? 1024, T.target);
   }
 }
 

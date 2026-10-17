@@ -20,6 +20,8 @@ export const TEXTURES = [
   'thatch_roof_angled', 'bamboo_wall', 'weathered_planks', 'blue_painted_planks', 'wood_planks_grey',
   'white_plaster_rough_01', 'rough_wood', 'worn_planks', 'wood_peeling_paint_weathered', 'rusty_painted_metal',
   'bark_willow_02', 'fever_tree_bark', 'stone_wall', 'coral_stone_wall',
+  // round 2: keeper's house tiles, village tin roofs and painted walls, a whiter lighthouse render
+  'clay_roof_tiles_02', 'rusty_corrugated_iron', 'blue_plaster_weathered', 'white_stucco_02',
 ];
 
 /** models: glTF at 1k or 2k */

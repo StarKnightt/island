@@ -18,6 +18,8 @@ import { cloudShadow } from '../sky/Sky';
 import { atmo } from '../sky/Atmosphere';
 import { wetness } from './weatherUniforms';
 import { loadKTX2, placeholderArray, toArray } from '../core/Assets';
+import { coastAt, swash, waterlinePhase, bubbleMask } from '../water/surf';
+import { If, clamp } from '../core/tsl';
 
 /** layer order in the arrays (matches scripts/build-assets.ts TERRAIN_LAYERS) */
 const LAYERS = ['sand_dry', 'sand_wet', 'jungle', 'grass', 'dirt', 'rock', 'moss', 'reef'];
@@ -31,8 +33,6 @@ const toSrgb = (c: number) => (c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 
 
 export const terrainU = {
   time: uniform(0),
-  /** highest the swash reaches above sea level (m): the top of the wet band */
-  swash: uniform(0.62),
 };
 
 export function createTerrainMaterial(hf: Heightfield) {
@@ -75,7 +75,25 @@ export function createTerrainMaterial(hf: Heightfield) {
 
   // ---- layer weights from the masks
   const sand = m0.x;
-  const wetShore = smoothstep(terrainU.swash.add(0.45).add(macro.mul(0.12)), terrainU.swash.sub(0.15), h).mul(sand);
+  // the swash (surf.ts), only along the shore: damp sand below the reach of the run-up, the mirror film where a wave
+  // has just drained, stranded bubbles where the last run-up stopped
+  const shoreS = texture(hf.shoreTex, maskUV(xz)).level(0).r;
+  const shoreState = Fn(() => {
+    const out = vec4(0).toVar();
+    If(shoreS.greaterThan(-8).and(shoreS.lessThan(22)), () => {
+      const c = coastAt(hf, xz);
+      const sw = swash(c, waterlinePhase(c));
+      // the wrack line: dry seaweed, husks and twigs left along the top of the beach, in clumps
+      const wrackS = shoreS.sub(10.5).add(mx_noise_float(vec3(xz.mul(1 / 14), 3.7)).mul(2.2));
+      const band = float(1).sub(smoothstep(0.3, 1.7, abs(wrackS)));
+      const clumps = smoothstep(0.55, 0.85, mx_noise_float(vec3(xz.mul(1 / 1.3), 9.1)).mul(0.5).add(0.5).add(mx_noise_float(vec3(xz.mul(1 / 0.35), 2.2)).mul(0.22)));
+      const wrack = band.mul(clumps).mul(c.wb).mul(float(1).sub(sw.damp));
+      out.assign(vec4(sw.damp, sw.gloss, sw.strand, wrack));
+    });
+    return out;
+  })();
+  const shoreDamp = shoreState.x, shoreFilm = shoreState.y, shoreStrand = shoreState.z, wrack = shoreState.w.mul(m0.x);
+  const wetShore = max(shoreDamp, shoreFilm).mul(sand);
   // steep ground turns to rock, but not small ripples on the beach
   const rock = max(m1.x, smoothstep(0.42, 0.6, slope.add(micro.mul(0.05))).mul(float(1).sub(m0.x.mul(0.9))).mul(smoothstep(1.5, 4.0, positionWorld.y)));
   const grass = m0.y, dirt = m0.z, forest = m0.w;
@@ -163,9 +181,25 @@ export function createTerrainMaterial(hf: Heightfield) {
     .mul(smoothstep(0.975, 0.995, n.y)).mul(float(1).sub(sand.mul(0.7)));
   rough = mix(rough, float(0.03), puddle);
   albedo = mix(albedo, albedo.mul(0.55), puddle);
+  // the swash's film: a mirror of the sky where a wave has just drained, dulling as it sinks into the sand
+  const film = shoreFilm.mul(sand).mul(float(1).sub(underwater.mul(0.5)));
+  albedo = albedo.mul(mix(float(1), float(0.78), film));
+  rough = mix(rough, float(0.06), film);
+  // spray keeps the foot of sea cliffs and the rock shelves dark and glistening
+  const kindT = m1.w.mul(2);
+  const splash = max(clamp(kindT.sub(1), 0, 1).mul(float(1).sub(smoothstep(2, 10, h))), clamp(float(1).sub(abs(kindT.sub(1))), 0, 1).mul(float(1).sub(smoothstep(0.6, 2.6, h))))
+    .mul(float(1).sub(smoothstep(4, 30, shoreS))).mul(float(1).sub(sand));
+  albedo = albedo.mul(mix(float(1), float(0.6), splash));
+  rough = mix(rough, float(0.32), splash);
+  // stranded bubbles and the wrack line
+  const strand = bubbleMask(shoreStrand.mul(sand), xz);
+  albedo = mix(albedo, vec3(0.62, 0.63, 0.61), strand.mul(0.85));
+  rough = mix(rough, float(0.55), strand);
+  albedo = mix(albedo, vec3(0.055, 0.042, 0.028), wrack.mul(0.8));
+  rough = mix(rough, float(0.95), wrack);
 
-  // ---- normal: heightmap normal + layer detail (flattened in puddles)
-  const flat = float(1).sub(puddle);
+  // ---- normal: heightmap normal + layer detail (flattened in puddles and under the swash film)
+  const flat = float(1).sub(puddle).mul(float(1).sub(film.mul(0.85)));
   const detailN = normalize(vec3(n.x.add(dn.x.mul(flat).mul(0.9)), n.y, n.z.sub(dn.y.mul(flat).mul(0.9))));
   // relief on rock faces the 1 m heightmap cannot carry: the large-scale stone height and the strata joints as a bump
   // (surface-gradient bump mapping from screen derivatives, faded out before it would alias in the distance)
@@ -189,7 +223,8 @@ export function createTerrainMaterial(hf: Heightfield) {
   const caustic = pow(max(float(1).sub(abs(c1.sub(c2))), 0), 14).mul(smoothstep(0.1, 1.0, depthW)).mul(exp(depthW.mul(-0.25))).mul(1.2).mul(sunVis);
   const cloud = cloudShadow(p);
 
-  m.colorNode = vec4(albedo.mul(float(1).add(caustic.mul(cloud))).mul(mix(float(0.62), float(1), cloud)), 1);
+  // (cloud shadows dim the direct sun in the shadow node; only the caustics, made by the sun, follow them here)
+  m.colorNode = vec4(albedo.mul(float(1).add(caustic.mul(cloud))), 1);
   m.roughnessNode = rough;
   m.metalnessNode = float(0);
   m.normalNode = transformNormalToView(finalN);

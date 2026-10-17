@@ -93,7 +93,7 @@ function makeMaterials(): { mats: MatSet; texNodes: Record<string, N[]> } {
     // wet: darker, glossier
     col = col.mul(mix(float(1), float(0.7), wetness.rain));
     const cloud = cloudShadow(positionWorld);
-    m.colorNode = vec4(col.mul(ao.mul(0.85).add(0.15)).mul(mix(float(0.6), float(1), cloud)), alpha);
+    m.colorNode = vec4(col.mul(ao.mul(0.85).add(0.15)), alpha);
     // wet leaves turn glossy; wet bark only a little
     m.roughnessNode = mix(float(opts.rough), float(Math.min(opts.rough, opts.alpha ? 0.3 : 0.55)), wetness.rain);
     m.metalnessNode = float(0);

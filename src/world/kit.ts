@@ -5,12 +5,10 @@
  */
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { float, mix, normalize, texture, uv, vec3, vec4, attribute, positionWorld, transformNormalToView, normalMap, type N } from '../core/tsl';
+import { float, mix, normalize, texture, uv, vec3, vec4, attribute, transformNormalToView, normalMap, type N } from '../core/tsl';
 import { loadKTX2, configureTex } from '../core/Assets';
 import { wetness } from './weatherUniforms';
-import { cloudShadow } from '../sky/Sky';
-
-export type MatName = 'thatch' | 'bamboo' | 'planks' | 'planks_blue' | 'planks_grey' | 'plaster' | 'wood' | 'paint_wood' | 'rust' | 'bark' | 'bark_smooth' | 'stone' | 'coral_stone';
+export type MatName = 'thatch' | 'bamboo' | 'planks' | 'planks_blue' | 'planks_grey' | 'plaster' | 'wood' | 'paint_wood' | 'rust' | 'bark' | 'bark_smooth' | 'stone' | 'coral_stone' | 'roof_tiles' | 'tin' | 'plaster_blue' | 'stucco';
 
 const ph = (r: number, g: number, b: number, a = 1) => {
   const t = new THREE.DataTexture(new Uint8Array([r, g, b, a * 255]), 1, 1);
@@ -40,8 +38,7 @@ export function pbr(name: MatName, opts: { tint?: [number, number, number]; vcol
   if (opts.vcolor) col = col.mul(attribute('color', 'vec3'));
   // wet in the rain on surfaces facing up
   col = col.mul(mix(float(1), float(0.66), wetness.rain));
-  const cloud = cloudShadow(positionWorld);
-  m.colorNode = vec4(col.mul(mix(float(0.62), float(1), cloud)), 1);
+  m.colorNode = vec4(col, 1);
   const nxy = nT.xy.mul(2).sub(1);
   const nz = float(1).sub(nxy.dot(nxy)).max(0).sqrt();
   // tangent-space detail normal (the z the packing dropped is rebuilt)
@@ -169,6 +166,64 @@ export function tubeGeo(points: THREE.Vector3[], radius: number, sides = 5, shad
   const c = new Float32Array(g.getAttribute('position').count * 3).fill(shade);
   g.setAttribute('color', new THREE.BufferAttribute(c, 3));
   return g;
+}
+
+/**
+ * A planar convex polygon (points in order) with UVs in metres / `tile` projected on its plane (u along the first
+ * edge), facing `facing` (the winding is fixed so the polygon's front faces that way).
+ */
+export function poly(pts: THREE.Vector3[], facing: THREE.Vector3, tile = 1.5, shade = 1) {
+  const e = pts[1].clone().sub(pts[0]).normalize();
+  const n = facing.clone().normalize();
+  const d = n.clone().cross(e);
+  const flip = pts[1].clone().sub(pts[0]).cross(pts[2].clone().sub(pts[0])).dot(n) < 0;
+  const pos: number[] = [], nor: number[] = [], uvs: number[] = [];
+  for (let i = 1; i + 1 < pts.length; i++) {
+    const tri = flip ? [pts[0], pts[i + 1], pts[i]] : [pts[0], pts[i], pts[i + 1]];
+    for (const p of tri) {
+      const q = p.clone().sub(pts[0]);
+      pos.push(p.x, p.y, p.z);
+      nor.push(n.x, n.y, n.z);
+      uvs.push(q.dot(e) / tile, q.dot(d) / tile);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(new Array(pos.length).fill(shade), 3));
+  return g;
+}
+
+/** triangles with explicit normals and UVs (accumulated, then turned into one geometry) */
+export class MeshAcc {
+  pos: number[] = [];
+  nor: number[] = [];
+  uv: number[] = [];
+  col: number[] = [];
+  /** quad a-b-c-d (in order round its edge) facing n; uvs per corner */
+  quad(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3, n: THREE.Vector3 | THREE.Vector3[], uv: [number, number][], shade: number | number[] = 1) {
+    const ns = Array.isArray(n) ? n : [n, n, n, n];
+    const sh = Array.isArray(shade) ? shade : [shade, shade, shade, shade];
+    const nAvg = ns[0].clone().add(ns[1]).add(ns[2]).add(ns[3]);
+    const flip = b.clone().sub(a).cross(c.clone().sub(a)).dot(nAvg) < 0;
+    const P = [a, b, c, d];
+    const tris = flip ? [[0, 2, 1], [0, 3, 2]] : [[0, 1, 2], [0, 2, 3]];
+    for (const t of tris) for (const k of t) {
+      this.pos.push(P[k].x, P[k].y, P[k].z);
+      this.nor.push(ns[k].x, ns[k].y, ns[k].z);
+      this.uv.push(uv[k][0], uv[k][1]);
+      this.col.push(sh[k], sh[k], sh[k]);
+    }
+  }
+  geometry() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
+    return g;
+  }
 }
 
 /** a plain coloured material for small parts (ropes, glass frames, paint) */

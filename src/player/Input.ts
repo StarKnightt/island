@@ -15,6 +15,8 @@ export interface Intent {
   zoom: number;
   /** free camera vertical (photo mode) */
   up: number;
+  /** scripted moves (harness): move toward this world heading instead of relative to the camera */
+  worldYaw?: number;
 }
 
 export class Input {

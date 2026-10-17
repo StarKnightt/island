@@ -20,7 +20,7 @@ export const grade = {
   gain: uniform(new THREE.Vector3(1.0, 1.0, 1.0)),
   vignette: uniform(0.2),
   aoStrength: uniform(0.75),
-  bloomStrength: uniform(0.06),
+  bloomStrength: uniform(0.04),
 };
 
 interface GpuPool { timestamps: Map<string, number>; frames?: number[] }
@@ -174,8 +174,10 @@ export class Engine {
     // bloom by day and by night alike, bright sand and surf do not veil the picture
     const lit = hdrClamped.mul(grade.exposure);
     // (its input is clamped so the sun disc gives a glare around it, not a blown-out third of the frame)
-    const exposed = Q.bloom ? lit.add(bloom(vec4(lit.min(vec3(10)), 1), 0.6, 0.22, 1.5).rgb.mul(grade.bloomStrength.mul(16))) : lit;
-    const display = renderOutput(vec4(exposed, 1), THREE.AgXToneMapping, THREE.SRGBColorSpace);
+    // (only what is far above white blooms: the sun, glints, lamps, the moon; not bright sky or sand)
+    const exposed = Q.bloom ? lit.add(bloom(vec4(lit.min(vec3(12)), 1), 0.55, 0.2, 2.6).rgb.mul(grade.bloomStrength.mul(16))) : lit;
+    const tm = ({ aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping, neutral: THREE.NeutralToneMapping } as Record<string, THREE.ToneMapping>)[params.toneMap] ?? THREE.ACESFilmicToneMapping;
+    const display = renderOutput(vec4(exposed, 1), tm, THREE.SRGBColorSpace);
     const lum = dot(display.rgb, vec3(0.2126, 0.7152, 0.0722));
     let c = mix(vec3(lum), display.rgb, grade.saturation);
     c = c.sub(0.5).mul(grade.contrast).add(0.5);

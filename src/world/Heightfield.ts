@@ -108,7 +108,14 @@ export class Heightfield {
     };
     this.mask0Tex = mk(this.mask0);
     this.mask1Tex = mk(this.mask1);
-    const st = new THREE.DataTexture(this.shore, this.m, this.m, THREE.RedFormat, THREE.FloatType);
+    // R: distance to the waterline (m, + on land), G: kind of the nearest coast (0 beach .. 0.5 rock .. 1 cliff),
+    // in one texture so the shaders that need both spend one sampler
+    const coast = new Float32Array(this.m * this.m * 2);
+    for (let i = 0; i < this.m * this.m; i++) {
+      coast[i * 2] = this.shore[i];
+      coast[i * 2 + 1] = this.mask1[i * 4 + 3] / 255;
+    }
+    const st = new THREE.DataTexture(coast, this.m, this.m, THREE.RGFormat, THREE.FloatType);
     st.magFilter = THREE.LinearFilter;
     st.minFilter = THREE.LinearFilter;
     st.generateMipmaps = false;

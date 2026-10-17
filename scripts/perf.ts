@@ -56,7 +56,8 @@ try {
     console.log(`${spot.padEnd(10)} ${cond.padEnd(8)} fps ${row.fps} (cap ${row.target}) frame avg ${row.frameAvg} p95 ${row.frameP95} p99 ${row.frameP99} | cpu ${row.cpuAvg} | gpu avg ${row.gpuAvg} p95 ${row.gpuP95} p99 ${row.gpuP99} | ${row.drawCalls} draws ${(row.triangles / 1e6).toFixed(2)} M tris`);
   }
   const adapter = await L.page.evaluate(() => (window as unknown as { __island: { adapter: () => unknown } }).__island.adapter());
-  writeFileSync(join(outDir, 'perf.json'), JSON.stringify({ round, fps, adapter, rows, at: new Date().toISOString() }, null, 1));
+  const placement = { display: L.display.name, size: [L.display.width, L.display.height], viewport: L.viewportMode };
+  writeFileSync(join(outDir, 'perf.json'), JSON.stringify({ round, fps, adapter, placement, rows, at: new Date().toISOString() }, null, 1));
   const md = ['| spot | condition | fps (cap) | frame avg | p95 | p99 | CPU avg | GPU avg | GPU p95 | GPU p99 | draws | tris (M) |', '|---|---|---|---|---|---|---|---|---|---|---|---|']
     .concat(rows.map((r) => `| ${r.spot} | ${r.condition} | ${r.fps} (${r.target}) | ${r.frameAvg} | ${r.frameP95} | ${r.frameP99} | ${r.cpuAvg} | ${r.gpuAvg} | ${r.gpuP95} | ${r.gpuP99} | ${r.drawCalls} | ${((r.triangles as number) / 1e6).toFixed(2)} |`));
   writeFileSync(join(outDir, 'perf.md'), md.join('\n') + '\n');

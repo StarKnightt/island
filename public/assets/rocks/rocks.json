@@ -1,0 +1,285 @@
+{
+ "version": 1,
+ "units": "metres, glTF Y-up, scale 1",
+ "material_note": "all kits share one palette (dark grey basalt, weathered planes, rust stains, grey-green lichen); albedo is de-lit; ORM = R ambient occlusion, G roughness, B metalness 0",
+ "kits": {
+  "cliff": {
+   "file": "cliff_kit.glb",
+   "material": "rock_cliff",
+   "textures": {
+    "albedo": "2048 sRGB KTX2",
+    "normal": "2048 OpenGL KTX2",
+    "orm": "2048 KTX2 (R AO, G roughness, B 0)"
+   },
+   "notes": "faces look toward +Z, width along X, base line at y = 0 with a skirt down to y = -4.5 to sink into sea bed / terrain; back (-Z) and top are open shells; the left/right ends bend back (-Z) and are lower than the middle, so a taller overlapping neighbour hides the cut edges"
+  }
+ },
+ "pieces": {
+  "cliff_a": {
+   "kit": "cliff",
+   "file": "cliff_kit.glb",
+   "nodes": [
+    "cliff_a_lod0",
+    "cliff_a_lod1",
+    "cliff_a_lod2"
+   ],
+   "tris": [
+    21810,
+    5800,
+    1150
+   ],
+   "bbox": {
+    "min": [
+     -5.094,
+     -4.5,
+     -3.761
+    ],
+    "max": [
+     4.983,
+     10.056,
+     1.738
+    ]
+   },
+   "scale": [
+    1,
+    5
+   ],
+   "use": "tall fluted / runnelled face",
+   "type": "face",
+   "face_width": 10.08,
+   "top_height": 10.06,
+   "base_y": 0.0,
+   "bottom_y": -4.5,
+   "face_dir": "+Z",
+   "source_scan": "mountainside"
+  },
+  "cliff_b": {
+   "kit": "cliff",
+   "file": "cliff_kit.glb",
+   "nodes": [
+    "cliff_b_lod0",
+    "cliff_b_lod1",
+    "cliff_b_lod2"
+   ],
+   "tris": [
+    22079,
+    5800,
+    1150
+   ],
+   "bbox": {
+    "min": [
+     -9.788,
+     -4.5,
+     -3.934
+    ],
+    "max": [
+     9.399,
+     6.13,
+     3.147
+    ]
+   },
+   "scale": [
+    1,
+    5
+   ],
+   "use": "blocky jointed outcrop / crown with ragged skyline",
+   "type": "face",
+   "face_width": 19.19,
+   "top_height": 6.13,
+   "base_y": 0.0,
+   "bottom_y": -4.5,
+   "face_dir": "+Z",
+   "source_scan": "namaqualand_cliff_02"
+  },
+  "cliff_c": {
+   "kit": "cliff",
+   "file": "cliff_kit.glb",
+   "nodes": [
+    "cliff_c_lod0",
+    "cliff_c_lod1",
+    "cliff_c_lod2"
+   ],
+   "tris": [
+    21699,
+    5800,
+    1149
+   ],
+   "bbox": {
+    "min": [
+     -7.583,
+     -4.5,
+     -3.314
+    ],
+    "max": [
+     7.774,
+     7.713,
+     1.577
+    ]
+   },
+   "scale": [
+    1,
+    5
+   ],
+   "use": "jointed face with sea-cave slot (undercut notch at the base)",
+   "type": "notch",
+   "face_width": 15.36,
+   "top_height": 7.71,
+   "base_y": 0.0,
+   "bottom_y": -4.5,
+   "face_dir": "+Z",
+   "source_scan": "coastal_cliff_02"
+  },
+  "cliff_d": {
+   "kit": "cliff",
+   "file": "cliff_kit.glb",
+   "nodes": [
+    "cliff_d_lod0",
+    "cliff_d_lod1",
+    "cliff_d_lod2"
+   ],
+   "tris": [
+    21870,
+    5800,
+    1149
+   ],
+   "bbox": {
+    "min": [
+     -5.189,
+     -4.5,
+     -4.705
+    ],
+    "max": [
+     4.579,
+     7.924,
+     2.475
+    ]
+   },
+   "scale": [
+    1,
+    5
+   ],
+   "use": "headland nose / buttress (convex, wraps 150 deg, the tip is lower than the wings)",
+   "type": "nose",
+   "face_width": 9.77,
+   "top_height": 7.92,
+   "base_y": 0.0,
+   "bottom_y": -4.5,
+   "face_dir": "+Z",
+   "source_scan": "coastal_cliff_02"
+  },
+  "cliff_e": {
+   "kit": "cliff",
+   "file": "cliff_kit.glb",
+   "nodes": [
+    "cliff_e_lod0",
+    "cliff_e_lod1",
+    "cliff_e_lod2"
+   ],
+   "tris": [
+    22014,
+    5799,
+    1149
+   ],
+   "bbox": {
+    "min": [
+     -9.273,
+     -4.5,
+     -2.029
+    ],
+    "max": [
+     9.213,
+     8.882,
+     4.48
+    ]
+   },
+   "scale": [
+    1,
+    5
+   ],
+   "use": "concave gully / cove wall (skyline dips at the gully)",
+   "type": "gully",
+   "face_width": 18.49,
+   "top_height": 8.88,
+   "base_y": 0.0,
+   "bottom_y": -4.5,
+   "face_dir": "+Z",
+   "source_scan": "coastal_cliff_01"
+  },
+  "cliff_f": {
+   "kit": "cliff",
+   "file": "cliff_kit.glb",
+   "nodes": [
+    "cliff_f_lod0",
+    "cliff_f_lod1",
+    "cliff_f_lod2"
+   ],
+   "tris": [
+    21933,
+    5799,
+    1150
+   ],
+   "bbox": {
+    "min": [
+     -7.24,
+     -4.5,
+     -7.589
+    ],
+    "max": [
+     7.309,
+     2.85,
+     2.451
+    ]
+   },
+   "scale": [
+    1,
+    3
+   ],
+   "use": "low flat-topped ledge / shelf block for the cliff foot",
+   "type": "ledge",
+   "face_width": 14.55,
+   "top_height": 2.85,
+   "base_y": 0.0,
+   "bottom_y": -4.5,
+   "face_dir": "+Z",
+   "source_scan": "coastal_cliff_04"
+  },
+  "cliff_g": {
+   "kit": "cliff",
+   "file": "cliff_kit.glb",
+   "nodes": [
+    "cliff_g_lod0",
+    "cliff_g_lod1",
+    "cliff_g_lod2"
+   ],
+   "tris": [
+    21850,
+    5799,
+    1150
+   ],
+   "bbox": {
+    "min": [
+     -10.444,
+     -4.5,
+     -5.173
+    ],
+    "max": [
+     10.389,
+     9.493,
+     1.559
+    ]
+   },
+   "scale": [
+    1,
+    5
+   ],
+   "use": "wave-cut undercut face",
+   "type": "undercut",
+   "face_width": 20.83,
+   "top_height": 9.49,
+   "base_y": 0.0,
+   "bottom_y": -4.5,
+   "face_dir": "+Z",
+   "source_scan": "coastal_cliff_01"
+  }
+ }
+}

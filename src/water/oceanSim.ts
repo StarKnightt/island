@@ -62,11 +62,12 @@ function spreading(delta: number, omegaOverPeak: number): number {
 
 interface Band { patchLength: number; cutoffLow: number; cutoffHigh: number }
 
-function spectrumTexture(rng: Rng, band: Band, sea: SeaState, n: number): THREE.DataTexture {
+function spectrumTexture(rng: Rng, band: Band, sea: SeaState, n: number): { tex: THREE.DataTexture; slope2: number } {
   const deltaK = (Math.PI * 2) / band.patchLength;
   const { gravity: g, depth } = sea;
   const peakOmega = 22 * Math.pow((sea.windSpeed * sea.fetch) / (g * g), -0.33);
   const h0 = new Float32Array(n * n * 2);
+  let slope2 = 0;
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
     const kx = (i - n / 2) * deltaK, kz = (j - n / 2) * deltaK;
     const kLength = Math.hypot(kx, kz);
@@ -85,6 +86,7 @@ function spectrumTexture(rng: Rng, band: Band, sea: SeaState, n: number): THREE.
       Math.pow(Math.max(Math.cos(wrapAngle(theta - sea.swellAzimuth) * 0.5), 0), 48) * 0.9;
     const energy = (local + swell) * Math.exp(-(sea.shortWaveFade ** 2) * kLength * kLength);
     const amplitude = Math.sqrt(((energy * 2 * dOmegaDk) / kSafe) * deltaK * deltaK);
+    slope2 += kLength * kLength * amplitude * amplitude * 2;
     const mag = Math.sqrt(-2 * Math.log(u1));
     h0[index] = (mag * Math.cos(Math.PI * 2 * u2) * amplitude) / Math.SQRT2;
     h0[index + 1] = (mag * Math.sin(Math.PI * 2 * u2) * amplitude) / Math.SQRT2;
@@ -102,7 +104,7 @@ function spectrumTexture(rng: Rng, band: Band, sea: SeaState, n: number): THREE.
   t.magFilter = THREE.NearestFilter;
   t.generateMipmaps = false;
   t.needsUpdate = true;
-  return t;
+  return { tex: t, slope2 };
 }
 
 function freqTexture(n: number) {
@@ -183,6 +185,8 @@ export class OceanSim {
   /** texture nodes repointed at the freshest maps after every update */
   readonly dispNodes: N[];
   readonly derivNodes: N[];
+  /** mean square slope of each cascade at unit amplitude scale (the shader folds faded-out slopes into roughness) */
+  readonly slope2: number[] = [];
   private cascades: Cascade[];
   private timeU = uniform(0);
   private dtU = uniform(1 / 60);
@@ -214,7 +218,8 @@ export class OceanSim {
     };
     const choppy = OCEAN.choppiness;
     this.cascades = bands.map((band) => {
-      const spectrum = spectrumTexture(rng, band, SEA, n);
+      const { tex: spectrum, slope2 } = spectrumTexture(rng, band, SEA, n);
+      this.slope2.push(slope2);
       const ping = freqTexture(n), pong = freqTexture(n);
       const stages = ifftStages(ping, pong, n);
       const disp: [StorageTexture, StorageTexture] = [mapTexture(n), mapTexture(n)];

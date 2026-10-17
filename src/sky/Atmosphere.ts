@@ -36,6 +36,8 @@ export const atmo = {
   msK: uniform(0.25),
   /** fog: extra extinction for rain and mist, per metre at sea level */
   mist: uniform(0.0),
+  /** boundary-layer haze for the aerial perspective, per metre at sea level */
+  haze: uniform(3.6e-5),
   mistColor: uniform(new THREE.Color(0.55, 0.6, 0.65)),
   /** 0..1 overcast: flattens the sky toward grey */
   overcast: uniform(0),
@@ -276,7 +278,9 @@ export function aerialFogNode() {
     // average density of the haze between the two heights (exponential profile, scale height 1.2 km)
     const H = float(1100);
     const avg = select(abs(dh).lessThan(1), exp(h0.negate().div(H)), H.mul(exp(h0.negate().div(H)).sub(exp(h1.negate().div(H)))).div(dh));
-    const sigma = atmo.mieScatter.mul(1.11).add(1.1e-5).mul(avg).add(atmo.mist.mul(exp(h0.add(h1).mul(-0.5).div(260))));
+    // tropical marine haze: visibility of a few tens of kilometres, so ridges a kilometre away pale a little and the
+    // sea dissolves into the sky at the horizon (the sky's own aerosol is in the LUT; this is the low boundary layer)
+    const sigma = atmo.mieScatter.mul(1.11).add(1.1e-5).add(atmo.haze).mul(avg).add(atmo.mist.mul(exp(h0.add(h1).mul(-0.5).div(260))));
     const tau = sigma.mul(d);
     return float(1).sub(exp(tau.negate())).clamp(0, 1);
   })();

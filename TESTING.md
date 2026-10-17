@@ -101,10 +101,20 @@ await __island.stage({ tod: 'sunset', weather: 'clear', camera: { pos: [600, 6, 
 
 ## Harness commands
 
-All three use the installed Chrome (`C:\Program Files\Google\Chrome\Application\chrome.exe`) headed on the second
-(portrait) monitor at x >= 1930, on the RTX 4060 (`--force_high_performance_gpu`), with a temporary profile,
-pointer lock stubbed out, audio muted (except where noted), and close the browser when done. The page renders a true
-1920x1080 viewport inside a narrower window (viewport emulation), so every capture is a full 1920x1080 frame.
+All of them use the installed Chrome (`C:\Program Files\Google\Chrome\Application\chrome.exe`) headed, on the RTX
+4060 (`--force_high_performance_gpu`), with a temporary profile, pointer lock stubbed out, audio muted (except where
+noted), and close the browser when done.
+
+Window placement: each launch asks Windows for the monitor layout and opens the window on the primary display
+(currently the only one: DISPLAY1, 1920x1080 at (0,0), ~200 Hz). Chrome runs with `--force-device-scale-factor=1`,
+so Windows display scaling (DISPLAY1 is at ~120 %) does not shrink the viewport. On a display that is exactly
+1920x1080 the window goes borderless fullscreen, so the page renders a real 1920x1080 viewport at devicePixelRatio 1
+with no emulation. On a display of any
+other size the window fills that display's work area and the 1920x1080 viewport is emulated. Either way every capture
+is a full 1920x1080 frame, and each run prints the display and mode it used (`[browser] DISPLAY1 1920x1080 at (0,0):
+fullscreen 1920x1080 viewport`). Set `ISLAND_DISPLAY` to use another monitor: a 1-based index in Windows' order, a
+device name such as `DISPLAY2`, or `secondary`. While a command runs, its window covers that screen; leave it alone
+until the command finishes.
 
 ### `pnpm shots`: screenshots
 
@@ -117,8 +127,8 @@ pnpm shots --round dev --dev                                   # against the dev
 
 Options: `--spots` (comma list), `--conditions` (comma list), `--view shot|follow`, `--quality low|medium|high|ultra`
 (default high), `--settle <ms>` (default 1500), `--dev`.
-Output: `E:\shots\island\<round>\<spot>_<condition>.png` (1920x1080) and `report.json` (load time, adapter, the
-staged state and frame stats per shot, console warnings). Deterministic: the world clock is frozen at t = 1000 s for
+Output: `E:\shots\island\<round>\<spot>_<condition>.png` (1920x1080) and `report.json` (load time, adapter, window
+placement (display, real or emulated viewport), the staged state and frame stats per shot, console warnings). Deterministic: the world clock is frozen at t = 1000 s for
 every shot.
 
 ### `pnpm perf`: frame-time statistics
@@ -171,5 +181,6 @@ persistent Chrome profile).
 * GPU timing comes from WebGPU timestamp queries; if the browser disables them `gpu.n` is 0.
 * Chrome warns "powerPreference is currently ignored on Windows" (crbug 369219127); the harness forces the RTX with
   `--force_high_performance_gpu` and `adapter()` / the debug overlay report what was used.
-* Windows portrait monitor: windows are placed at x = 1930, y = 20 with a 1060x900 window; do not move them to the
-  primary screen.
+* Window placement is never hardcoded: the monitor layout is read at every launch (about 0.5 s), so the harness keeps
+  working if monitors are added, removed or rearranged. With only DISPLAY1 connected, anything at x >= 1920 would be
+  off-screen (Chrome may throttle or misplace it), so do not position test windows by hand.

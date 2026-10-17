@@ -1,0 +1,32 @@
+{
+  "kit": "cliff",
+  "file": "cliff_kit.glb",
+  "family": "rock",
+  "manifest": {
+    "scale": [1, 5],
+    "textures": {"albedo": "2048 sRGB KTX2", "normal": "2048 OpenGL KTX2", "orm": "2048 KTX2 (R AO, G roughness, B 0)"},
+    "notes": "faces look toward +Z, width along X, base line at y = 0 with a skirt down to y = -4.5 to sink into sea bed / terrain; back (-Z) and top are open shells; the left/right ends bend back (-Z) and are lower than the middle, so a taller overlapping neighbour hides the cut edges"
+  },
+  "pieces": [
+    {"name": "cliff_a", "type": "face", "scan": "mountainside", "x": [-6, 6], "bend": {"type": "ends", "deg": 22, "frac": 0.28},
+     "profile": {"ends": [0.85, 0.8], "end_frac": 0.25, "notches": [[0.3, 0.07, 0.7], [-0.45, 0.05, 0.5]], "wobble": 0.03, "seed": 11},
+     "use": "tall fluted / runnelled face"},
+    {"name": "cliff_b", "type": "face", "scan": "namaqualand_cliff_02", "x": [-10.5, 10.5], "base_pct": 70, "uv_smooth": 20, "bend": {"type": "ends", "deg": 18, "frac": 0.22},
+     "profile": {"ends": [0.8, 0.85], "end_frac": 0.2, "wobble": 0.03, "seed": 12},
+     "use": "blocky jointed outcrop / crown with ragged skyline"},
+    {"name": "cliff_c", "type": "notch", "scan": "coastal_cliff_02", "x": [-9.5, 5.5], "bend": {"type": "ends", "deg": 20, "frac": 0.2},
+     "profile": {"ends": [0.66, 0.74], "end_frac": 0.3, "steps": [[0.1, -0.14, 2.2]], "notches": [[-0.4, 0.08, 0.6], [0.55, 0.06, 0.5]], "wobble": 0.04, "seed": 13},
+     "use": "jointed face with sea-cave slot (undercut notch at the base)"},
+    {"name": "cliff_d", "type": "nose", "scan": "coastal_cliff_02", "x": [5.5, 20.6], "y": [-10, 1.8], "bend": {"type": "nose", "deg": 150, "corner": 0.26, "width": 0.16},
+     "profile": {"ends": [0.72, 0.66], "end_frac": 0.22, "notches": [[0.05, 0.13, 1.8], [-0.5, 0.06, 0.6]], "wobble": 0.03, "seed": 14},
+     "use": "headland nose / buttress (convex, wraps 150 deg, the tip is lower than the wings)"},
+    {"name": "cliff_e", "type": "gully", "scan": "coastal_cliff_01", "x": [-22.5, -1.5], "y": [-12, -0.5], "bend": {"type": "gully", "deg": 100},
+     "profile": {"ends": [0.75, 0.7], "end_frac": 0.22, "notches": [[-0.2, 0.1, 2.0]], "wobble": 0.03, "seed": 15},
+     "end_trim": {"y0": 0.6, "k": 0.7, "margin": 0.3},
+     "use": "concave gully / cove wall (skyline dips at the gully)"},
+    {"name": "cliff_f", "type": "ledge", "scale": [1, 3], "scan": "coastal_cliff_04", "rot": 180, "x": [-6.5, 11.0], "y": [4.3, 16.5], "keep_largest": true, "reorient": false, "skirt_mode": "loop", "use": "low flat-topped ledge / shelf block for the cliff foot"},
+    {"name": "cliff_g", "type": "undercut", "scan": "coastal_cliff_01", "x": [26.5, 47.0], "bend": {"type": "ends", "deg": 20, "frac": 0.2},
+     "profile": {"ends": [0.8, 0.68], "end_frac": 0.22, "steps": [[-0.3, -0.12, 1.5], [0.42, 0.08, 1.2]], "notches": [[0.12, 0.06, 0.9]], "wobble": 0.015, "seed": 16},
+     "use": "wave-cut undercut face"}
+  ]
+}

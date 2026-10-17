@@ -13,7 +13,6 @@ import {
 import type { Heightfield } from '../world/Heightfield';
 import { HALF_WORLD, WORLD_SIZE } from '../world/layout';
 import { heightLookup } from '../world/Terrain';
-import { cloudShadow } from '../sky/Sky';
 import { wetness } from '../world/weatherUniforms';
 
 export const canopyU = { near: uniform(285), band: uniform(60) };
@@ -91,7 +90,7 @@ export function buildCanopy(hf: Heightfield) {
     // a few flowering / yellowing crowns
     const odd = smoothstep(0.82, 0.9, hash(floor(xz.div(11)).dot(vec2(1, 57.3))));
     const col = mix(base, vec3(0.13, 0.12, 0.04), odd.mul(0.6)).mul(mix(float(1), float(0.35), gap)).mul(mix(float(1), float(0.75), wetness.rain));
-    return vec4(col.mul(mix(float(0.6), float(1), cloudShadow(p))), 1);
+    return vec4(col, 1);
   })();
   // per-pixel crown relief: the gradient of the crown field tilts the normal over each crown
   const crownF = (xz: N) => float(1).sub(mx_worley_noise_float(xz.mul(1 / 9.5)).clamp(0, 1)).pow(0.7).mul(4.5)

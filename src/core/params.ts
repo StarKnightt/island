@@ -51,5 +51,7 @@ export const params = {
   noAO: flag('noao'),
   noTAA: flag('notaa'),
   gpuTiming: flag('gputime') || flag('debug') || flag('test'),
+  /** tone mapping for look comparisons: aces (default) | agx | neutral */
+  toneMap: str('tm') ?? 'aces',
 };
 export type Params = typeof params;

@@ -1,6 +1,7 @@
 /**
  * Screenshot runner for the critic: every spot x condition at a true 1920x1080, from the production build (preview)
- * by default, in the installed Chrome on the second monitor with the RTX. Writes <spot>_<condition>.png and
+ * by default, in the installed Chrome on the RTX, placed by lib/browser.ts (fullscreen on the primary 1920x1080 display,
+ * a real viewport). Writes <spot>_<condition>.png and
  * report.json to E:\shots\island\<round>\.
  *
  *   pnpm shots --round round-01 [--spots beach,jungle] [--conditions sunrise,noon,sunset,night,rain]
@@ -66,7 +67,8 @@ try {
       console.log(`${spot}_${cond}.png`);
     }
   }
-  writeFileSync(join(outDir, 'report.json'), JSON.stringify({ round, view, quality, loadMs, adapter, results, console: L.console.slice(0, 200), at: new Date().toISOString() }, null, 1));
+  const placement = { display: L.display.name, size: [L.display.width, L.display.height], viewport: L.viewportMode };
+  writeFileSync(join(outDir, 'report.json'), JSON.stringify({ round, view, quality, loadMs, adapter, placement, results, console: L.console.slice(0, 200), at: new Date().toISOString() }, null, 1));
   console.log(`${results.length} shots in ${((Date.now() - t0) / 1000).toFixed(0)} s -> ${outDir}`);
   if (L.console.length) console.log('console:\n' + L.console.filter((l) => !l.includes('powerPreference')).slice(0, 15).join('\n'));
 } finally {

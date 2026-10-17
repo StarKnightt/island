@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
+import { SunShadowNode, addSunOcclusion } from './sky/SunShadow';
 import { Engine, grade } from './core/Engine';
 import { params, TOD_PRESETS } from './core/params';
 import { Q, preset, gpuName } from './core/quality';
@@ -7,14 +7,15 @@ import { initAssets, progress as assetProgress, loadGLTF } from './core/Assets';
 import { Heightfield } from './world/Heightfield';
 import { Terrain } from './world/Terrain';
 import { createTerrainMaterial, terrainU } from './world/TerrainMaterial';
-import { Sky, cloudRT } from './sky/Sky';
+import { Sky, cloudRT, cloudShadow } from './sky/Sky';
 import { TimeOfDay } from './sky/TimeOfDay';
 import { aerialFogNode, atmo, transmittanceRT, skyViewRT } from './sky/Atmosphere';
 import { Loading } from './ui/Loading';
 import { installHarness, type Ctx } from './debug/harness';
-import { SPOTS } from './world/layout';
+import { SPOTS, LIGHTHOUSE } from './world/layout';
 import { wetness } from './world/weatherUniforms';
 import { Ocean, oceanU } from './water/Ocean';
+import { Spray, sprayU } from './water/Spray';
 import { Colliders } from './world/Colliders';
 import { Input } from './player/Input';
 import { CameraRig } from './player/CameraRig';
@@ -66,7 +67,9 @@ async function boot() {
   sunLight.shadow.camera.far = 1100;
   sunLight.shadow.bias = -0.0003;
   sunLight.shadow.normalBias = 0.5;
-  const csm = new CSMShadowNode(sunLight, { cascades: Q.cascades, maxFar: Q.shadowFar, mode: 'practical', lightMargin: 400 });
+  // the sun's shadow: the cascades near the camera, times the clouds' shadows everywhere
+  addSunOcclusion((p) => cloudShadow(p));
+  const csm = new SunShadowNode(sunLight, { cascades: Q.cascades, maxFar: Q.shadowFar, mode: 'practical', lightMargin: 400 });
   csm.fade = true;
   sunLight.shadow.shadowNode = csm;
   scene.add(sunLight, sunLight.target);
@@ -87,6 +90,8 @@ async function boot() {
   loading.status('Filling the sea');
   const ocean = new Ocean(hf);
   if (!new URLSearchParams(location.search).has('noocean') && !skip.has('ocean')) scene.add(ocean.mesh);
+  const spray = new Spray(hf);
+  if (!skip.has('spray')) scene.add(spray.sprite);
 
   // ---- fresh water
   const river = new River(hf);
@@ -165,10 +170,12 @@ async function boot() {
   const input = new Input(renderer.domElement);
   const player = new Player(hf, colliders);
   const playerLoad = player.load();
-  scene.add(player.root);
+  scene.add(player.root, player.shadows);
   const rig = new CameraRig(camera, {
-    groundAt: (x, z) => Math.max(hf.height(x, z), colliders.surfaceAt(x, z, 1e9)?.y ?? -1e9),
+    // walkable surfaces count only below the camera (a gallery deck overhead is not ground)
+    groundAt: (x, z, y = 1e9) => Math.max(hf.height(x, z), colliders.surfaceAt(x, z, y + 0.3)?.y ?? -1e9),
     raycast: (f, d, m) => colliders.raycast(f, d, m),
+    interior: (p, pos, target) => lighthouse.interiorCamera(p, pos, target),
   });
   player.seaAt = (x, z) => ocean.surfaceAt(x, z, 0);
   player.onStep = (e) => audio.step(e);
@@ -177,7 +184,7 @@ async function boot() {
   await playerLoad;
   mark('character');
   loading.progress(0.6);
-  player.place(spot.player[0], spot.player[1], spot.yaw);
+  player.place(spot.player[0], spot.player[1], spot.yaw, spot.player[2] ?? 1e9);
   rig.snapBehind(spot.yaw);
 
   // ---- camera override from the URL: cam=orbit | free | x,y,z,tx,ty,tz
@@ -226,6 +233,9 @@ async function boot() {
       for (let i = 1; i < cascades.length; i++) cascades[i].shadow.autoUpdate = false;
       cascades[1 + (engine.frame % (cascades.length - 1))].shadow.needsUpdate = true;
     }
+    // normal offset in proportion to each cascade's texel size: a few centimetres near the camera, so shadows stay
+    // attached to feet and trunks, half a metre in the far cascade where the texels are ~30 cm
+    if (cascades) cascades.forEach((l, i) => (l.shadow.normalBias = [0.035, 0.14, 0.5][Math.min(i, 2)]));
     weather.update(dt);
     tod.overcast = weather.cover * 0.9;
     player.rainWet = weather.wet * 0.85;
@@ -233,7 +243,7 @@ async function boot() {
     // in the free camera WASD flies the camera; scripted actions (harness) always drive the player
     const playerIntent = rig.mode === 'free' && !input.scripted ? { ...intent, moveX: 0, moveY: 0, jump: false } : intent;
     player.update(dt, playerIntent, rig.yaw);
-    rig.update(dt, rig.mode === 'follow' || rig.mode === 'free' ? intent : { ...intent, lookX: 0, lookY: 0 }, player.pos, player.speed);
+    rig.update(dt, rig.mode === 'follow' || rig.mode === 'free' ? intent : { ...intent, lookX: 0, lookY: 0 }, player.pos, player.speed, player.heading);
     ocean.sim.setProbe(0, player.pos.x, player.pos.z);
     for (const b of village.boats) if (b.probe > 0) ocean.sim.setProbe(b.probe, b.x, b.z);
     atmo.camHeight.value = Math.max(1, camera.position.y);
@@ -268,8 +278,12 @@ async function boot() {
       farCascade.shadow.autoUpdate = false;
       if (engine.frame % 2 === 0) farCascade.shadow.needsUpdate = true;
     }
+    const wdir = wetness.windDir.value as THREE.Vector2;
+    sky.setDrift(wdir.x, wdir.y, t, tod.hour);
     sky.update(dt, scene);
     if (!skip.has('oceansim')) ocean.update(renderer, camera, t, dt);
+    spray.update(dt, camera);
+    (sprayU.sun.value as THREE.Color).copy(sunLight.color).multiplyScalar(sunLight.intensity);
   });
 
   // stream the terrain layer textures after the first frames
@@ -309,7 +323,7 @@ async function boot() {
   rocksReady.then(() => (veg.prime = 3));
   engine.start();
   Object.assign(ctx, {
-    hf, terrain, sky, csm, ocean, player, cameraRig: rig, input, colliders, veg, village, lighthouse, weather, audio, hud, dbg,
+    hf, terrain, sky, csm, ocean, spray, player, playerObj: player, cameraRig: rig, input, colliders, veg, village, lighthouse, weather, audio, hud, dbg,
     rts: { transmittance: transmittanceRT, skyView: skyViewRT, cloud: cloudRT },
     isBusy: () => streaming > 0 || assetProgress.pending > assetProgress.done,
   });
@@ -323,7 +337,8 @@ async function boot() {
     village: { pos: [-428, H(-428, 352) + 2.6, 352], target: [-470, 3.5, 306], fov: 55 },
     // from a boat off the north coast, along the 50-80 m sea cliffs
     cliffs: { pos: [-90, 5, -660], target: [-330, 35, -600], fov: 55 },
-    lighthouse: { pos: [-294.5, gy + 1.75, -294.8], target: [40, 40, 120], fov: 60 },
+    // standing on the gallery inside the railing, looking out over the island to the beach and the sea
+    lighthouse: { pos: [LIGHTHOUSE.p[0] + Math.cos(0.9) * 2.45, gy + 1.62, LIGHTHOUSE.p[1] + Math.sin(0.9) * 2.45], target: [40, 30, 120], fov: 62 },
   };
   ctx.forceRefresh = () => {
     veg.update(camera, 60, true);
