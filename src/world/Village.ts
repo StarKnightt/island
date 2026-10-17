@@ -181,12 +181,11 @@ export class Village {
     }
     kb.add(floor, box(W + 0.4, 0.15, D + 0.4, P(0, g0 + 0.3, 0), [0, rot, 0], 1.6));
     this.col.platform(P(0, 0, 0).x, P(0, 0, 0).z, (W + 0.4) / 2, (D + 0.4) / 2, -rot, g0 + 0.38, 'wood');
-    // hip roof as four sloped slabs
-    const ridgeH = 2.2;
-    for (const side of [-1, 1]) {
-      const g = box(W + 1.6, 0.25, Math.hypot(D / 2 + 0.8, ridgeH) + 0.2, P(0, g0 + 0.3 + H + ridgeH / 2, side * (D / 4 + 0.4)), [side * Math.atan2(ridgeH, D / 2 + 0.8), rot, 0], 1.2, 0.9);
-      kb.add(thatch, g);
-    }
+    // thick thatched hip roof on a ring beam
+    const top = g0 + 0.3 + H;
+    for (const lz of [-D / 2, D / 2]) kb.add(post, box(W + 0.3, 0.18, 0.18, P(0, top - 0.09, lz), [0, rot, 0], 1.5, 0.75));
+    for (const lx of [-W / 2, W / 2]) kb.add(post, box(0.18, 0.18, D + 0.3, P(lx, top - 0.09, 0), [0, rot, 0], 1.5, 0.75));
+    hipRoof(kb, thatch, P, top, W, D, 2.4, 0.9, 0.32);
     // benches and a low table inside
     for (const lz of [-1.6, 1.6]) kb.add(floor, box(4.5, 0.08, 0.4, P(0, g0 + 0.75, lz), [0, rot, 0], 1.4, 0.8));
     kb.add(floor, box(2.4, 0.08, 1.1, P(0, g0 + 0.95, 0), [0, rot, 0], 1.4, 0.75));
@@ -438,6 +437,61 @@ export class Village {
     villageU.time.value = t;
     this.updateBoats(t, probe);
   }
+}
+
+/**
+ * A thick hip roof over a W x D plan (W >= D), eaves `over` past the walls, ridge `rise` above the wall top `y0`.
+ * `P(lx, y, lz)` maps plan-local coordinates to world. Top and underside surfaces, eave fascias, ridge and hip bundles.
+ */
+function hipRoof(kb: KitBuilder, mat: THREE.Material, P: (lx: number, y: number, lz: number) => THREE.Vector3, y0: number, W: number, D: number, rise: number, over: number, thick: number) {
+  const slope = rise / (D / 2);
+  const A = W / 2 + over, B = D / 2 + over, R = (W - D) / 2;
+  const ye = y0 - over * slope, yr = y0 + rise;
+  const faces: [number, number, number][][] = [
+    [[-A, ye, B], [A, ye, B], [R, yr, 0], [-R, yr, 0]],
+    [[A, ye, -B], [-A, ye, -B], [-R, yr, 0], [R, yr, 0]],
+    [[A, ye, B], [A, ye, -B], [R, yr, 0]],
+    [[-A, ye, -B], [-A, ye, B], [-R, yr, 0]],
+  ];
+  const tile = 1.4;
+  const poly = (pts: THREE.Vector3[], shade: number, flip: boolean) => {
+    const e = pts[1].clone().sub(pts[0]).normalize();
+    const n = pts[2].clone().sub(pts[0]).cross(e).normalize();
+    const d = n.clone().cross(e);
+    const pos: number[] = [], uvs: number[] = [];
+    for (let i = 1; i + 1 < pts.length; i++) {
+      const tri = flip ? [pts[0], pts[i + 1], pts[i]] : [pts[0], pts[i], pts[i + 1]];
+      for (const p of tri) {
+        const q = p.clone().sub(pts[0]);
+        pos.push(p.x, p.y, p.z);
+        uvs.push(q.dot(d) / tile, q.dot(e) / tile);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(new Array(pos.length).fill(shade), 3));
+    g.computeVertexNormals();
+    kb.add(mat, g);
+  };
+  for (const f of faces) {
+    const topPts = f.map(([x, y, z]) => P(x, y, z));
+    const under = f.map(([x, y, z]) => P(x, y - thick, z));
+    // the winding computeVertexNormals reads: n = (c - b) x (a - b)
+    const up = topPts[2].clone().sub(topPts[1]).cross(topPts[0].clone().sub(topPts[1])).y > 0;
+    poly(topPts, 0.95, !up);
+    poly(under, 0.55, up);
+  }
+  // eave fascias: the thatch edge all round
+  const ring: [number, number][] = [[-A, B], [A, B], [A, -B], [-A, -B]];
+  for (let i = 0; i < 4; i++) {
+    const [ax, az] = ring[i], [bx, bz] = ring[(i + 1) % 4];
+    poly([P(ax, ye, az), P(bx, ye, bz), P(bx, ye - thick, bz), P(ax, ye - thick, az)], 0.7, true);
+  }
+  // ridge and hip bundles
+  const bundle = (a: [number, number, number], b: [number, number, number]) => kb.add(mat, tubeGeo([P(...a), P((a[0] + b[0]) / 2, (a[1] + b[1]) / 2 + 0.02, (a[2] + b[2]) / 2), P(...b)], 0.13, 7, 0.8));
+  bundle([-R - 0.1, yr + 0.04, 0], [R + 0.1, yr + 0.04, 0]);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) bundle([sx * R, yr + 0.03, 0], [sx * A, ye + 0.03, sz * B]);
 }
 
 // ---------------------------------------------------------------- materials and boat geometry

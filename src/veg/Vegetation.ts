@@ -34,6 +34,8 @@ interface Species {
   cells: Map<number, number[]>;
   meshes: { lod: number; mesh: THREE.InstancedMesh; data: THREE.InstancedBufferAttribute }[][];
   radius: number;
+  /** how far an instance may reach out of its 32 m cell (scaled instances reach further than `radius`) */
+  pad: number;
 }
 
 // ---------------------------------------------------------------- materials
@@ -92,7 +94,8 @@ function makeMaterials(): { mats: MatSet; texNodes: Record<string, N[]> } {
     col = col.mul(mix(float(1), float(0.7), wetness.rain));
     const cloud = cloudShadow(positionWorld);
     m.colorNode = vec4(col.mul(ao.mul(0.85).add(0.15)).mul(mix(float(0.6), float(1), cloud)), alpha);
-    m.roughnessNode = mix(float(opts.rough), float(Math.min(opts.rough, 0.3)), wetness.rain);
+    // wet leaves turn glossy; wet bark only a little
+    m.roughnessNode = mix(float(opts.rough), float(Math.min(opts.rough, opts.alpha ? 0.3 : 0.55)), wetness.rain);
     m.metalnessNode = float(0);
     if (opts.nkey) {
       const nt = tex(opts.nkey, placeholder([0.5, 0.5, 1, 1]), uv());
@@ -169,8 +172,8 @@ export class Vegetation {
     }));
   }
 
-  private addSpecies(name: string, lods: Lod[], radius: number) {
-    const sp: Species = { name, lods, inst: new Float32Array(0), count: 0, cells: new Map(), meshes: [], radius };
+  private addSpecies(name: string, lods: Lod[], radius: number, pad = radius) {
+    const sp: Species = { name, lods, inst: new Float32Array(0), count: 0, cells: new Map(), meshes: [], radius, pad };
     this.species.push(sp);
     return sp;
   }
@@ -397,8 +400,9 @@ export class Vegetation {
       const n = hf.normal(px, pz, undefined, 2);
       const clump = noise.fbm(px / 30, pz / 30, 2) * 0.5 + 0.5;
       // rocky shore: kind is in mask1.a (0 beach .. 1 cliff)
-      const coastRocky = s > -14 && s < 16 && rock > 0.3;
-      const steep = n.y < 0.72 && h > 2;
+      const coastRocky = s > -14 && s < 16 && rock > 0.3 && h < 6;
+      // rocks rest on steep ground, not on sheer walls
+      const steep = n.y > 0.32 && n.y < 0.72 && h > 2;
       const fallsDist = Math.hypot(px - hf.meta.falls.lip[0], pz - hf.meta.falls.lip[1]);
       const poolDist = Math.hypot(px - hf.meta.pool.p[0], pz - hf.meta.pool.p[1]);
       const nearFalls = (fallsDist < 22 || (poolDist > hf.meta.pool.r - 2 && poolDist < hf.meta.pool.r + 9)) && h > 30;
@@ -415,6 +419,59 @@ export class Vegetation {
     }
     for (const sp of spOf.values()) this.setInstances(sp, lists.get(sp) ?? []);
     console.log('[island] rocks', [...spOf.values()].map((s) => s.count).join(' '));
+    this.addCliffRocks(big.length ? big : small);
+  }
+
+  /**
+   * Sea cliffs: big boulders (3-7.5 m) embedded in the steep faces of cliff coasts and heaped at their feet, so the
+   * cliffs get real relief the heightmap cannot carry. A vertex-clustered low-poly copy draws them beyond 120 m.
+   */
+  private addCliffRocks(models: { geometry: THREE.BufferGeometry; material: THREE.Material; radius: number }[]) {
+    const hf = this.hf;
+    const r = new Rng(4711);
+    const noise = new Noise2(17);
+    const RMAX = 7.5;
+    const withAttrs = (g: THREE.BufferGeometry) => {
+      const n = g.getAttribute('position').count;
+      if (!g.getAttribute('wind')) g.setAttribute('wind', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+      if (!g.getAttribute('color')) g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(1), 3));
+      return g;
+    };
+    const sps = models.map((m, i) => ({
+      m,
+      sp: this.addSpecies(`cliffrock${i}`, [
+        { maxDist: 120, parts: [{ geometry: withAttrs(m.geometry.clone()), part: 'rock', material: m.material }], shadow: true },
+        { maxDist: 950, parts: [{ geometry: withAttrs(clusterSimplify(m.geometry, m.radius * 0.17)), part: 'rock', material: m.material }], shadow: true },
+      ], m.radius * 2, RMAX * 2 + 2),
+    }));
+    const lists = new Map<Species, number[]>();
+    const CS = 6;
+    for (let z = -720; z < 720; z += CS) for (let x = -960; x < 960; x += CS) {
+      const px = x + r.range(-0.5, 0.5) * CS, pz = z + r.range(-0.5, 0.5) * CS;
+      const kind = hf.coastKind(px, pz);
+      if (kind < 0.55) continue;
+      const s = hf.shoreDist(px, pz);
+      if (s < -10 || s > 70) continue;
+      const h = hf.height(px, pz);
+      const n = hf.normal(px, pz, undefined, 2);
+      // rocks rest on steep slopes and heap up at the foot; a sheer wall holds none
+      const face = n.y > 0.32 && n.y < 0.72 && h > 2;
+      const foot = !face && s > -10 && s < 6 && h < 2.5 && h > -6;
+      if (!face && !foot) continue;
+      const clump = noise.fbm(px / 25, pz / 25, 2) * 0.5 + 0.5;
+      if (r.next() > (face ? 0.5 * clump + 0.1 : 0.45 + 0.4 * clump) * THREE.MathUtils.smoothstep(kind, 0.55, 0.8)) continue;
+      const pick = r.pick(sps);
+      const R = face ? r.range(3.0, RMAX) : r.range(2.2, 6.5);
+      const sc = R / pick.m.radius;
+      // foot boulders stand on the sea bed and break the surface
+      const y = face ? h - 0.55 * R : Math.max(h, -R * 0.9) - 0.3 * R;
+      let l = lists.get(pick.sp);
+      if (!l) lists.set(pick.sp, (l = []));
+      l.push(px, y, pz, r.next() * 6.28, sc, r.next());
+      if (foot) this.colliders.circle(px, pz, R * 0.8, y - 2, y + R * 1.6);
+    }
+    for (const { sp } of sps) this.setInstances(sp, lists.get(sp) ?? []);
+    console.log('[island] cliff rocks', sps.map((s) => s.sp.count).join(' '));
   }
 
   /** palm trunk colliders etc. are added at scatter time; this returns counts for the harness */
@@ -458,8 +515,8 @@ export class Vegetation {
         if (cd > maxD) continue;
         const nearCell = cd < shadowNear;
         if (!nearCell) {
-          this.box.min.set(x0 - sp.radius, -10, z0 - sp.radius);
-          this.box.max.set(x0 + CELL + sp.radius, 260, z0 + CELL + sp.radius);
+          this.box.min.set(x0 - sp.pad, -10, z0 - sp.pad);
+          this.box.max.set(x0 + CELL + sp.pad, 260, z0 + CELL + sp.pad);
           if (!this.frustum.intersectsBox(this.box)) continue;
         }
         const inst = sp.inst;
@@ -516,4 +573,45 @@ export class Vegetation {
 
 function name_isBush(n: string) {
   return n.startsWith('bush');
+}
+
+/** a crude low-poly copy for distant draws: vertices merged on a `cell`-metre grid, collapsed triangles dropped */
+function clusterSimplify(src: THREE.BufferGeometry, cell: number) {
+  const pos = src.getAttribute('position'), uvA = src.getAttribute('uv');
+  const ids = new Map<string, number>();
+  const sum: number[] = [], cnt: number[] = [], uvs: number[] = [];
+  const remap = new Int32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const key = `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+    let id = ids.get(key);
+    if (id === undefined) {
+      id = cnt.length;
+      ids.set(key, id);
+      cnt.push(0);
+      sum.push(0, 0, 0);
+      uvs.push(uvA ? uvA.getX(i) : 0, uvA ? uvA.getY(i) : 0);
+    }
+    sum[id * 3] += x;
+    sum[id * 3 + 1] += y;
+    sum[id * 3 + 2] += z;
+    cnt[id]++;
+    remap[i] = id;
+  }
+  const P = new Float32Array(cnt.length * 3);
+  for (let k = 0; k < cnt.length; k++) for (let c = 0; c < 3; c++) P[k * 3 + c] = sum[k * 3 + c] / cnt[k];
+  const tris: number[] = [];
+  const index = src.index;
+  const nT = index ? index.count : pos.count;
+  for (let t = 0; t + 2 < nT; t += 3) {
+    const a = remap[index ? index.getX(t) : t], b = remap[index ? index.getX(t + 1) : t + 1], c = remap[index ? index.getX(t + 2) : t + 2];
+    if (a !== b && b !== c && a !== c) tris.push(a, b, c);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(P, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
+  g.setIndex(tris);
+  g.computeVertexNormals();
+  g.computeBoundingSphere();
+  return g;
 }

@@ -565,12 +565,17 @@ let poolLevel = 0, lipWater = 0;
   }
   const lipBed = riverBedS[Math.floor(sFalls) - 1];
   lipWater = lipBed + 0.55;
-  // the pool lies 3.5 m below the ground around it, and at least 14 m under the lip
+  // the pool lies 3.5 m below the ground around it, at least 14 m under the lip, and below the lowest point of
+  // its banks (the pool sits at the foot of a slope: the downhill bank decides, or the water would hang in the air)
   const [ppx, ppz] = POOL.p;
-  let around = 0;
+  let around = 0, ringMin = 1e9;
   for (let a = 0; a < 16; a++) around += sampleRaw(ppx + Math.cos(a) * (POOL.r + 6), ppz + Math.sin(a) * (POOL.r + 6));
   around /= 16;
-  poolLevel = Math.min(around - 3.2, lipWater - 14);
+  for (let a = 0; a < 72; a++) for (const dr of [1, 3, 5, 7]) {
+    const ang = (a / 72) * Math.PI * 2;
+    ringMin = Math.min(ringMin, sampleRaw(ppx + Math.cos(ang) * (POOL.r + dr), ppz + Math.sin(ang) * (POOL.r + dr)));
+  }
+  poolLevel = Math.min(around - 3.2, lipWater - 14, ringMin - 0.5);
   bed = poolLevel - 0.9;
   for (let s = Math.floor(sFalls); s < RS; s++) {
     const inPool = s < sPool + POOL.r * 0.6;
@@ -580,7 +585,7 @@ let poolLevel = 0, lipWater = 0;
   }
   // the last metres meet the sea
   for (let s = 0; s < RS; s++) if (riverBedS[s] < 0.4) riverWaterS[s] = Math.max(riverWaterS[s], 0.02);
-  console.log(`river: ${riverTotal.toFixed(0)} m, lip water ${lipWater.toFixed(2)}, pool level ${poolLevel.toFixed(2)} (ground around ${around.toFixed(1)}), falls ${(lipWater - poolLevel).toFixed(1)} m`);
+  console.log(`river: ${riverTotal.toFixed(0)} m, lip water ${lipWater.toFixed(2)}, pool level ${poolLevel.toFixed(2)} (ground around ${around.toFixed(1)}, lowest bank ${ringMin.toFixed(1)}), falls ${(lipWater - poolLevel).toFixed(1)} m`);
 }
 const bedAtS = (s: number) => riverBedS[clamp(Math.round(s), 0, RS - 1)];
 

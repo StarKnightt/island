@@ -86,6 +86,7 @@ export class TimeOfDay {
     const sky = sunUp ? SUN_E * 0.14 * Math.max(0.02, Math.sin(Math.max(this.sunElevation, 0) + 0.06)) * (1 - this.overcast * 0.45) : 0;
     const twilight = SUN_E * 0.004 * THREE.MathUtils.smoothstep(this.sun.y, -0.2, 0.02);
     const E = sunH + sky + twilight + 0.0006;
+    atmo.lightE.value = E;
     // luminance of a mid-grey (18 %) surface, adapted with an exponent < 1 so sunsets and nights keep their mood
     const L = (E * 0.18) / Math.PI;
     this.exposureTarget = THREE.MathUtils.clamp(0.22 / Math.pow(L, 0.75), 0.15, 14);

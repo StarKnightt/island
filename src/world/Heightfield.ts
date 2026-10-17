@@ -153,6 +153,8 @@ export class Heightfield {
   rock(x: number, z: number) { return this.maskAt(this.mask1, x, z, 0); }
   wet(x: number, z: number) { return this.maskAt(this.mask1, x, z, 1); }
   water(x: number, z: number) { return this.maskAt(this.mask1, x, z, 2); }
+  /** the kind of the nearest coast: 0 beach .. 0.5 rock shelf .. 1 sea cliff */
+  coastKind(x: number, z: number) { return this.maskAt(this.mask1, x, z, 3); }
 
   /** signed distance to the waterline (m), positive on land */
   shoreDist(x: number, z: number) {

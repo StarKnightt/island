@@ -18,9 +18,10 @@ const ph = (r: number, g: number, b: number, a = 1) => {
   return t;
 };
 
-interface LibEntry { mat: THREE.MeshStandardNodeMaterial; aNodes: N[]; nNodes: N[] }
+interface LibEntry { mat: THREE.MeshStandardNodeMaterial; src: string; aNodes: N[]; nNodes: N[] }
 const lib = new Map<string, LibEntry>();
 const loading = new Map<string, Promise<void>>();
+const texCache = new Map<string, [THREE.Texture, THREE.Texture]>();
 
 /**
  * A PBR material from a texture pair. `tint` multiplies the albedo; `paint` (rgb) recolours painted wood;
@@ -51,14 +52,21 @@ export function pbr(name: MatName, opts: { tint?: [number, number, number]; vcol
   m.aoNode = mix(float(1), nT.w, 0.8);
   if (opts.emissive) m.emissiveNode = vec3(...opts.emissive);
   if (opts.double) m.side = THREE.DoubleSide;
-  lib.set(key, { mat: m, aNodes: [aT], nNodes: [nT] });
+  const entry: LibEntry = { mat: m, src: name, aNodes: [aT], nNodes: [nT] };
+  lib.set(key, entry);
+  const loaded = texCache.get(name);
+  if (loaded) {
+    aT.value = loaded[0];
+    nT.value = loaded[1];
+  }
   if (!loading.has(name)) {
     loading.set(name, (async () => {
       const [a, n] = await Promise.all([loadKTX2(`assets/tex/${name}_a.ktx2`), loadKTX2(`assets/tex/${name}_n.ktx2`)]);
       configureTex(a, true);
       configureTex(n, false);
+      texCache.set(name, [a, n]);
       for (const e of lib.values()) {
-        if (!e.mat.name.startsWith(`kit_${name}`)) continue;
+        if (e.src !== name) continue;
         for (const t of e.aNodes) t.value = a;
         for (const t of e.nNodes) t.value = n;
       }
@@ -174,6 +182,6 @@ export function flat(color: [number, number, number], rough = 0.8, metal = 0, em
   m.roughnessNode = mix(float(rough), float(0.3), wetness.rain.mul(0.7));
   m.metalnessNode = float(metal);
   if (emissive) m.emissiveNode = vec3(...emissive);
-  lib.set(key, { mat: m, aNodes: [], nNodes: [] });
+  lib.set(key, { mat: m, src: '', aNodes: [], nNodes: [] });
   return m;
 }

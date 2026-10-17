@@ -116,13 +116,17 @@ async function boot() {
   // rocks stream in with the props
   const rocksReady = (async () => {
     const out: { geometry: THREE.BufferGeometry; material: THREE.Material; radius: number; big: boolean }[] = [];
-    for (const [name, big] of [['rock_moss_set_01', false], ['namaqualand_boulder_05', true]] as [string, boolean][]) {
+    const tinted = new Set<THREE.Material>();
+    // tints take each scan's mean albedo (namaqualand 0.37/0.26/0.15, boulder 0.16/0.11/0.07, moss 0.05/0.03/0.015
+    // linear) to the island's dark grey basalt (~0.07) so they match the cliff rock; the moss keeps some of its green
+    for (const [name, big, tint] of [['rock_moss_set_01', false, [1.0, 1.15, 1.4]], ['namaqualand_boulder_05', true, [0.19, 0.26, 0.44]], ['boulder_01', true, [0.46, 0.67, 1.0]]] as [string, boolean, [number, number, number]][]) {
       const g = await loadGLTF(`assets/props/${name}.glb`);
       g.scene.updateMatrixWorld(true);
       g.scene.traverse((o) => {
         const m = o as THREE.Mesh;
         if (!m.isMesh) return;
-        const geo = m.geometry.clone();
+        // quantized (normalized int16, often interleaved) attributes would clamp to +-1 once transformed to metres
+        const geo = toFloatGeometry(m.geometry);
         geo.applyMatrix4(m.matrixWorld);
         geo.computeBoundingBox();
         const bb = geo.boundingBox!;
@@ -132,7 +136,10 @@ async function boot() {
         geo.computeBoundingSphere();
         const radius = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2;
         const mat = m.material as THREE.MeshStandardMaterial;
-        mat.color?.multiplyScalar(0.55);
+        if (!tinted.has(mat)) {
+          tinted.add(mat);
+          mat.color?.multiply(new THREE.Color(...tint));
+        }
         out.push({ geometry: geo, material: mat, radius: Math.max(0.3, radius), big });
       });
     }
@@ -229,6 +236,7 @@ async function boot() {
   loading.progress(0.85);
   await engine.measureRefresh();
   sky.update(0, scene, true);
+  if (sky.envRT) river.setEnvironment(sky.envRT.texture);
   terrain.update(camera, Q.shadowFar);
   veg.update(camera, 60, true);
   await renderer.compileAsync(scene, camera);
@@ -244,9 +252,10 @@ async function boot() {
   ctx.shotPoses = {
     beach: { pos: [584, H(584, 64) + 2.4, 64], target: [652, 2.2, 18], fov: 55 },
     jungle: { pos: [358, H(358, 32) + 1.8, 32], target: [376, H(376, 4) + 4.5, 4], fov: 60 },
-    waterfall: { pos: [196, hf.meta.pool.level + 2.6, -33], target: [147, hf.meta.falls.bottom + 9, -56], fov: 58 },
+    waterfall: { pos: [186, H(186, -42) + 1.7, -42], target: [147, hf.meta.falls.bottom + (hf.meta.falls.top - hf.meta.falls.bottom) * 0.47, -55], fov: 58 },
     village: { pos: [-428, H(-428, 352) + 2.6, 352], target: [-470, 3.5, 306], fov: 55 },
-    cliffs: { pos: [152, H(152, -494) + 4, -494], target: [-120, 45, -585], fov: 55 },
+    // from a boat off the north coast, along the 50-80 m sea cliffs
+    cliffs: { pos: [-90, 5, -660], target: [-330, 35, -600], fov: 55 },
     lighthouse: { pos: [-294.5, gy + 1.75, -294.8], target: [40, 40, 120], fov: 60 },
   };
   ctx.forceRefresh = () => {
@@ -266,6 +275,20 @@ async function boot() {
   installHarness(ctx);
   loading.progress(1);
   setTimeout(() => loading.done(), 250);
+}
+
+/** a copy of the geometry with every attribute as plain (de-normalized, de-interleaved) Float32 */
+function toFloatGeometry(src: THREE.BufferGeometry) {
+  const geo = new THREE.BufferGeometry();
+  for (const [name, a] of Object.entries(src.attributes)) {
+    const n = a.count, k = a.itemSize;
+    const f = new Float32Array(n * k);
+    const get = [a.getX, a.getY, a.getZ, a.getW];
+    for (let i = 0; i < n; i++) for (let c = 0; c < k; c++) f[i * k + c] = get[c].call(a, i);
+    geo.setAttribute(name, new THREE.BufferAttribute(f, k));
+  }
+  if (src.index) geo.setIndex(src.index.clone());
+  return geo;
 }
 
 boot().catch((e) => {

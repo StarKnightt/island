@@ -41,6 +41,8 @@ export const atmo = {
   overcast: uniform(0),
   /** night factor for the stars, moon light */
   night: uniform(0),
+  /** illuminance of a horizontal surface (sun or moon + sky), scene units: lights unlit effects (mist, spray) */
+  lightE: uniform(1),
   moonPhaseLight: uniform(0.8),
   time: uniform(0),
 };

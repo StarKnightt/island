@@ -8,12 +8,13 @@ import * as THREE from 'three/webgpu';
 import {
   abs, attribute, cameraPosition, clamp, dot, exp, float, length, max, min, mix, mx_noise_float, mx_fractal_noise_float,
   normalize, positionWorld, positionView, pow, screenUV, select, smoothstep, transformNormalToView, uniform, uv, vec2,
-  vec3, vec4, viewportSharedTexture, sin, fract, hash, instanceIndex, positionLocal, type N,
+  vec3, vec4, viewportSharedTexture, sin, fract, hash, instanceIndex, positionLocal, reflect, type N,
 } from '../core/tsl';
 import type { Heightfield } from '../world/Heightfield';
 import { sceneViewDepth } from '../core/depth';
 import { wetness } from '../world/weatherUniforms';
 import { cloudShadow } from '../sky/Sky';
+import { atmo } from '../sky/Atmosphere';
 
 export const riverU = { time: uniform(0) };
 
@@ -22,16 +23,34 @@ export class River {
   readonly fallsCenter = new THREE.Vector3();
   readonly poolCenter = new THREE.Vector3();
 
+  private poolR: number;
+
   constructor(private hf: Heightfield) {
     this.group.name = 'river';
+    this.poolR = hf.meta.pool.r;
     this.buildRibbon();
     this.buildPool();
     this.buildFalls();
   }
 
+  private waterMats: { m: THREE.MeshStandardNodeMaterial; env: number }[] = [];
+
+  /**
+   * The sky reflection on fresh water: banks, cliffs and canopy hide most of the sky over the river and the pool,
+   * so they take the shared environment at a fraction of its strength.
+   */
+  setEnvironment(tex: THREE.Texture) {
+    for (const { m, env } of this.waterMats) {
+      m.envMap = tex;
+      m.envMapIntensity = env;
+      m.needsUpdate = true;
+    }
+  }
+
   private waterMaterial(kind: 'river' | 'pool') {
     const m = new THREE.MeshStandardNodeMaterial();
     m.name = `water_${kind}`;
+    this.waterMats.push({ m, env: kind === 'pool' ? 0.14 : 0.35 });
     m.transparent = true;
     m.depthWrite = true;
     const p = positionWorld;
@@ -57,7 +76,8 @@ export class River {
     const uvR = select(sceneZ0.lessThan(viewZ), screenUV, uvR0);
     const thick = max(sceneViewDepth(uvR).sub(viewZ), 0).mul(length(cameraPosition.sub(p)).div(max(viewZ, 0.01)));
     const behind = viewportSharedTexture(uvR).rgb;
-    const sigma = vec3(0.3, 0.12, 0.13).mul(float(1).add(wetness.rain.mul(1.5)));
+    // the plunge pool is deep and tea-green with leaf tannins; the shallow river runs clearer
+    const sigma = (kind === 'pool' ? vec3(0.44, 0.17, 0.27) : vec3(0.3, 0.12, 0.13)).mul(float(1).add(wetness.rain.mul(1.5)));
     const trans = exp(sigma.negate().mul(min(thick.mul(1.6), 30)));
     // foam: riffles where the flow is fast, the churn under the falls
     const fast = kind === 'river' ? smoothstep(0.9, 2.2, flowSpeed) : float(0);
@@ -70,7 +90,7 @@ export class River {
       foam = max(foam, churn.mul(smoothstep(0.3, 0.6, ring.add(churn.mul(0.3)))));
     }
     // the edge against the banks: foam lines where the water is very shallow
-    foam = max(foam, smoothstep(0.12, 0.0, thick).mul(0.4));
+    foam = max(foam, smoothstep(0.12, 0.0, thick).mul(kind === 'pool' ? 0.22 : 0.4));
     const F = float(0.02).add(float(0.98).mul(pow(float(1).sub(NdotV), 5)));
     const body = mix(vec3(0.01, 0.03, 0.025), vec3(0.02, 0.05, 0.035), smoothstep(4, 0.5, thick));
     const cloud = cloudShadow(p);
@@ -78,7 +98,14 @@ export class River {
     m.roughnessNode = mix(float(0.04), float(0.75), foam);
     m.metalnessNode = float(0);
     m.normalNode = transformNormalToView(N0);
-    m.emissiveNode = behind.mul(trans).mul(float(1).sub(F)).mul(float(1).sub(foam)).mul(mix(float(0.8), float(1), cloud));
+    // what low reflections really show here is the gorge wall and the jungle, not the sky: a dark lit surround
+    const R = reflect(V.negate(), N0);
+    const surroundW = kind === 'pool' ? float(1).sub(smoothstep(0.2, 0.65, R.y)) : float(1).sub(smoothstep(0.04, 0.35, R.y));
+    const surround = vec3(0.05, 0.065, 0.045).mul(atmo.lightE.mul(1 / Math.PI)).mul(mix(float(0.7), float(1), cloud));
+    m.emissiveNode = behind.mul(trans).mul(float(1).sub(F)).mul(float(1).sub(foam)).mul(mix(float(0.8), float(1), cloud))
+      .add(surround.mul(F).mul(surroundW).mul(float(1).sub(foam)));
+    // the pool's rim runs under the banks; where the outflow notch cuts it, the surface feathers into the stream
+    if (kind === 'pool') m.opacityNode = smoothstep(this.poolR + 1.4, this.poolR - 0.6, along);
     void hash; void instanceIndex; void abs; void sin; void fract; void positionLocal;
     return m;
   }
@@ -130,7 +157,7 @@ export class River {
   private buildPool() {
     const { pool } = this.hf.meta;
     this.poolCenter.set(pool.p[0], pool.level, pool.p[1]);
-    const g = new THREE.CircleGeometry(pool.r + 2.5, 72, 0, Math.PI * 2);
+    const g = new THREE.CircleGeometry(pool.r + 1.5, 72, 0, Math.PI * 2);
     g.rotateX(-Math.PI / 2);
     g.translate(pool.p[0], pool.level, pool.p[1]);
     const mesh = new THREE.Mesh(g, this.waterMaterial('pool'));
@@ -195,7 +222,7 @@ export class River {
     m.opacityNode = alpha;
     m.roughnessNode = float(0.35);
     m.metalnessNode = float(0);
-    m.emissiveNode = vec3(0.05, 0.06, 0.06).mul(dens).mul(cloud);
+    m.emissiveNode = vec3(0.05, 0.06, 0.06).mul(dens).mul(cloud).mul(atmo.lightE.mul(0.075));
     const mesh = new THREE.Mesh(g, m);
     mesh.renderOrder = 12;
     mesh.name = 'falls';
@@ -223,7 +250,8 @@ export class River {
     const uvc = uv().sub(0.5);
     const soft = smoothstep(0.5, 0.0, length(uvc));
     const fade = smoothstep(0.0, 0.15, life).mul(smoothstep(1.0, 0.5, life));
-    m.colorNode = vec4(vec3(0.86, 0.9, 0.92), soft.mul(fade).mul(0.12));
+    // unlit sprite: lit here as a white scatterer under the current sun/moon and sky
+    m.colorNode = vec4(vec3(0.86, 0.9, 0.92).mul(atmo.lightE.mul(0.7 / Math.PI)).mul(cloudShadow(vec3(x, y, z)).mul(0.4).add(0.6)), soft.mul(fade).mul(0.12));
     m.opacityNode = soft.mul(fade).mul(0.12);
     const sprite = new THREE.Sprite(m);
     (sprite as unknown as { count: number }).count = count;

@@ -1,8 +1,8 @@
 /**
  * Quick development capture: one URL (query string) -> one 1920x1080 PNG in E:\shots\island\dev\.
- *   pnpm tsx scripts/look.ts --q "spot=beach&tod=sunrise" --name beach_sunrise [--wait 2000] [--eval "js"]
+ *   pnpm tsx scripts/look.ts --q "spot=beach&tod=sunrise" --name beach_sunrise [--wait 2000] [--eval "js" | --evalfile f.js]
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { argv, ensureServer, launch } from './lib/browser';
 
@@ -10,7 +10,8 @@ const a = argv();
 const q = a.get('q', 'spot=beach&tod=sunrise');
 const name = a.get('name', 'look');
 const wait = Number(a.get('wait', '1500'));
-const evalJs = a.get('eval', '');
+const evalFile = a.get('evalfile', '');
+const evalJs = evalFile ? readFileSync(evalFile, 'utf8') : a.get('eval', '');
 const kind = a.has('preview') ? 'preview' : 'dev';
 const outDir = 'E:\\shots\\island\\dev';
 mkdirSync(outDir, { recursive: true });

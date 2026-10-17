@@ -94,7 +94,7 @@ export function skyColorNode(withSun: boolean) {
     let col = skyRadiance(above).toVar();
     // overcast: the clear sky flattens toward a grey with the same brightness
     const lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
-    col.assign(mix(col, vec3(lum).mul(vec3(0.92, 0.96, 1.02)), atmo.overcast.mul(0.85)));
+    col.assign(mix(col, vec3(lum).mul(vec3(0.92, 0.96, 1.02)), atmo.overcast));
     // night sky glow so the darkest sky is deep blue, not black
     col.addAssign(vec3(0.0006, 0.0011, 0.0024).mul(atmo.night));
     // stars and moon (behind the clouds)
@@ -115,7 +115,8 @@ export function skyColorNode(withSun: boolean) {
       const mu = sqrt(max(float(1).sub(float(1).sub(sd).div(1 - sunCos)), 0));
       const limb = float(1).sub(float(0.6).mul(float(1).sub(mu)));
       const sunL = transmittanceAt(float(R_GROUND).add(atmo.camHeight), sun.y).mul(disc).mul(limb).mul(SUN_E * 220);
-      col.addAssign(sunL.mul(float(1).sub(atmo.overcast)));
+      // a thick overcast hides the disc completely (5 % of it would still bloom into a glare)
+      col.addAssign(sunL.mul(float(1).sub(smoothstep(0.25, 0.85, atmo.overcast))));
     }
     // clouds: a layer at the cloud base, seen through the haze
     const t = clouds.base.sub(cameraPosition.y).div(max(dir.y, 0.012));
@@ -141,9 +142,14 @@ export function skyColorNode(withSun: boolean) {
     const haze = float(1).sub(exp(t.mul(-1 / 26000)));
     const cloudSeen = mix(cloudCol, col, haze.mul(0.85));
     col.assign(mix(col, cloudSeen, dens.mul(smoothstep(60000, 15000, t))));
-    // below the horizon (the environment map's lower half): a dim sea-and-haze colour
+    // below the horizon (the environment map's lower half): light bounced off the ground (sand, leaves, sea) under
+    // the sun and the sky, so undersides and trunks get a neutral warm bounce instead of a colour of their own
     const horizon = skyRadiance(normalize(vec3(dir.x, 0.02, dir.z)));
-    const below = mix(horizon.mul(0.5), vec3(0.012, 0.035, 0.05).mul(horizon.dot(vec3(0.33)).mul(8).add(0.05)), smoothstep(0.0, -0.25, dir.y));
+    const sunIrr = transmittanceAt(float(R_GROUND).add(atmo.camHeight), max(sun.y, 0.0)).mul(SUN_E).mul(max(sun.y, 0)).mul(float(1).sub(atmo.overcast.mul(0.88)));
+    const skyIrr = mix(zen, horizon, 0.5).mul(Math.PI);
+    const ground = vec3(0.13, 0.12, 0.095).mul(sunIrr.add(skyIrr)).div(Math.PI);
+    const sea = vec3(0.012, 0.035, 0.05).mul(horizon.dot(vec3(0.33)).mul(8).add(0.05));
+    const below = mix(horizon.mul(0.5), withSun ? sea : ground, smoothstep(0.0, -0.25, dir.y));
     col.assign(select(dir.y.lessThan(0), mix(col, below, smoothstep(0.0, -0.06, dir.y)), col));
     void up;
     return col;
