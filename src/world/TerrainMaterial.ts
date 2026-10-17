@@ -74,7 +74,8 @@ export function createTerrainMaterial(hf: Heightfield) {
   // ---- layer weights from the masks
   const sand = m0.x;
   const wetShore = smoothstep(terrainU.swash.add(0.45).add(macro.mul(0.12)), terrainU.swash.sub(0.15), h).mul(sand);
-  const rock = max(m1.x, smoothstep(0.42, 0.6, slope.add(micro.mul(0.05))));
+  // steep ground turns to rock, but not small ripples on the beach
+  const rock = max(m1.x, smoothstep(0.42, 0.6, slope.add(micro.mul(0.05))).mul(float(1).sub(m0.x.mul(0.9))).mul(smoothstep(1.5, 4.0, positionWorld.y)));
   const grass = m0.y, dirt = m0.z, forest = m0.w;
   const underwater = smoothstep(0.15, -0.5, h);
   const reefN = mx_fractal_noise_float(vec3(xz.mul(1 / 24), 7.0), 3, 2, 0.5).mul(0.5).add(0.5);
@@ -93,10 +94,18 @@ export function createTerrainMaterial(hf: Heightfield) {
   ];
 
   let albedo: N = vec3(0), rough: N = float(0), dn: N = vec2(0), aoAcc: N = float(0), total: N = float(0.0001);
+  // triplanar weights for the rock layers on steep faces (no stretching down cliffs)
+  const tw = pow(abs(n), vec3(4));
+  const twn = tw.div(tw.x.add(tw.y).add(tw.z));
   for (let i = 0; i < LAYERS.length; i++) {
     const uvL = xz.div(SCALE[i]).add(i * 0.37);
-    const tA = sampleA(i, uvL);
-    const tN = sampleN(i, uvL);
+    let tA = sampleA(i, uvL);
+    let tN = sampleN(i, uvL);
+    if (i === 5 || i === 6) {
+      const sx = p.zy.div(SCALE[i]), sz = p.xy.div(SCALE[i]);
+      tA = tA.mul(twn.y).add(sampleA(i, sx).mul(twn.x)).add(sampleA(i, sz).mul(twn.z));
+      tN = tN.mul(twn.y).add(sampleN(i, sx).mul(twn.x)).add(sampleN(i, sz).mul(twn.z));
+    }
     // height blend: each layer's height sharpens its edges against the others
     const w = max(ws[i], 0).mul(tA.a.mul(1.4).add(0.3)).pow(2.2);
     albedo = albedo.add(tA.rgb.mul(w));
@@ -131,7 +140,7 @@ export function createTerrainMaterial(hf: Heightfield) {
   const ct = terrainU.time.mul(0.55);
   const c1 = mx_noise_float(vec3(xz.mul(0.95), ct));
   const c2 = mx_noise_float(vec3(xz.mul(0.95).add(13.1), ct.mul(1.13).add(4)));
-  const caustic = pow(float(1).sub(abs(c1.sub(c2))), 9).mul(smoothstep(0.1, 1.0, depthW)).mul(exp(depthW.mul(-0.25))).mul(1.3);
+  const caustic = pow(max(float(1).sub(abs(c1.sub(c2))), 0), 9).mul(smoothstep(0.1, 1.0, depthW)).mul(exp(depthW.mul(-0.25))).mul(1.3);
   const cloud = cloudShadow(p);
 
   m.colorNode = vec4(albedo.mul(float(1).add(caustic.mul(cloud))).mul(mix(float(0.62), float(1), cloud)), 1);

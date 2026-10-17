@@ -53,8 +53,8 @@ async function load(path: string, size: number, channels: 1 | 3) {
   return data;
 }
 
-async function encode(rgba: Uint8Array, size: number, srgb: boolean, out: string) {
-  const png = await sharp(Buffer.from(rgba), { raw: { width: size, height: size, channels: 4 } }).png().toBuffer();
+async function encode(rgba: Uint8Array, size: number, srgb: boolean, out: string, height = size) {
+  const png = await sharp(Buffer.from(rgba), { raw: { width: size, height, channels: 4 } }).png().toBuffer();
   const ktx = await encodeToKTX2(new Uint8Array(png), {
     isUASTC: true,
     generateMipmap: true,
@@ -111,12 +111,56 @@ async function packMaterial(src: string, id: string, outDir: string, size: numbe
   console.log(`  ${id.padEnd(12)} <- ${src.padEnd(28)} gain ${gain.map((g) => g.toFixed(2)).join(',')}  ${(s1 / 1024).toFixed(0)} + ${(s2 / 1024).toFixed(0)} KB`);
 }
 
+/** generated foliage (tools/gen_foliage.py) -> KTX2: colour+alpha maps and normal maps */
+async function foliage() {
+  const SRC = 'E:/tmp/island/foliage';
+  const dir = join(OUT, 'foliage');
+  mkdirSync(dir, { recursive: true });
+  const color = async (name: string, w: number, h: number) => {
+    const { data } = await sharp(join(SRC, `${name}.png`)).resize(w, h, { kernel: 'lanczos3' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const sz = await encode(new Uint8Array(data), w, true, join(dir, `${name}.ktx2`), h);
+    console.log(`  ${name} ${w}x${h} ${(sz / 1024).toFixed(0)} KB`);
+  };
+  const normalFromHeight = async (name: string, src: string, w: number, h: number, strength: number) => {
+    const { data } = await sharp(join(SRC, `${src}.png`)).resize(w, h).greyscale().raw().toBuffer({ resolveWithObject: true });
+    const out = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const at = (xx: number, yy: number) => data[((yy + h) % h) * w + ((xx + w) % w)] / 255;
+      const dx = (at(x + 1, y) - at(x - 1, y)) * strength, dy = (at(x, y + 1) - at(x, y - 1)) * strength;
+      const l = Math.hypot(dx, dy, 1);
+      const o = (y * w + x) * 4;
+      out[o] = Math.round((-dx / l * 0.5 + 0.5) * 255);
+      out[o + 1] = Math.round((dy / l * 0.5 + 0.5) * 255);
+      out[o + 2] = Math.round((1 / l * 0.5 + 0.5) * 255);
+      out[o + 3] = 255;
+    }
+    const sz = await encode(out, w, false, join(dir, `${name}.ktx2`), h);
+    console.log(`  ${name} ${w}x${h} ${(sz / 1024).toFixed(0)} KB`);
+  };
+  const normal = async (name: string, w: number, h: number) => {
+    const { data } = await sharp(join(SRC, `${name}.png`)).resize(w, h).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const sz = await encode(new Uint8Array(data), w, false, join(dir, `${name}.ktx2`), h);
+    console.log(`  ${name} ${w}x${h} ${(sz / 1024).toFixed(0)} KB`);
+  };
+  await color('palm_frond', 2048, 1024);
+  await color('banana_leaf', 1024, 512);
+  await color('canopy', 1024, 1024);
+  await normal('canopy_n', 1024, 1024);
+  await color('palm_bark', 512, 1024);
+  await normalFromHeight('palm_bark_n', 'palm_bark_h', 512, 1024, 4);
+  await color('grass', 512, 512);
+}
+
 async function main() {
   const what = process.argv[2] ?? 'terrain';
   if (what === 'terrain' || what === 'all') {
     console.log('terrain layers:');
     for (const L of TERRAIN_LAYERS) await packMaterial(L.src, L.id, join(OUT, 'terrain'), 1024, L.target);
     writeFileSync(join(OUT, 'terrain', 'layers.json'), JSON.stringify(TERRAIN_LAYERS.map((l) => l.id)));
+  }
+  if (what === 'foliage' || what === 'all') {
+    console.log('foliage:');
+    await foliage();
   }
   if (what === 'tex' || what === 'all') {
     console.log('material textures:');

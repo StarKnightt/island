@@ -23,7 +23,7 @@ const num = (k: string, def: number) => {
 };
 const flag = (k: string) => q.has(k) && q.get(k) !== '0' && q.get(k) !== 'false';
 
-export const TOD_PRESETS: Record<string, number> = { sunrise: 6.15, morning: 8.5, noon: 12.5, afternoon: 15.5, sunset: 17.85, dusk: 18.4, night: 22.5 };
+export const TOD_PRESETS: Record<string, number> = { sunrise: 6.55, morning: 8.5, noon: 12.3, afternoon: 15.5, sunset: 17.42, dusk: 18.1, night: 22.5 };
 
 function parseTod(v: string | null): number | null {
   if (v === null) return null;

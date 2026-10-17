@@ -806,7 +806,7 @@ for (let j = 0; j < M; j++) {
     sand = Math.max(sand, (1 - smoothstep(-2, 6, rd)) * (1 - smoothstep(1.5, 4, h)));
     if (s < 0) sand = Math.max(sand, beachK * 0.9 + 0.1);
     // rock: cliffs and rock shelves at the coast, steep ground, the summit
-    let rock = smoothstep(33, 46, slope + 6 * n2);
+    let rock = smoothstep(38, 50, slope + 6 * n2);
     rock = Math.max(rock, clamp(k - 0.6, 0, 1) * (1 - smoothstep(10 + 10 * n1, 26 + 10 * n1, s)) * (s > -6 ? 1 : 0.5));
     rock = Math.max(rock, smoothstep(196, 206, h + 8 * n2) * 0.85);
     // falls gorge
@@ -814,7 +814,7 @@ for (let j = 0; j < M; j++) {
     rock = Math.max(rock, (1 - smoothstep(18, 32, dFall)) * smoothstep(20, 35, slope));
     rock = clamp(rock, 0, 1);
     // grass: windswept summit, cliff tops, beach backshore, around the village, along trails
-    let grass = smoothstep(150, 175, h + 10 * n1);
+    let grass = smoothstep(180, 204, h + 10 * n1);
     grass = Math.max(grass, clamp(k - 1.2, 0, 1) * (1 - smoothstep(30, 70, s)) * smoothstep(4, 12, s));
     grass = Math.max(grass, beachK * smoothstep(50, 70, s) * (1 - smoothstep(80, 110, s)) * 0.8);
     grass = Math.max(grass, smoothstep(55, 85, dv) * (1 - smoothstep(110, 150, dv)) * 0.9);
@@ -827,11 +827,11 @@ for (let j = 0; j < M; j++) {
     // forest density
     let forest = s > 0 ? 1 : 0;
     forest *= smoothstep(58 + 12 * n1, 95 + 12 * n1, s) * beachK + (1 - beachK) * smoothstep(14, 40, s);
-    forest *= 1 - smoothstep(150, 178, h + 10 * n1);
+    forest *= 1 - smoothstep(186, 206, h + 8 * n1);
     forest *= 1 - path;
     forest *= smoothstep(0.5, 6, rd);
     forest *= smoothstep(70, 105, dv) * 0.85 + 0.15 * smoothstep(40, 70, dv);
-    forest *= 1 - smoothstep(38, 50, slope);
+    forest *= 1 - smoothstep(44, 56, slope);
     forest *= smoothstep(-0.62, -0.32, noiseC.fbm(x / 160, z / 160, 3));
     forest *= smoothstep(LIGHTHOUSE.platformR + 8, LIGHTHOUSE.platformR + 30, dl);
     forest = clamp(forest, 0, 1);

@@ -17,6 +17,7 @@ const opt = (k: string, d: string) => (args.includes(`--${k}`) ? args[args.index
 const maxTex = Number(opt('maxtex', '1024'));
 const maxAux = Number(opt('maxaux', String(maxTex)));
 const simp = Number(opt('simplify', '0'));
+const simpErr = Number(opt('error', '0.002'));
 
 await MeshoptEncoder.ready;
 await MeshoptSimplifier.ready;
@@ -32,7 +33,7 @@ const imageDecoder = async (buffer: Uint8Array) => {
 const steps = [dedup(), prune()];
 if (args.includes('--flatten')) steps.push(flatten(), joinMeshes());
 steps.push(weld());
-if (simp > 0) steps.push(simplify({ simplifier: MeshoptSimplifier, ratio: simp, error: 0.002 }));
+if (simp > 0) steps.push(simplify({ simplifier: MeshoptSimplifier, ratio: simp, error: simpErr }));
 if (!args.includes('--noanim')) steps.push(resample());
 await doc.transform(...steps);
 // textures: resize, then KTX2

@@ -196,10 +196,10 @@ export interface Spot { name: string; player: [number, number, number?]; yaw: nu
 export const SPOTS: Spot[] = [
   { name: 'beach', player: [596, 34], yaw: Math.PI / 2 },
   { name: 'jungle', player: [365, 18], yaw: -2.6 },
-  { name: 'waterfall', player: [196, -36], yaw: -Math.PI / 2 - 0.25 },
+  { name: 'waterfall', player: [186, -40], yaw: -1.15 },
   { name: 'village', player: [-452, 318], yaw: Math.PI },
   { name: 'cliffs', player: [118, -526], yaw: -Math.PI / 2 - 0.15 },
-  { name: 'lighthouse', player: [-292, -296], yaw: 2.3 },
+  { name: 'lighthouse', player: [-296.9, -297.6], yaw: 2.2 },
 ];
 
 /** the spawn: on the beach at sunrise, facing the sea and the rising sun */

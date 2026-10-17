@@ -43,7 +43,7 @@ export async function launch(opts: { width?: number; height?: number; dsf?: numb
   const page = await context.newPage();
   const consoleLines: string[] = [];
   page.on('console', (m) => {
-    if (m.type() === 'error' || m.type() === 'warning') consoleLines.push(`[${m.type()}] ${m.text()}`.slice(0, 600));
+    if (m.type() === 'error' || m.type() === 'warning' || m.text().startsWith('[island]') || m.text().startsWith('vegetation')) consoleLines.push(`[${m.type()}] ${m.text()}`.slice(0, 600));
   });
   page.on('pageerror', (e) => consoleLines.push(`[pageerror] ${e.message}`));
   return { browser, context, page, console: consoleLines };

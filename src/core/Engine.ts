@@ -46,6 +46,10 @@ export class Engine {
   divisor = 1;
   /** while true the loop neither updates nor renders */
   hold = false;
+  /** manual stepping (harness clips): the loop stops; stepOnce advances a fixed dt and renders */
+  manual = false;
+  /** frozen world time for deterministic captures (waves, wind, clouds); null = running */
+  frozenTime: number | null = null;
   renderScale = Q.renderScale;
 
   static async create(container: HTMLElement) {
@@ -217,14 +221,14 @@ export class Engine {
       tick++;
       if (this.divisor > 1 && tick % this.divisor !== 0) return;
       const now = performance.now();
-      if (this.hold) {
+      if (this.hold || this.manual) {
         last = now;
         return;
       }
       const interval = now - last;
       last = now;
       const dt = Math.min(interval / 1000, 1 / 15);
-      this.time += dt;
+      this.time = this.frozenTime ?? this.time + dt;
       for (const u of this.updaters) u(dt, this.time);
       this.pipeline.render();
       this.frame++;
@@ -233,6 +237,14 @@ export class Engine {
       this.push(this.cpu, cpu);
       if (params.gpuTiming) this.resolveGpu();
     });
+  }
+
+  /** advance exactly dt seconds and render one frame (manual mode) */
+  stepOnce(dt: number) {
+    this.time = this.frozenTime ?? this.time + dt;
+    for (const u of this.updaters) u(dt, this.time);
+    this.pipeline.render();
+    this.frame++;
   }
 
   private push(a: number[], v: number) {

@@ -37,6 +37,7 @@ export class CameraRig {
   posePos = new THREE.Vector3();
   poseTarget = new THREE.Vector3();
   baseFov = 55;
+  private flyVel = new THREE.Vector3();
 
   constructor(readonly camera: THREE.PerspectiveCamera, private world: CamWorld) {}
 
@@ -90,11 +91,14 @@ export class CameraRig {
     this.yaw += intent.lookX;
     this.pitch = THREE.MathUtils.clamp(this.pitch - intent.lookY, -1.25, 1.35);
     if (this.mode === 'free') {
-      const sp = (intent.sprint ? 18 : 5) * dt;
+      // smoothed fly camera (photo mode): velocity eases toward the wish so recordings glide
+      const sp = intent.sprint ? 16 : 4;
       const fwd = tmp.set(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), -Math.cos(this.yaw) * Math.cos(this.pitch));
       const right = tmp2.set(Math.cos(this.yaw), 0, Math.sin(this.yaw));
-      cam.position.addScaledVector(fwd, intent.moveY * sp).addScaledVector(right, intent.moveX * sp);
-      cam.position.y += intent.up * sp;
+      const wish = new THREE.Vector3().addScaledVector(fwd, intent.moveY * sp).addScaledVector(right, intent.moveX * sp);
+      wish.y += intent.up * sp;
+      this.flyVel.lerp(wish, 1 - Math.exp(-dt * 3));
+      cam.position.addScaledVector(this.flyVel, dt);
       const g = this.world.groundAt(cam.position.x, cam.position.z);
       cam.position.y = Math.max(cam.position.y, g + 0.3);
       cam.lookAt(tmp.copy(cam.position).add(fwd));

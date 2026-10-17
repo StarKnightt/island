@@ -3,7 +3,7 @@ import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
 import { Engine, grade } from './core/Engine';
 import { params, TOD_PRESETS } from './core/params';
 import { Q, preset, gpuName } from './core/quality';
-import { initAssets, progress as assetProgress } from './core/Assets';
+import { initAssets, progress as assetProgress, loadGLTF } from './core/Assets';
 import { Heightfield } from './world/Heightfield';
 import { Terrain } from './world/Terrain';
 import { createTerrainMaterial, terrainU } from './world/TerrainMaterial';
@@ -19,6 +19,14 @@ import { Colliders } from './world/Colliders';
 import { Input } from './player/Input';
 import { CameraRig } from './player/CameraRig';
 import { Player } from './player/Player';
+import { Vegetation, vegU } from './veg/Vegetation';
+import { buildCanopy } from './veg/Canopy';
+import { Hud } from './ui/Hud';
+import { River } from './water/River';
+import { Village } from './world/Village';
+import { Lighthouse } from './world/Lighthouse';
+import { Weather } from './sky/Weather';
+import { AudioSystem } from './audio/Audio';
 
 async function boot() {
   const loading = new Loading();
@@ -69,7 +77,67 @@ async function boot() {
   scene.add(terrain.mesh);
   loading.status('Filling the sea');
   const ocean = new Ocean(hf);
-  scene.add(ocean.mesh);
+  if (!new URLSearchParams(location.search).has('noocean')) scene.add(ocean.mesh);
+
+  // ---- fresh water
+  const river = new River(hf);
+  scene.add(river.group);
+
+  // ---- the village and the lighthouse
+  loading.status('Building the village');
+  const village = new Village(hf, colliders);
+  village.build();
+  scene.add(village.group);
+  const lighthouse = new Lighthouse(hf, colliders);
+  scene.add(lighthouse.group);
+
+  // ---- weather and sound
+  const weather = new Weather(hf);
+  if (!new URLSearchParams(location.search).has('norain')) scene.add(weather.group);
+  weather.set(params.weather, true);
+  if (params.weather === 'auto') weather.set('auto');
+  const audio = new AudioSystem(hf);
+  audio.fallsPos.set(hf.meta.falls.lip[0], (hf.meta.falls.top + hf.meta.falls.bottom) / 2, hf.meta.falls.lip[1]);
+  audio.mute(params.mute);
+  weather.onThunder = (delay, strength) => audio.thunder(delay, strength);
+  const startAudio = () => audio.start();
+  window.addEventListener('pointerdown', startAudio, { once: true });
+  window.addEventListener('keydown', startAudio, { once: true });
+  if (params.test) audio.start();
+
+  // ---- vegetation
+  loading.status('Growing the jungle');
+  const veg = new Vegetation(hf, colliders);
+  const tv = performance.now();
+  veg.build();
+  console.log(`vegetation built in ${(performance.now() - tv).toFixed(0)} ms`);
+  scene.add(veg.group);
+  scene.add(buildCanopy(hf));
+  // rocks stream in with the props
+  const rocksReady = (async () => {
+    const out: { geometry: THREE.BufferGeometry; material: THREE.Material; radius: number; big: boolean }[] = [];
+    for (const [name, big] of [['rock_moss_set_01', false], ['namaqualand_boulder_05', true]] as [string, boolean][]) {
+      const g = await loadGLTF(`assets/props/${name}.glb`);
+      g.scene.updateMatrixWorld(true);
+      g.scene.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        const geo = m.geometry.clone();
+        geo.applyMatrix4(m.matrixWorld);
+        geo.computeBoundingBox();
+        const bb = geo.boundingBox!;
+        // centre in plan, base at y = 0
+        const cx = (bb.min.x + bb.max.x) / 2, cz = (bb.min.z + bb.max.z) / 2;
+        geo.translate(-cx, -bb.min.y, -cz);
+        geo.computeBoundingSphere();
+        const radius = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2;
+        const mat = m.material as THREE.MeshStandardMaterial;
+        mat.color?.multiplyScalar(0.55);
+        out.push({ geometry: geo, material: mat, radius: Math.max(0.3, radius), big });
+      });
+    }
+    veg.addRocks(out);
+  })().catch((e) => console.warn('rocks', e));
 
   // ---- player and camera
   loading.status('Waking the traveller');
@@ -82,6 +150,8 @@ async function boot() {
     raycast: (f, d, m) => colliders.raycast(f, d, m),
   });
   player.seaAt = (x, z) => ocean.surfaceAt(x, z, 0);
+  player.onStep = (e) => audio.step(e);
+  player.onSplash = (s, p) => audio.splash(s, p);
   const spot = SPOTS.find((s) => s.name === (params.spot ?? 'beach')) ?? SPOTS[0];
   await playerLoad;
   loading.progress(0.6);
@@ -96,34 +166,63 @@ async function boot() {
   }
 
   engine.setupPost();
+  const hud = new Hud(params.hud);
+  let photo = false;
+  const setPhoto = (on: boolean) => {
+    photo = on;
+    hud.photo(on);
+    rig.set(on ? 'free' : 'follow');
+  };
+  if (params.photo) setPhoto(true);
 
   // ---- frame
   engine.addUpdater((dt, t) => {
     const intent = input.read(dt);
-    if (input.hit('KeyF') || input.hit('KeyP')) rig.set(rig.mode === 'free' ? 'follow' : 'free');
+    if (input.hit('KeyP') || input.hit('KeyF')) setPhoto(!photo);
+    if (input.hit('KeyM')) audio.mute(!audio.muted);
+    if (photo && input.hit('BracketLeft')) { rig.baseFov = Math.max(15, rig.baseFov - 5); camera.fov = rig.baseFov; camera.updateProjectionMatrix(); }
+    if (photo && input.hit('BracketRight')) { rig.baseFov = Math.min(90, rig.baseFov + 5); camera.fov = rig.baseFov; camera.updateProjectionMatrix(); }
+    weather.update(dt);
+    tod.overcast = weather.cover * 0.9;
+    player.rainWet = weather.wet * 0.85;
     tod.update(dt);
     // in the free camera WASD flies the camera; scripted actions (harness) always drive the player
     const playerIntent = rig.mode === 'free' && !input.scripted ? { ...intent, moveX: 0, moveY: 0, jump: false } : intent;
     player.update(dt, playerIntent, rig.yaw);
     rig.update(dt, rig.mode === 'follow' || rig.mode === 'free' ? intent : { ...intent, lookX: 0, lookY: 0 }, player.pos, player.speed);
     ocean.sim.setProbe(0, player.pos.x, player.pos.z);
+    for (const b of village.boats) if (b.probe > 0) ocean.sim.setProbe(b.probe, b.x, b.z);
     atmo.camHeight.value = Math.max(1, camera.position.y);
     atmo.time.value = t;
     terrainU.time.value = t;
     wetness.time.value = t;
     oceanU.time.value = t;
-    grade.exposure.value = tod.exposure;
+    grade.exposure.value = tod.exposure * (1 + weather.flash * 2.5);
+    audio.update(dt, camera, { night: tod.night, rain: weather.rain, wind: weather.wind, underwater: camera.position.y < player.waterLevel - 0.05 });
     camera.updateMatrixWorld();
     terrain.update(camera, Q.shadowFar);
+    veg.update(camera, 60);
+    vegU.time.value = t;
+    river.update(t);
+    village.update(t, (i) => ocean.sim.probe(i));
+    lighthouse.update(dt, tod.night);
+    hud.update(dt, player.pos.x, player.pos.z, tod.hour, weather.kind);
+    vegU.sunColor.value.copy(sunLight.color).multiplyScalar(sunLight.intensity);
     sky.update(dt, scene);
     ocean.update(renderer, camera, t, dt);
   });
 
   // stream the terrain layer textures after the first frames
-  let streaming = 1;
-  terrainM.loadLayers().then(() => streaming--, (e) => {
+  let streaming = 3;
+  rocksReady.then(() => streaming--);
+  const done = () => streaming--;
+  terrainM.loadLayers().then(done, (e) => {
     console.warn('terrain layers', e);
-    streaming--;
+    done();
+  });
+  veg.loadTextures().then(done, (e) => {
+    console.warn('foliage textures', e);
+    done();
   });
 
   loading.status('Compiling shaders');
@@ -131,13 +230,29 @@ async function boot() {
   await engine.measureRefresh();
   sky.update(0, scene, true);
   terrain.update(camera, Q.shadowFar);
+  veg.update(camera, 60, true);
   await renderer.compileAsync(scene, camera);
   engine.start();
   Object.assign(ctx, {
-    hf, terrain, sky, csm, ocean, player, cameraRig: rig, input, colliders,
+    hf, terrain, sky, csm, ocean, player, cameraRig: rig, input, colliders, veg, village, lighthouse, weather, audio, hud,
     rts: { transmittance: transmittanceRT, skyView: skyViewRT, cloud: cloudRT },
     isBusy: () => streaming > 0 || assetProgress.pending > assetProgress.done,
   });
+  // authored establishing cameras per spot (the harness's camera: 'shot')
+  const H = (x: number, z: number) => Math.max(hf.height(x, z), 0);
+  const gy = lighthouse.galleryY;
+  ctx.shotPoses = {
+    beach: { pos: [584, H(584, 64) + 2.4, 64], target: [652, 2.2, 18], fov: 55 },
+    jungle: { pos: [358, H(358, 32) + 1.8, 32], target: [376, H(376, 4) + 4.5, 4], fov: 60 },
+    waterfall: { pos: [196, hf.meta.pool.level + 2.6, -33], target: [147, hf.meta.falls.bottom + 9, -56], fov: 58 },
+    village: { pos: [-428, H(-428, 352) + 2.6, 352], target: [-470, 3.5, 306], fov: 55 },
+    cliffs: { pos: [152, H(152, -494) + 4, -494], target: [-120, 45, -585], fov: 55 },
+    lighthouse: { pos: [-294.5, gy + 1.75, -294.8], target: [40, 40, 120], fov: 60 },
+  };
+  ctx.forceRefresh = () => {
+    veg.update(camera, 60, true);
+    sky.update(0, scene, true);
+  };
   ctx.player = {
     toSpot: (n: string) => {
       const r = player.toSpot(n);

@@ -99,6 +99,37 @@ export function installHarness(ctx: Ctx) {
     quality() {
       return ctx.quality ?? null;
     },
+    /** one call to stage a capture: spot, time of day, weather, camera ('follow' | 'shot' | pose), frozen world time */
+    async stage(o: { spot?: string; tod?: string | number; weather?: 'clear' | 'rain' | 'auto'; camera?: string | { pos: number[]; target: number[]; fov?: number }; worldTime?: number | null; settleMs?: number }) {
+      if (o.spot) api.spot(o.spot);
+      if (o.tod !== undefined) api.setTime(o.tod, true);
+      if (o.weather) api.setWeather(o.weather, true);
+      if (o.worldTime !== undefined) engine.frozenTime = o.worldTime;
+      if (o.camera === 'shot' && o.spot) {
+        const pose = ctx.shotPoses?.[o.spot];
+        if (pose) api.setCamera(pose);
+      } else if (o.camera) api.setCamera(o.camera as never);
+      else api.setCamera('follow');
+      ctx.forceRefresh?.();
+      await api.ready(60000);
+      await new Promise((r) => setTimeout(r, o.settleMs ?? 1200));
+      engine.resetStats();
+      return { time: api.getTime(), weather: api.getWeather(), camera: api.getCamera(), player: api.player() };
+    },
+    /** freeze (number) or release (null) the world animation clock */
+    pauseWorld(t: number | null) {
+      engine.frozenTime = t;
+      return t;
+    },
+    /** manual stepping for motion clips: manual(true), then step(n, dt) advances n fixed frames */
+    manual(on: boolean) {
+      engine.manual = on;
+      return on;
+    },
+    step(n = 1, dt = 1 / 30) {
+      for (let i = 0; i < n; i++) engine.stepOnce(dt);
+      return engine.frame;
+    },
     /** debug: read back a few texels of a named render target */
     async readRT(name: string, x = 0, y = 0, w = 4, h = 4) {
       const rt = ctx.rts?.[name] as THREE.RenderTarget | undefined;

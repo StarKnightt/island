@@ -295,6 +295,10 @@ export class Player {
       this.setW('tread', 1 - m);
       this.setW('swim', m);
       this.phase += dt / (c.swim?.duration ?? 1.33) * Math.max(0.6, sp / SWIM);
+      // a stroke splash twice a cycle while swimming forward
+      const fp = this.phase % 1;
+      if (sp > 0.3 && ((this.lastFootPhase < 0.25 && fp >= 0.25) || (this.lastFootPhase < 0.75 && fp >= 0.75))) this.onStep?.({ surface: 'water', speed: sp, foot: 0, pos: this.pos });
+      this.lastFootPhase = fp;
     } else if (this.state === 'air') {
       if (this.jumpT >= 0 && this.jumpT < 0.32) this.setW('jump_start', 1);
       else this.setW('fall', 1);
