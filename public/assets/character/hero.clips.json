@@ -1,0 +1,62 @@
+{
+ "idle": {
+  "duration": 2.5,
+  "speed": 0
+ },
+ "walk": {
+  "duration": 1.333,
+  "speed": 0.952
+ },
+ "jog": {
+  "duration": 0.933,
+  "speed": 5.229
+ },
+ "sprint": {
+  "duration": 0.667,
+  "speed": 8.053
+ },
+ "jump_start": {
+  "duration": 1.333,
+  "speed": 0
+ },
+ "fall": {
+  "duration": 2.5,
+  "speed": 0
+ },
+ "land": {
+  "duration": 1.267,
+  "speed": 0
+ },
+ "swim": {
+  "duration": 1.333,
+  "speed": 2.123
+ },
+ "tread": {
+  "duration": 3.333,
+  "speed": 0
+ },
+ "crouch": {
+  "duration": 2.933,
+  "speed": 0
+ },
+ "interact": {
+  "duration": 2,
+  "speed": 0
+ },
+ "sit": {
+  "duration": 1.667,
+  "speed": 0
+ },
+ "idle_arms": {
+  "duration": 2.5,
+  "speed": 0
+ },
+ "lean_rail": {
+  "duration": 2.5,
+  "speed": 0
+ },
+ "walk_carry": {
+  "duration": 2,
+  "speed": 0.634
+ }
+}

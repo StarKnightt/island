@@ -1,0 +1,37 @@
+{
+  "name": "island",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.18.3",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5230 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 5231 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "shots": "tsx scripts/shots.ts",
+    "perf": "tsx scripts/perf.ts",
+    "clip": "tsx scripts/clip.ts",
+    "assets:fetch": "tsx scripts/fetch-assets.ts",
+    "assets:build": "tsx scripts/build-assets.ts",
+    "gen:island": "tsx tools/gen-island.ts"
+  },
+  "dependencies": {
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "4.5.1",
+    "@gltf-transform/extensions": "4.5.1",
+    "@gltf-transform/functions": "4.5.1",
+    "@types/node": "^26.6.4",
+    "@types/three": "0.186.0",
+    "@webgpu/types": "^0.1.74",
+    "ktx2-encoder": "0.6.0",
+    "meshoptimizer": "1.3.0",
+    "playwright-core": "1.64.1",
+    "sharp": "0.35.5",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.4"
+  }
+}

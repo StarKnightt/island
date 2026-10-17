@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.vite-cache/
+*.log
+*.mp4
+*.webm
+.env*
+.DS_Store
+# raw downloads and scratch never live in the repo (they go to E:\tmp\island)
+/raw/
+/shots/
+/.agent-notes/

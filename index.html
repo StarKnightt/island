@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Island</title>
+    <link rel="icon" href="data:," />
+    <meta name="description" content="An open-world tropical island in the browser: beach, jungle, waterfall, fishing village and a lighthouse on the peak." />
+    <style>
+      html, body { margin: 0; height: 100%; background: #0b1114; overflow: hidden; }
+      canvas { display: block; }
+      #loading {
+        position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: radial-gradient(120% 90% at 50% 100%, #1c3640 0%, #0d1a20 45%, #070c0f 100%);
+        color: #e9e4d8; font: 500 15px/1.4 ui-sans-serif, system-ui, "Segoe UI", sans-serif; letter-spacing: 0.02em;
+        transition: opacity 0.9s ease;
+      }
+      #loading h1 { font: 300 46px/1 ui-serif, Georgia, "Times New Roman", serif; letter-spacing: 0.28em; margin: 0 0 28px; padding-left: 0.28em; color: #f3ecdc; }
+      #loading .bar { width: min(420px, 70vw); height: 2px; background: rgba(255,255,255,0.12); overflow: hidden; border-radius: 2px; }
+      #loading .fill { height: 100%; width: 0%; background: linear-gradient(90deg, #8fd3d1, #f1d6a0); transition: width 0.25s ease; }
+      #loading .status { margin-top: 14px; font-size: 13px; color: rgba(233,228,216,0.62); min-height: 1.4em; }
+      #loading .gpu { position: absolute; bottom: 22px; font-size: 11px; color: rgba(233,228,216,0.35); }
+      #loading.done { opacity: 0; pointer-events: none; }
+    </style>
+  </head>
+  <body>
+    <div id="loading">
+      <h1>ISLAND</h1>
+      <div class="bar"><div class="fill" id="load-fill"></div></div>
+      <div class="status" id="load-status">Starting</div>
+      <div class="gpu" id="load-gpu"></div>
+    </div>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
