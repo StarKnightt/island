@@ -260,10 +260,31 @@ export class Player {
         }
         next.set(this.pos.x + this.vel.x * dt, this.pos.y, this.pos.z + this.vel.z * dt);
       }
-      // steps higher than 0.5 m block (walls of platforms)
-      if (gNext.y - this.pos.y > 0.5) next.set(this.pos.x, this.pos.y, this.pos.z);
+      // steps higher than 0.5 m block (walls of platforms), but the walker slides along them: keep whichever
+      // single-axis part of the move stays walkable
+      if (gNext.y - this.pos.y > 0.5) {
+        const mx = this.vel.x * dt, mz = this.vel.z * dt;
+        const okX = this.groundAt(this.pos.x + mx, this.pos.z, this.pos.y + 0.45).y - this.pos.y <= 0.5;
+        const okZ = this.groundAt(this.pos.x, this.pos.z + mz, this.pos.y + 0.45).y - this.pos.y <= 0.5;
+        if (okX && (!okZ || Math.abs(mx) >= Math.abs(mz))) next.set(this.pos.x + mx, this.pos.y, this.pos.z);
+        else if (okZ) next.set(this.pos.x, this.pos.y, this.pos.z + mz);
+        else next.set(this.pos.x, this.pos.y, this.pos.z);
+      }
     }
-    this.col.resolve(next, 0.32);
+    const wantX = next.x - this.pos.x, wantZ = next.z - this.pos.z;
+    const pre = next.clone();
+    if (this.col.resolve(next, 0.32) && this.col.hitRound) {
+      // walking square into a trunk or a post: the push-out cancels the move and the walker would stand there
+      // pressing on it; side-step round it instead, to the side the move already leans to
+      const px = next.x - pre.x, pz = next.z - pre.z, pl = Math.hypot(px, pz), wl = Math.hypot(wantX, wantZ);
+      if (pl > 1e-5 && wl > 1e-5 && (wantX * px + wantZ * pz) / (pl * wl) < -0.85) {
+        const tx = -pz / pl, tz = px / pl;
+        const side = wantX * tx + wantZ * tz >= 0 ? 1 : -1;
+        next.x += tx * side * wl * 0.7;
+        next.z += tz * side * wl * 0.7;
+        this.col.resolve(next, 0.32);
+      }
+    }
     this.pos.x = next.x;
     this.pos.z = next.z;
 

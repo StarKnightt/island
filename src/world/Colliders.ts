@@ -35,7 +35,11 @@ export class Colliders {
   private key(i: number, j: number) {
     return (i + 4096) * 8192 + (j + 4096);
   }
-  private cells(minX: number, maxX: number, minZ: number, maxZ: number) {
+  /** obstacle buckets reach this far past their extent, so `resolve` (which looks only in the walker's own cell)
+   * also sees obstacles just across a cell border that the walker's radius overlaps */
+  private static PAD = 0.6;
+  private cells(minX: number, maxX: number, minZ: number, maxZ: number, pad = 0) {
+    minX -= pad; maxX += pad; minZ -= pad; maxZ += pad;
     const out: number[] = [];
     for (let i = Math.floor(minX / CELL); i <= Math.floor(maxX / CELL); i++)
       for (let j = Math.floor(minZ / CELL); j <= Math.floor(maxZ / CELL); j++) out.push(this.key(i, j));
@@ -52,14 +56,14 @@ export class Colliders {
 
   circle(x: number, z: number, r: number, y0 = -1e9, y1 = 1e9) {
     const o: Obstacle = { kind: 'circle', x, z, r, hx: r, hz: r, c: 1, s: 0, y0, y1 };
-    for (const k of this.cells(x - r, x + r, z - r, z + r)) this.bucket(k).obs.push(o);
+    for (const k of this.cells(x - r, x + r, z - r, z + r, Colliders.PAD)) this.bucket(k).obs.push(o);
     this.count++;
   }
 
   /** oriented box obstacle: centre, half extents, rotation about y */
   box(x: number, z: number, hx: number, hz: number, rot: number, y0 = -1e9, y1 = 1e9) {
     const o: Obstacle = { kind: 'box', x, z, r: Math.hypot(hx, hz), hx, hz, c: Math.cos(rot), s: Math.sin(rot), y0, y1 };
-    for (const k of this.cells(x - o.r, x + o.r, z - o.r, z + o.r)) this.bucket(k).obs.push(o);
+    for (const k of this.cells(x - o.r, x + o.r, z - o.r, z + o.r, Colliders.PAD)) this.bucket(k).obs.push(o);
     this.count++;
   }
 
@@ -69,7 +73,7 @@ export class Colliders {
    */
   ring(x: number, z: number, ri: number, ro: number, y0: number, y1: number, gaps: RingGap[] = []) {
     const o: Obstacle = { kind: 'ring', x, z, r: ro, hx: ro, hz: ro, c: 1, s: 0, y0, y1, ri, ro, gaps };
-    for (const k of this.cells(x - ro, x + ro, z - ro, z + ro)) this.bucket(k).obs.push(o);
+    for (const k of this.cells(x - ro, x + ro, z - ro, z + ro, Colliders.PAD)) this.bucket(k).obs.push(o);
     this.count++;
     // jamb posts at the opening's edges (thin: the ring itself keeps walkers out of the wall)
     for (const g of gaps) for (const side of [-1, 1]) for (const rr of [ri, ro]) {
@@ -118,8 +122,12 @@ export class Colliders {
     return false;
   }
 
+  /** whether the last `resolve` pushed the walker off a round obstacle (a trunk, a post) */
+  hitRound = false;
+
   /** push a circle of radius r at feet height y (and head height y + 1.7) out of obstacles */
   resolve(p: THREE.Vector3, r: number) {
+    this.hitRound = false;
     const b = this.grid.get(this.key(Math.floor(p.x / CELL), Math.floor(p.z / CELL)));
     if (!b) return false;
     let hit = false;
@@ -130,7 +138,7 @@ export class Colliders {
         if (d < m && d > 1e-6) {
           p.x = o.x + (dx / d) * m;
           p.z = o.z + (dz / d) * m;
-          hit = true;
+          hit = this.hitRound = true;
         }
       } else if (o.kind === 'ring') {
         const dx = p.x - o.x, dz = p.z - o.z, d = Math.hypot(dx, dz);

@@ -430,6 +430,7 @@ async function boot() {
     },
     act: (a: string, s: number, yaw?: number) => player.act(input, a, s, yaw, rig.yaw),
     state: () => player.state_(),
+    obj: player,
   };
   installHarness(ctx);
   ctx.timeline = timeline;
