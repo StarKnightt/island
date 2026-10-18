@@ -65,6 +65,20 @@ export function installHarness(ctx: Ctx) {
     getWeather() {
       return ctx.weather?.state() ?? null;
     },
+    /**
+     * Time-lapse (for filming the automatic day cycle and a squall): `dayMinutes` runs the clock with a day that
+     * long (e.g. 0.4 = a whole day in 24 s; the light, sky, clouds, lamps and exposure all follow); `squall` runs one
+     * squall from a clear sky that many times faster than life (gathering 70 s, rain 150 s, clearing 80 s at 1x).
+     * timelapse({}) restores the normal day length and real-time weather.
+     */
+    timelapse(o: { dayMinutes?: number; squall?: number }) {
+      if (o.dayMinutes) {
+        tod.dayMinutes = o.dayMinutes;
+        tod.frozen = false;
+      } else tod.dayMinutes = ctx.dayMinutes ?? 30;
+      ctx.weather?.squall(o.squall ?? 0);
+      return { time: api.getTime(), weather: api.getWeather() };
+    },
     /** move the player to a named spot (beach, jungle, waterfall, village, cliffs, lighthouse) */
     spot(name: string) {
       return ctx.player?.toSpot(name) ?? ctx.goSpot?.(name) ?? null;

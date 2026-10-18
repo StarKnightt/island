@@ -40,6 +40,10 @@ export class Weather {
   wet = 0;
   wind = 0.3;
   auto = true;
+  /** how fast the weather runs (time-lapses); 1 = real time */
+  speed = 1;
+  /** a scripted squall (time-lapses): fixed phase lengths instead of random ones */
+  private scripted = false;
   private rng = new Rng(4711);
   readonly group = new THREE.Group();
   /** lightning: next strike time, current flash */
@@ -56,12 +60,35 @@ export class Weather {
   }
 
   private durationFor(k: WeatherKind) {
+    if (this.scripted) return k === 'clear' ? 1e9 : k === 'gathering' ? 70 : k === 'rain' ? 150 : 80;
     const r = this.rng;
     return k === 'clear' ? r.range(240, 520) : k === 'gathering' ? r.range(55, 85) : k === 'rain' ? r.range(140, 260) : r.range(60, 95);
   }
 
+  /**
+   * One squall from a clear sky, `speed` times faster than life (for a time-lapse): the cloud gathers (70 s), rains
+   * (150 s), clears (80 s), and stays clear. speed 0 ends it and returns to real time.
+   */
+  squall(speed: number) {
+    if (speed <= 0) {
+      this.scripted = false;
+      this.speed = 1;
+      return this.state();
+    }
+    this.set('clear', true);
+    this.auto = true;
+    this.scripted = true;
+    this.speed = speed;
+    this.kind = 'gathering';
+    this.t = 0;
+    this.dur = this.durationFor('gathering');
+    return this.state();
+  }
+
   /** force a state; immediate jumps straight to it (for captures) */
   set(w: 'clear' | 'rain' | 'auto', immediate = true) {
+    this.scripted = false;
+    this.speed = 1;
     if (w === 'auto') {
       this.auto = true;
       return this.state();
@@ -95,8 +122,9 @@ export class Weather {
     }
   }
 
-  update(dt: number) {
-    this.time += dt;
+  update(dtReal: number) {
+    const dt = dtReal * this.speed;
+    this.time += dtReal;
     if (this.auto) {
       this.t += dt / this.dur;
       if (this.t >= 1) {
@@ -119,7 +147,7 @@ export class Weather {
       this.flash = 1;
       this.onThunder?.(this.rng.range(0.8, 4.5), this.rng.range(0.5, 1));
     }
-    this.flash = Math.max(0, this.flash - dt * (this.flash > 0.6 ? 6 : 2.2));
+    this.flash = Math.max(0, this.flash - dtReal * (this.flash > 0.6 ? 6 : 2.2));
     this.apply();
     rainU.time.value = this.time;
   }

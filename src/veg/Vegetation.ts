@@ -14,6 +14,13 @@ import type { Heightfield } from '../world/Heightfield';
 import { HALF_WORLD, VILLAGE } from '../world/layout';
 import { sunLit } from '../core/lighting';
 import { SHARED_INSTANCES } from '../core/instancing';
+
+/**
+ * A rock to scatter: its mesh (base at the ground line), a low-poly copy for the distance (else one is made), radius
+ * in plan; `big` boulders also go on cliff coasts; `sink` scales how deep it is set into the ground (helper pieces
+ * already carry their buried part below y = 0).
+ */
+export interface RockModel { geometry: THREE.BufferGeometry; far?: THREE.BufferGeometry; material: THREE.Material; radius: number; big: boolean; sink?: number }
 import { grassClump, type PartGeo } from './geometry';
 import { wetness } from '../world/weatherUniforms';
 import { loadKTX2, configureTex } from '../core/Assets';
@@ -507,7 +514,7 @@ export class Vegetation {
    * Rocks (Poly Haven scans, loaded later): boulders along rocky coasts and cliff feet, embedded in steep ground,
    * round the pool and the falls, and mossy stones on the jungle floor.
    */
-  addRocks(models: { geometry: THREE.BufferGeometry; material: THREE.Material; radius: number; big: boolean }[]) {
+  addRocks(models: RockModel[]) {
     const hf = this.hf;
     const r = new Rng(909);
     const noise = new Noise2(5);
@@ -517,7 +524,7 @@ export class Vegetation {
       const g = m.geometry.clone();
       if (!g.getAttribute('wind')) g.setAttribute('wind', new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 3), 3));
       if (!g.getAttribute('color')) g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 3).fill(1), 3));
-      const g1 = clusterSimplify(g, m.radius * 0.14);
+      const g1 = m.far ? m.far.clone() : clusterSimplify(g, m.radius * 0.14);
       for (const k of ['wind', 'color']) g1.setAttribute(k, new THREE.BufferAttribute(new Float32Array(g1.getAttribute('position').count * 3).fill(k === 'color' ? 1 : 0), 3));
       // (only the big boulders cast shadows; the small stones are grounded by the AO)
       const sp = this.addSpecies(`rock${i}`, [
@@ -527,11 +534,11 @@ export class Vegetation {
       spOf.set(m, sp);
     }
     const lists = new Map<Species, number[]>();
-    const push = (m: { geometry: THREE.BufferGeometry; radius: number }, x: number, z: number, scale: number, sink: number) => {
+    const push = (m: RockModel, x: number, z: number, scale: number, sink: number) => {
       const sp = spOf.get(m)!;
       let l = lists.get(sp);
       if (!l) lists.set(sp, (l = []));
-      const y = hf.height(x, z) - sink * scale * m.radius;
+      const y = hf.height(x, z) - sink * (m.sink ?? 1) * scale * m.radius;
       l.push(x, y, z, r.next() * 6.28, scale, r.next());
       if (scale * m.radius > 0.6) this.colliders.circle(x, z, scale * m.radius * 0.8, y - 2, y + scale * m.radius * 1.6);
     };
@@ -572,7 +579,7 @@ export class Vegetation {
    * Sea cliffs: big boulders (3-7.5 m) embedded in the steep faces of cliff coasts and heaped at their feet, so the
    * cliffs get real relief the heightmap cannot carry. A vertex-clustered low-poly copy draws them beyond 120 m.
    */
-  private addCliffRocks(models: { geometry: THREE.BufferGeometry; material: THREE.Material; radius: number }[]) {
+  private addCliffRocks(models: RockModel[]) {
     const hf = this.hf;
     const r = new Rng(4711);
     const noise = new Noise2(17);
@@ -587,7 +594,7 @@ export class Vegetation {
       m,
       sp: this.addSpecies(`cliffrock${i}`, [
         { maxDist: 80, parts: [{ geometry: withAttrs(m.geometry.clone()), part: 'rock', material: m.material }], shadow: true },
-        { maxDist: 950, parts: [{ geometry: withAttrs(clusterSimplify(m.geometry, m.radius * 0.17)), part: 'rock', material: m.material }], shadow: true },
+        { maxDist: 950, parts: [{ geometry: withAttrs(m.far ? m.far.clone() : clusterSimplify(m.geometry, m.radius * 0.17)), part: 'rock', material: m.material }], shadow: true },
       ], m.radius * 2, RMAX * 2 + 2),
     }));
     const lists = new Map<Species, number[]>();
@@ -611,7 +618,8 @@ export class Vegetation {
       const R = face ? r.range(3.0, RMAX) : r.range(2.2, 6.5);
       const sc = R / pick.m.radius;
       // foot boulders stand on the sea bed and break the surface
-      const y = face ? h - 0.55 * R : Math.max(h, -R * 0.9) - 0.3 * R;
+      const sink = pick.m.sink ?? 1;
+      const y = face ? h - 0.55 * sink * R : Math.max(h, -R * 0.9) - 0.3 * sink * R;
       let l = lists.get(pick.sp);
       if (!l) lists.set(pick.sp, (l = []));
       l.push(px, y, pz, r.next() * 6.28, sc, r.next());

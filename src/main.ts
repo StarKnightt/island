@@ -3,7 +3,7 @@ import { SunShadowNode, addSunOcclusion } from './sky/SunShadow';
 import { Engine, grade } from './core/Engine';
 import { params, TOD_PRESETS } from './core/params';
 import { Q, preset, gpuName } from './core/quality';
-import { initAssets, progress as assetProgress, loadGLTF } from './core/Assets';
+import { initAssets, progress as assetProgress } from './core/Assets';
 import { Heightfield } from './world/Heightfield';
 import { Terrain } from './world/Terrain';
 import { createTerrainMaterial, terrainU } from './world/TerrainMaterial';
@@ -16,13 +16,13 @@ import { SPOTS, LIGHTHOUSE, HALF_WORLD, WORLD_SIZE } from './world/layout';
 import { wetness } from './world/weatherUniforms';
 import { Ocean, oceanU } from './water/Ocean';
 import { Spray, sprayU } from './water/Spray';
-import { toFloatGeometry, setPlantSkyMaps } from './veg/glb';
+import { setPlantSkyMaps, loadVariants, rockMaterial } from './veg/glb';
 import { setSunLight } from './core/lighting';
 import { Colliders } from './world/Colliders';
 import { Input } from './player/Input';
 import { CameraRig } from './player/CameraRig';
 import { Player } from './player/Player';
-import { Vegetation, vegU } from './veg/Vegetation';
+import { Vegetation, vegU, type RockModel } from './veg/Vegetation';
 import { buildCanopy } from './veg/Canopy';
 import { Hud } from './ui/Hud';
 import { DebugOverlay } from './ui/DebugOverlay';
@@ -139,39 +139,21 @@ async function boot() {
   mark('vegetation built');
   if (!skip.has('veg')) scene.add(veg.group);
   if (!skip.has('canopy')) scene.add(buildCanopy(hf, renderer));
-  // rocks stream in with the props
+  // rocks stream in with the props: the helper's jointed basalt blocks (the island's own dark volcanic rock, the cliff
+  // kit's palette), each set into the ground by its buried part rather than resting on its lowest point
   const rocksReady = (async () => {
-    const out: { geometry: THREE.BufferGeometry; material: THREE.Material; radius: number; big: boolean }[] = [];
-    const tinted = new Set<THREE.Material>();
-    // tints take each scan's mean albedo (namaqualand 0.37/0.26/0.15, moss 0.05/0.03/0.015 linear) to the island's
-    // dark grey basalt (~0.07) so they match the cliff rock; the moss keeps some of its green
-    for (const [name, big, tint] of [['rock_moss_set_01', false, [1.0, 1.15, 1.4]], ['namaqualand_boulder_05', true, [0.19, 0.26, 0.44]]] as [string, boolean, [number, number, number]][]) {
-      const g = await loadGLTF(`assets/props/${name}.glb`);
-      g.scene.updateMatrixWorld(true);
-      let kept = 0;
-      g.scene.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (!m.isMesh) return;
-        // three of the moss set's six rocks: each kept rock is its own species (draw calls in every pass)
-        if (!big && kept++ % 2 === 1) return;
-        // quantized (normalized int16, often interleaved) attributes would clamp to +-1 once transformed to metres
-        const geo = toFloatGeometry(m.geometry);
-        geo.applyMatrix4(m.matrixWorld);
-        geo.computeBoundingBox();
-        const bb = geo.boundingBox!;
-        // centre in plan, base at y = 0
-        const cx = (bb.min.x + bb.max.x) / 2, cz = (bb.min.z + bb.max.z) / 2;
-        geo.translate(-cx, -bb.min.y, -cz);
-        geo.computeBoundingSphere();
-        const radius = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2;
-        const mat = m.material as THREE.MeshStandardMaterial;
-        if (!tinted.has(mat)) {
-          tinted.add(mat);
-          mat.color?.multiply(new THREE.Color(...tint));
-        }
-        out.push({ geometry: geo, material: mat, radius: Math.max(0.3, radius), big });
-      });
-    }
+    const set = await loadVariants('assets/rocks/boulders.glb');
+    const mats = new Map<THREE.Material, THREE.Material>();
+    const model = (name: string, big: boolean): RockModel | null => {
+      const v = set.get(name);
+      const near = v?.lods[0]?.[0], far = (v?.lods[1] ?? v?.lods[0])?.[0];
+      if (!v || !near || !far) return null;
+      let mat = mats.get(near.src);
+      if (!mat) mats.set(near.src, (mat = rockMaterial(near.src)));
+      for (const g of [near.geometry, far.geometry]) g.computeBoundingSphere();
+      return { geometry: near.geometry, far: far.geometry, material: mat, radius: Math.max(0.3, v.radius), big, sink: 0.4 };
+    };
+    const out = [model('basalt_a', false), model('basalt_b', false), model('basalt_c', true), model('basalt_d', true)].filter((m): m is RockModel => !!m);
     veg.addRocks(out);
     mark('rocks');
   })().catch((e) => console.warn('rocks', e));
@@ -367,6 +349,7 @@ async function boot() {
   Object.assign(ctx, {
     hf, terrain, sky, csm, ocean, spray, player, playerObj: player, cameraRig: rig, input, colliders, veg, kit, village, lighthouse, weather, audio, hud, dbg,
     rts: { transmittance: transmittanceRT, skyView: skyViewRT, cloud: cloudRT },
+    dayMinutes: params.dayMinutes,
     isBusy: () => streaming > 0 || assetProgress.pending > assetProgress.done,
   });
   // authored establishing cameras per spot (the harness's camera: 'shot')
