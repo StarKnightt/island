@@ -328,10 +328,11 @@ export class Vegetation {
     const hf = this.hf;
     const D = Q.density;
     const K = Q.lodScale;
-    const [coco, young, scrub, canopy, mid, under, floor] = await Promise.all([
+    const [coco, young, scrub, pandan, canopy, mid, under, floor] = await Promise.all([
       loadVariants('assets/veg/palms/coconut.glb', { palm_nut: 'palm_bark' }),
       loadVariants('assets/veg/palms/coconut_young.glb', { palm_nut: 'palm_bark' }),
       loadVariants('assets/veg/palms/scrub.glb'),
+      loadVariants('assets/veg/palms/pandanus.glb'),
       loadVariants('assets/veg/jungle/canopy_trees.glb'),
       loadVariants('assets/veg/jungle/midstorey_trees.glb'),
       loadVariants('assets/veg/jungle/understory.glb'),
@@ -359,6 +360,8 @@ export class Vegetation {
     const tallVar = get(scrub, 'scrub_c');
     for (let k = 1; k < tallVar.lods.length; k++) tallVar.lods[k] = tallVar.lods[k].filter((p) => p.mat !== 'scrub_wood');
     const tall = this.glbSpecies(tallVar, [40 * K, 130 * K, 420], [true, false, false], lowLook);
+    // pandanus (screw pine): leaning, forked, on stilt roots, at the back of the beaches and on the rocky shores
+    const pandans = ['a', 'b'].map((k) => this.glbSpecies(get(pandan, `pandanus_${k}`), [50 * K, 160 * K, 600], [true, false, false], { sway: 0.04, height: 7, translucent: 0.3, storm: 1.8 }));
     // far canopy trees: the crown as lumpy opaque ellipsoids over the lod2 bark (see crownProxy), out to 800 m; past
     // that a crown is a few pixels across and the canopy shell's baked crowns carry the forest to the horizon
     const greens: Record<string, [number, number, number]> = { a: [0.04, 0.066, 0.018], b: [0.028, 0.05, 0.014], c: [0.045, 0.072, 0.02], d: [0.034, 0.058, 0.016] };
@@ -457,6 +460,34 @@ export class Vegetation {
       // scrub_d is pruned low on its +x side: face that to the sea
       const sp = r.pick(scrubs);
       push(sp, px, pz, sp === scrubs[2] ? -toSea(px, pz) : r.next() * 6.28, r.range(0.75, 1.25), 0.15);
+    }
+    // pandanus: lone trees and clumps of two or three on the berm behind the beaches and along the rock shelves,
+    // where the salt spray keeps the palms back; they lean out over the sand toward the sea (+x of the model)
+    const PS = 9 / Math.sqrt(D);
+    for (let z = -700; z < 700; z += PS) for (let x = -950; x < 950; x += PS) {
+      const px = x + r.range(-0.5, 0.5) * PS, pz = z + r.range(-0.5, 0.5) * PS;
+      const s = hf.shoreDist(px, pz);
+      if (s < 9 || s > 48) continue;
+      const h = hf.height(px, pz);
+      if (h < 1.3 || h > 40 || hf.water(px, pz) > 0.1 || hf.normal(px, pz).y < 0.82) continue;
+      const kind = hf.coastKind(px, pz);
+      const near = 1 - THREE.MathUtils.smoothstep(s, 22, 48);
+      const patch = THREE.MathUtils.smoothstep(noise.fbm(px / 40 - 13, pz / 40 + 5, 2), 0.05, 0.4);
+      // fewer in the village (its ground stays open) and none in the opening views
+      const vk = THREE.MathUtils.smoothstep(Math.hypot(px - VILLAGE.center[0], pz - VILLAGE.center[1]), 60, 110);
+      const p = near * patch * (kind > 0.4 && kind < 1.6 ? 0.55 : 0.3) * vk;
+      if (r.next() > p) continue;
+      const n = r.next() < 0.45 ? 1 : r.next() < 0.7 ? 2 : 3;
+      for (let i = 0; i < n; i++) {
+        const a = r.next() * 6.28, d = i === 0 ? 0 : r.range(2.5, 4.5);
+        const qx = px + Math.cos(a) * d, qz = pz + Math.sin(a) * d;
+        if (!free(qx, qz, 1.6) || inSightline(qx, qz) || hf.normal(qx, qz).y < 0.82) continue;
+        const sc = r.range(0.8, 1.15) * (i === 0 ? 1 : 0.85);
+        push(r.pick(pandans), qx, qz, -toSea(qx, qz) + r.range(-0.6, 0.6), sc, 0.1);
+        claim(qx, qz, 1.4);
+        const qh = hf.height(qx, qz);
+        this.colliders.circle(qx, qz, 0.45 * sc, qh - 1, qh + 5);
+      }
     }
     // ---- scrubland: the open grass slopes inland (the hills behind the village, the cliff tops, the headland round
     // the summit) grown over with thickets of shrubs and a few small trees, as untended tropical grassland is, not
@@ -565,7 +596,7 @@ export class Vegetation {
       if (r.next() < 0.02 && free(px, pz, 2)) push(r.pick(logs), px, pz, r.next() * 6.28, r.range(0.8, 1.2), 0.1);
     }
     let total = 0;
-    for (const sp of [...palms, ...youngs, ...scrubs, tall, ...trees, ...mids, ...unders, ...grounds, ...litter, ...logs]) {
+    for (const sp of [...palms, ...youngs, ...scrubs, tall, ...pandans, ...trees, ...mids, ...unders, ...grounds, ...litter, ...logs]) {
       this.setInstances(sp, lists.get(sp) ?? []);
       total += sp.count;
     }
