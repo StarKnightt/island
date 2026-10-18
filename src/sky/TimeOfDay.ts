@@ -86,7 +86,7 @@ export class TimeOfDay {
     } else {
       const m = Math.max(0, this.moon.y);
       this.light.color.setRGB(0.62, 0.74, 1.0);
-      const moonE = 0.045 * THREE.MathUtils.smoothstep(m, 0.0, 0.25);
+      const moonE = 0.07 * THREE.MathUtils.smoothstep(m, -0.02, 0.22);
       this.light.intensity = moonE * (1 - this.overcast * 0.9);
       (clouds.lightDir.value as THREE.Vector3).copy(this.moon);
       cl.setRGB(0.62, 0.74, 1.0).multiplyScalar(moonE * 0.5);
@@ -102,7 +102,7 @@ export class TimeOfDay {
     // screen than noon) with silhouettes readable against the sky
     const L = (E * 0.18) / Math.PI;
     // under a storm overcast the eye does not fully open up: rain stays moody instead of a bright flat day
-    this.exposureTarget = THREE.MathUtils.clamp(0.42 / Math.pow(L, 0.66), 0.15, 14) * (1 - 0.3 * this.overcast);
+    this.exposureTarget = THREE.MathUtils.clamp(0.42 / Math.pow(L, 0.66), 0.15, 20) * (1 - 0.3 * this.overcast);
     void clouds;
   }
 }

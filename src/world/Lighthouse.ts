@@ -10,7 +10,7 @@ import { KitBuilder, box, cylinder, pbr, flat, tubeGeo, poly, MeshAcc } from './
 import type { Heightfield } from './Heightfield';
 import type { Colliders } from './Colliders';
 import { LIGHTHOUSE } from './layout';
-import { float, uniform, vec3, vec4, smoothstep, abs, positionLocal, length, mix, pow, max, cameraPosition, positionWorld, normalize, dot } from '../core/tsl';
+import { float, uniform, vec3, vec4, smoothstep, abs, positionLocal, length, mix, pow, max, min, cameraPosition, positionWorld, normalize, dot } from '../core/tsl';
 import { atmo } from '../sky/Atmosphere';
 
 export const lighthouseU = { angle: uniform(0), on: uniform(0) };
@@ -248,7 +248,7 @@ export class Lighthouse {
     const core = pow(smoothstep(1.0, 0.0, rad), 2.0);
     const view = abs(dot(normalize(positionWorld.sub(cameraPosition)), normalize(positionWorld.sub(vec3(this.lampPos.x, this.lampPos.y, this.lampPos.z)))));
     const k = smoothstep(0.0, 0.015, along).mul(pow(float(1).sub(along), 2.2)).mul(core).mul(mix(float(1), float(0.3), view));
-    bm.colorNode = vec4(vec3(1.0, 0.86, 0.62).mul(k).mul(lighthouseU.on).mul(float(0.25).add(atmo.mist.mul(9000))), 1);
+    bm.colorNode = vec4(vec3(1.0, 0.86, 0.62).mul(k).mul(lighthouseU.on).mul(float(0.25).add(min(atmo.mist.mul(9000), 6.5))), 1);
     this.beam = new THREE.Mesh(cone, bm);
     const beam2 = new THREE.Mesh(cone, bm);
     beam2.rotation.y = Math.PI;

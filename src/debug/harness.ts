@@ -150,6 +150,23 @@ export function installHarness(ctx: Ctx) {
       const data = await engine.renderer.readRenderTargetPixelsAsync(rt, x, y, w, h);
       return Array.from(data as ArrayLike<number>).slice(0, w * h * 4);
     },
+    /**
+     * What the camera sees at a screen point (x, y from the top left, 0..1): the nearest meshes along the ray, each
+     * with its name, its parent's name, distance, hit point and instance. `root` limits the search to one named group
+     * ('rockkit', 'vegetation', 'village', 'river', 'lighthouse'); the terrain and ocean are shaded on the GPU and are
+     * not found.
+     */
+    pick(x: number, y: number, root?: string) {
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(x * 2 - 1, 1 - y * 2), engine.camera);
+      ray.camera = engine.camera;
+      const from = root ? engine.scene.getObjectByName(root) : engine.scene;
+      if (!from) return null;
+      return ray.intersectObject(from, true).filter((h) => h.object.visible).slice(0, 4).map((h) => ({
+        name: h.object.name, parent: h.object.parent?.name ?? '', d: +h.distance.toFixed(2),
+        p: h.point.toArray().map((v) => +v.toFixed(2)), instance: h.instanceId ?? null,
+      }));
+    },
     info() {
       const r = engine.renderer.info;
       return { drawCalls: r.render.drawCalls, triangles: r.render.triangles, geometries: r.memory.geometries, textures: r.memory.textures, terrainNodes: ctx.terrain?.selected };

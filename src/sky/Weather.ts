@@ -6,8 +6,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-  Fn, float, fract, hash, instanceIndex, length, mix, smoothstep, texture, uniform, uv, vec2, vec3, vec4, cameraPosition,
-  max, positionView, abs, sin, type N,
+  Fn, float, fract, hash, instanceIndex, length, smoothstep, texture, uniform, uv, vec2, vec3, vec4, cameraPosition,
+  cameraViewMatrix, max, abs, atan, type N,
 } from '../core/tsl';
 import { clouds } from './Sky';
 import { atmo } from './Atmosphere';
@@ -130,7 +130,9 @@ export class Weather {
     clouds.thickness.value = THREE.MathUtils.lerp(0.2, 1.0, c);
     atmo.overcast.value = THREE.MathUtils.smoothstep(c, 0.3, 1.0) * 0.95;
     atmo.mieScatter.value = THREE.MathUtils.lerp(6.5e-6, 1.6e-5, c);
-    atmo.mist.value = this.rain * 7e-4;
+    // a tropical downpour: visibility down to about a kilometre and a half, every layer of distance paler
+    atmo.mist.value = this.rain * 2.4e-3;
+    clouds.rain.value = this.rain;
     wetness.rain.value = this.wet;
     wetness.intensity.value = this.rain;
     wetness.wind.value = this.wind;
@@ -142,10 +144,16 @@ export class Weather {
     if (this.prime > 0) this.prime--;
     rainU.flash.value = this.flash;
     const wd = wetness.windDir.value as THREE.Vector2;
-    rainU.wind.value.set(wd.x * this.wind * 3.5, wd.y * this.wind * 3.5);
+    // a squall's wind drives the rain at 30-40 degrees
+    rainU.wind.value.set(wd.x * this.wind * 8, wd.y * this.wind * 8);
   }
 
-  /** rain streaks: velocity-stretched quads in a box that follows the camera */
+  /**
+   * Rain: drops falling with the wind in a box that follows the camera, each drawn as the streak a camera sees in a
+   * 1/15 s exposure: along its own motion on screen (slanted downwind, short when it falls toward the lens), about a
+   * pixel and a half wide at any distance, lit by the light around it, so streaks show against dark trees and rock
+   * and vanish against the bright sky.
+   */
   private buildRain() {
     const count = Q.rainParticles;
     const m = new THREE.SpriteNodeMaterial();
@@ -153,32 +161,36 @@ export class Weather {
     m.depthWrite = false;
     m.blending = THREE.NormalBlending;
     const id = float(instanceIndex);
-    const box = vec3(36, 22, 36);
+    const box = vec3(40, 24, 40);
     const seed = vec3(hash(id.mul(1.31)), hash(id.mul(7.77)), hash(id.mul(3.19)));
-    const speed = float(9.5).add(seed.x.mul(2.5));
-    const fall = rainU.time.mul(speed);
+    const speed = float(8).add(seed.x.mul(3.5));
+    const t = rainU.time;
     // positions wrap inside a camera-centred box
     const base = seed.mul(box);
     const p = vec3(
-      fract(base.x.add(rainU.wind.x.mul(rainU.time)).sub(cameraPosition.x).div(box.x)).sub(0.5).mul(box.x).add(cameraPosition.x),
-      fract(base.y.sub(fall).sub(cameraPosition.y).div(box.y)).sub(0.5).mul(box.y).add(cameraPosition.y),
-      fract(base.z.add(rainU.wind.y.mul(rainU.time)).sub(cameraPosition.z).div(box.z)).sub(0.5).mul(box.z).add(cameraPosition.z),
+      fract(base.x.add(rainU.wind.x.mul(t)).sub(cameraPosition.x).div(box.x)).sub(0.5).mul(box.x).add(cameraPosition.x),
+      fract(base.y.sub(speed.mul(t)).sub(cameraPosition.y).div(box.y)).sub(0.5).mul(box.y).add(cameraPosition.y),
+      fract(base.z.add(rainU.wind.y.mul(t)).sub(cameraPosition.z).div(box.z)).sub(0.5).mul(box.z).add(cameraPosition.z),
     );
     m.positionNode = p;
+    const vv = cameraViewMatrix.mul(vec4(rainU.wind.x, speed.negate(), rainU.wind.y, 0)).xy;
     const dist = length(p.sub(cameraPosition));
-    m.scaleNode = vec2(0.012, float(0.55).add(seed.y.mul(0.3)));
-    const fade = smoothstep(0.6, 2.5, dist).mul(smoothstep(18, 10, dist));
+    m.rotationNode = atan(vv.x.negate(), vv.y);
+    m.scaleNode = vec2(max(float(0.005), dist.mul(0.0015)), length(vv).mul(1 / 15).max(0.04));
+    const fade = smoothstep(0.7, 2.5, dist).mul(smoothstep(21, 12, dist));
     const keep = smoothstep(seed.z.sub(0.02), seed.z, rainU.intensity);
-    const a = fade.mul(keep).mul(0.3).mul(smoothstep(0.0, 0.15, rainU.intensity));
-    m.colorNode = vec4(vec3(0.75, 0.78, 0.82).mul(float(1).add(rainU.flash.mul(3))), a);
-    m.opacityNode = a.mul(smoothstep(0.5, 0.2, abs(uv().x.sub(0.5))));
+    const a = fade.mul(keep).mul(0.34).mul(smoothstep(0.0, 0.15, rainU.intensity));
+    // a drop refracts the sky and the light around it: about as bright as a pale surface under that light
+    const lit = float(atmo.lightE).mul(0.85 / Math.PI).mul(float(1).add(rainU.flash.mul(3)));
+    m.colorNode = vec4(vec3(0.92, 0.95, 1.0).mul(lit), a);
+    const across = abs(uv().x.sub(0.5)), along = uv().y;
+    m.opacityNode = a.mul(smoothstep(0.5, 0.1, across)).mul(smoothstep(0.0, 0.25, along)).mul(smoothstep(1.0, 0.7, along));
     const sprite = new THREE.Sprite(m);
     (sprite as unknown as { count: number }).count = count;
     sprite.frustumCulled = false;
     sprite.renderOrder = 30;
     sprite.name = 'rain';
     this.group.add(sprite);
-    void positionView; void max; void sin; void mix;
   }
 
   /** splashes: brief bright rings on the ground or the sea near the camera */
@@ -201,7 +213,7 @@ export class Weather {
     m.scaleNode = vec2(s, s.mul(0.45));
     const ring = smoothstep(0.5, 0.35, length(uv().sub(0.5))).mul(smoothstep(0.15, 0.32, length(uv().sub(0.5))));
     const a = ring.mul(float(1).sub(life)).mul(rainU.intensity).mul(0.5).mul(smoothstep(hash(id.mul(2.2)).sub(0.05), hash(id.mul(2.2)), rainU.intensity));
-    m.colorNode = vec4(vec3(0.85, 0.88, 0.9), a);
+    m.colorNode = vec4(vec3(0.9, 0.92, 0.95).mul(float(atmo.lightE).mul(1 / Math.PI)), a);
     m.opacityNode = a;
     const sprite = new THREE.Sprite(m);
     (sprite as unknown as { count: number }).count = count;

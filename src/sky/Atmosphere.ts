@@ -288,7 +288,9 @@ export function aerialFogNode() {
     const v = normalize(positionWorld.sub(cameraPosition));
     const dir = vec3(v.x, max(v.y, 0.02), v.z).normalize();
     const sky = skyRadiance(dir);
-    return mix(sky, vec3(atmo.mistColor).mul(sky.dot(vec3(0.3, 0.5, 0.2)).max(0.0001).mul(1.1)), atmo.overcast);
+    // under an overcast the haze is the grey of the overcast sky's horizon (Sky.ts: a third of the dome overhead)
+    const lumZ = skyRadiance(vec3(0, 1, 0)).dot(vec3(0.2126, 0.7152, 0.0722));
+    return mix(sky, vec3(atmo.mistColor).mul(lumZ.mul(0.85)), atmo.overcast);
   })();
   return fog(colorN, factor);
 }

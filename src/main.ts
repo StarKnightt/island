@@ -12,11 +12,12 @@ import { TimeOfDay } from './sky/TimeOfDay';
 import { aerialFogNode, atmo, transmittanceRT, skyViewRT } from './sky/Atmosphere';
 import { Loading } from './ui/Loading';
 import { installHarness, type Ctx } from './debug/harness';
-import { SPOTS, LIGHTHOUSE } from './world/layout';
+import { SPOTS, LIGHTHOUSE, HALF_WORLD, WORLD_SIZE } from './world/layout';
 import { wetness } from './world/weatherUniforms';
 import { Ocean, oceanU } from './water/Ocean';
 import { Spray, sprayU } from './water/Spray';
-import { toFloatGeometry } from './veg/glb';
+import { toFloatGeometry, setPlantSkyMaps } from './veg/glb';
+import { setSunLight } from './core/lighting';
 import { Colliders } from './world/Colliders';
 import { Input } from './player/Input';
 import { CameraRig } from './player/CameraRig';
@@ -77,6 +78,7 @@ async function boot() {
   csm.fade = true;
   sunLight.shadow.shadowNode = csm;
   scene.add(sunLight, sunLight.target);
+  setSunLight(sunLight);
 
   const tod = new TimeOfDay(sunLight);
   ctx.tod = tod;
@@ -125,6 +127,7 @@ async function boot() {
 
   // ---- vegetation
   loading.status('Growing the jungle');
+  setPlantSkyMaps(hf.mask0Tex, hf.heightTex, HALF_WORLD, WORLD_SIZE);
   const veg = new Vegetation(hf, colliders);
   const tv = performance.now();
   veg.build();
@@ -135,7 +138,7 @@ async function boot() {
   }, (e) => console.warn('plants', e));
   mark('vegetation built');
   if (!skip.has('veg')) scene.add(veg.group);
-  if (!skip.has('canopy')) scene.add(buildCanopy(hf));
+  if (!skip.has('canopy')) scene.add(buildCanopy(hf, renderer));
   // rocks stream in with the props
   const rocksReady = (async () => {
     const out: { geometry: THREE.BufferGeometry; material: THREE.Material; radius: number; big: boolean }[] = [];
@@ -280,7 +283,7 @@ async function boot() {
     kit.update(camera);
     vegU.time.value = t;
     river.update(t);
-    village.update(t, (i) => ocean.sim.probe(i));
+    village.update(t, (i) => ocean.sim.probe(i), tod.night);
     lighthouse.update(dt, tod.night);
     hud.update(dt, player.pos.x, player.pos.z, tod.hour, weather.kind);
     dbg.update(dt);
@@ -350,7 +353,8 @@ async function boot() {
     beach: { pos: [584, H(584, 64) + 2.4, 64], target: [652, 2.2, 18], fov: 55 },
     jungle: { pos: [358, H(358, 32) + 1.8, 32], target: [376, H(376, 4) + 4.5, 4], fov: 60 },
     waterfall: { pos: [186, H(186, -42) + 1.7, -42], target: [147, hf.meta.falls.bottom + (hf.meta.falls.top - hf.meta.falls.bottom) * 0.47, -55], fov: 58 },
-    village: { pos: [-428, H(-428, 352) + 2.6, 352], target: [-470, 3.5, 306], fov: 55 },
+    // from the end of the main jetty back along its planks, past the moored canoes, to the huts and the palms
+    village: { pos: [-447.5, 3.35, 390], target: [-466, 3.2, 300], fov: 58 },
     // from a boat off the north coast, along the 50-80 m sea cliffs
     cliffs: { pos: [-90, 5, -660], target: [-330, 35, -600], fov: 55 },
     // standing on the gallery inside the railing, looking out over the island to the beach and the sea

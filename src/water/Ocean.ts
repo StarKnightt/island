@@ -254,7 +254,8 @@ export class Ocean {
       // ---- light scattered by the water itself (lit like a diffuse albedo): over the lagoons the fine carbonate silt
       // in suspension scatters blue-green (turquoise); past the reef drop-off clear ocean water is navy; bubbles pale
       const lagoon = smoothstep(14, 4, max(ground.negate(), 0));
-      const deep = mix(vec3(0.0026, 0.0145, 0.032), vec3(0.008, 0.075, 0.085), lagoon);
+      // (a squall stirs the sea to slate grey-green)
+      const deep = mix(mix(vec3(0.0026, 0.0145, 0.032), vec3(0.008, 0.075, 0.085), lagoon), vec3(0.0085, 0.0135, 0.0135), oceanU.storm.mul(0.7));
       const inscat = deep.mul(float(1).sub(exp(path.mul(mix(float(-0.12), float(-0.3), lagoon)))));
       const body = mix(inscat, vec3(0.22, 0.33, 0.32), aer.mul(0.55));
 

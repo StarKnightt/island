@@ -11,7 +11,8 @@ import {
 } from '../core/tsl';
 import { Rng, Noise2 } from '../core/noise';
 import type { Heightfield } from '../world/Heightfield';
-import { HALF_WORLD } from '../world/layout';
+import { HALF_WORLD, VILLAGE } from '../world/layout';
+import { sunLit } from '../core/lighting';
 import { grassClump, type PartGeo } from './geometry';
 import { wetness } from '../world/weatherUniforms';
 import { loadKTX2, configureTex } from '../core/Assets';
@@ -79,7 +80,7 @@ function makeMaterials(): { mats: MatSet; texNodes: Record<string, N[]> } {
   };
   const vcol = attribute('color', 'vec3');
   const mk = (name: string, opts: { alpha?: boolean; key?: string; nkey?: string; tint?: [number, number, number]; rough: number; height: number; flat?: [number, number, number]; translucent?: number }) => {
-    const m = new THREE.MeshStandardNodeMaterial();
+    const m = sunLit(new THREE.MeshStandardNodeMaterial());
     m.name = `veg_${name}`;
     let col: N;
     let alpha: N = float(1);
@@ -386,7 +387,9 @@ export class Vegetation {
       const band = THREE.MathUtils.smoothstep(s, 7, 20) * (1 - THREE.MathUtils.smoothstep(s, 60, 140));
       const edge = Math.max(sand * 0.95, 0.35) * (1 - forest * 0.5);
       const grove = THREE.MathUtils.smoothstep(noise.fbm(px / 55, pz / 55, 3), -0.35, 0.35);
-      const p = band * edge * (0.25 + 0.75 * grove) * 0.42;
+      // the village keeps its ground open between the huts: a few shade palms, the groves round it
+      const vk = THREE.MathUtils.smoothstep(Math.hypot(px - VILLAGE.center[0], pz - VILLAGE.center[1]), 50, 110);
+      const p = band * edge * (0.25 + 0.75 * grove) * 0.42 * (0.12 + 0.88 * vk);
       if (r.next() > p || !free(px, pz, 1.2)) continue;
       // near the sea the short leaners (a, b), behind them the tall ones (d, e, f)
       const inland = THREE.MathUtils.smoothstep(s, 15, 70);

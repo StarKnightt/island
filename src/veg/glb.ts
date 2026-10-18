@@ -19,6 +19,7 @@ import { loadGLTF } from '../core/Assets';
 import { wetness } from '../world/weatherUniforms';
 import { atmo } from '../sky/Atmosphere';
 import { cloudShadow } from '../sky/Sky';
+import { sunLit } from '../core/lighting';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const { normalViewGeometry } = TSLTyped as any;
@@ -128,6 +129,28 @@ export async function loadVariants(url: string, merge: Record<string, string> = 
 
 export const glbU = { time: TSLTyped.uniform(0), sunColor: TSLTyped.uniform(new THREE.Color(1, 1, 1)) };
 
+/** the island's forest density (mask0 alpha) and heights, for how much open sky a leaf sees (set before plants load) */
+let skyMaps: { mask0: THREE.Texture; height: THREE.Texture; half: number; size: number } | null = null;
+export function setPlantSkyMaps(mask0: THREE.Texture, height: THREE.Texture, half: number, size: number) {
+  skyMaps = { mask0, height, half, size };
+}
+
+/**
+ * Share of the sky a point of a plant sees: in the forest, anything under the canopy's crowns (~14-28 m above the
+ * ground) sees mostly leaves overhead. Per vertex (the masks are smooth). Used as specular occlusion: an understory
+ * leaf mirrors the dark canopy above it, not the bright open sky (which, wet under an overcast, reads as frost).
+ */
+function skyVisibility(): N {
+  if (!skyMaps) return float(1);
+  const m = skyMaps;
+  return TSLTyped.varying(Fn(() => {
+    const q = positionWorld.xz.add(m.half).div(m.size);
+    const forest = texture(m.mask0, q).level(0).a;
+    const above = positionWorld.y.sub(texture(m.height, q).level(0).r);
+    return float(1).sub(forest.mul(float(1).sub(TSLTyped.smoothstep(14, 28, above))).mul(0.8));
+  })());
+}
+
 export interface PlantLook {
   /** wind: how far the tips travel at full bend, as a share of the plant's height (palms bend more than trees) */
   sway: number;
@@ -149,18 +172,26 @@ function windFrom(look: PlantLook) {
   const c = cos(yaw.negate()), s = sin(yaw.negate());
   const lw = vec2(wd.x.mul(c).add(wd.y.mul(s)), wd.x.mul(s).negate().add(wd.y.mul(c)));
   const strength = wetness.wind.mul(0.85).add(0.1);
+  // a squall: crowns stream downwind and the leaves thrash
+  const storm = TSLTyped.smoothstep(0.45, 0.9, wetness.wind);
   // a slow gust front crossing the island, the plant's own sway, and every part a little out of step
   const gust = sin(t.mul(0.33).add(phase.mul(6.28)).add(positionWorld.x.mul(0.012)).add(positionWorld.z.mul(0.007))).mul(0.5).add(0.5);
   const sway = sin(t.mul(0.9).add(phase.mul(12.0)).add(part.mul(2.2))).mul(0.45).add(gust.mul(0.85));
-  const amt = bend.mul(bend).mul(strength).mul(sway).mul(look.height * look.sway);
-  const fl = sin(t.mul(7.1).add(part.mul(37)).add(positionLocal.x.mul(2.3)).add(positionLocal.z.mul(1.9))).mul(flutter).mul(strength).mul(0.06);
+  const lean = storm.mul(gust.mul(0.6).add(0.9));
+  const amt = bend.mul(bend).mul(strength.mul(sway).add(lean)).mul(look.height * look.sway);
+  const ft = t.mul(float(7.1).add(storm.mul(4)));
+  const fl = sin(ft.add(part.mul(37)).add(positionLocal.x.mul(2.3)).add(positionLocal.z.mul(1.9))).mul(0.7)
+    .add(sin(ft.mul(1.9).add(part.mul(11)).add(positionLocal.y.mul(3.1))).mul(0.3))
+    .mul(flutter).mul(strength).mul(storm.mul(0.09).add(0.085));
   // the bent tip drops a little as it swings out
   return vec3(lw.x.mul(amt).add(fl.mul(0.35)), fl.mul(0.8).sub(amt.mul(bend).mul(0.18)), lw.y.mul(amt).add(fl.mul(0.35)));
 }
 
-/** a node material for a helper plant part: its textures, AO from COLOR_0, wind, wet darkening, backlit leaves */
+/** a node material for a helper plant part: its textures, AO from COLOR_0, wind, wet darkening, backlit leaves, and
+ *  the sheen of the sky only where the plant sees it */
 export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) {
-  const m = new THREE.MeshStandardNodeMaterial();
+  const m = sunLit(new THREE.MeshPhysicalNodeMaterial());
+  m.specularIntensityNode = skyVisibility();
   m.name = `glb_${src.name}`;
   const leaf = src.alphaTest > 0 || src.transparent || src.side === THREE.DoubleSide;
   const col = attribute('color', 'vec4');
@@ -171,12 +202,13 @@ export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) 
   const vary = hash(iData.y.mul(1000)).sub(0.5);
   let alb: N = base.rgb.mul(vec3(float(1).add(vary.mul(0.14)), float(1).add(vary.mul(0.07)), float(1).sub(vary.mul(0.1))));
   if (look.tint) alb = alb.mul(vec3(...look.tint));
-  alb = alb.mul(mix(float(1), float(0.68), wetness.rain));
+  // wet leaves and bark go darker and a little more saturated
+  alb = alb.mul(mix(vec3(1), vec3(0.56, 0.6, 0.56), wetness.rain));
   m.colorNode = vec4(alb.mul(ao.mul(0.8).add(0.2)), base.a);
   const orm = src.roughnessMap ?? src.metalnessMap ?? src.aoMap;
   // leaves keep a floor: a mirror-smooth card per leaf glints like a lamp in the sun (wet leaves shine a little more)
   const rough0: N = (orm ? texture(orm, uv()).g.mul(src.roughness) : float(src.roughness)).max(leaf ? 0.58 : 0.3);
-  m.roughnessNode = mix(rough0, rough0.min(leaf ? 0.4 : 0.5), wetness.rain);
+  m.roughnessNode = mix(rough0, rough0.min(leaf ? 0.46 : 0.5), wetness.rain);
   m.metalnessNode = float(0);
   if (orm && src.aoMap) m.aoNode = texture(orm, uv()).r;
   if (leaf) {
@@ -272,17 +304,18 @@ export function crownProxy(v: GlbVariant, leafMat: string, clusters = 12): THREE
 
 /** the crown stand-ins' material: a leafy green whose clumps come from world-space noise in colour and normal */
 export function crownMaterial(green: [number, number, number], look: PlantLook) {
-  const m = new THREE.MeshStandardNodeMaterial();
+  const m = sunLit(new THREE.MeshStandardNodeMaterial());
   m.name = 'glb_crown_proxy';
   const col = attribute('color', 'vec4');
   const p = positionWorld;
-  const n1 = mx_noise_float(p.mul(0.55)), n2 = mx_noise_float(p.mul(1.7).add(3.1));
+  // (seen from 270 m out: clumps of a metre or so; finer noise would be under a pixel)
+  const n1 = mx_noise_float(p.mul(0.55));
   const iData = attribute('iData', 'vec4');
   const vary = hash(iData.y.mul(1000)).sub(0.5);
-  const alb = vec3(...green).mul(float(1).add(vary.mul(0.25))).mul(n1.mul(0.22).add(n2.mul(0.12)).add(1)).mul(mix(float(1), float(0.68), wetness.rain));
+  const alb = vec3(...green).mul(float(1).add(vary.mul(0.25))).mul(n1.mul(0.26).add(1)).mul(mix(float(1), float(0.68), wetness.rain));
   m.colorNode = vec4(alb.mul(col.x), 1);
   // leaf clumps tilt the normal; the gaps between clumps read as shadow
-  const bump = mx_noise_vec3(p.mul(1.1)).mul(0.55).add(mx_noise_vec3(p.mul(3.1)).mul(0.25));
+  const bump = mx_noise_vec3(p.mul(1.1)).mul(0.65);
   m.normalNode = transformNormalToView(normalize(normalWorldGeometry.add(bump)));
   m.roughnessNode = float(0.75);
   m.metalnessNode = float(0);
@@ -292,7 +325,7 @@ export function crownMaterial(green: [number, number, number], look: PlantLook) 
 
 /** a node material for a helper rock: its textures as they are */
 export function rockMaterial(src: THREE.MeshStandardMaterial) {
-  const m = new THREE.MeshStandardNodeMaterial();
+  const m = sunLit(new THREE.MeshStandardNodeMaterial());
   m.name = `glb_${src.name}`;
   m.colorNode = src.map ? texture(src.map, uv()).rgb.mul(mix(float(1), float(0.62), wetness.rain)) : vec3(src.color.r, src.color.g, src.color.b);
   const orm = src.roughnessMap ?? src.aoMap;

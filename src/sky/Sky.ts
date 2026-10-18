@@ -13,6 +13,7 @@ import {
 } from '../core/tsl';
 import { SUN_E, atmo, renderAtmosphereLUTs, skyRadiance, transmittanceAt, R_GROUND } from './Atmosphere';
 import { Q } from '../core/quality';
+import { wetness } from '../world/weatherUniforms';
 
 /** cloud layer */
 export const clouds = {
@@ -31,6 +32,8 @@ export const clouds = {
   lightColor: uniform(new THREE.Color(1, 1, 1)),
   /** frame counter (mod 64) for the march jitter, so temporal AA resolves it even with the world clock frozen */
   frame: uniform(0),
+  /** 0..1 rain falling from the thick cells (the shafts under the cloud base) */
+  rain: uniform(0),
   /** extent of the cloud map (m) */
   extent: 40000,
 };
@@ -163,12 +166,15 @@ const moonCos = Math.cos((0.55 * Math.PI) / 360);
 
 function stars(dir: N) {
   const p = dir.mul(240);
-  const cell = floor(p);
+  // (TSL's hash takes the seed as an unsigned int: a negative seed clamps to 0, so the cells are kept positive)
+  const cell = floor(p).add(256);
   const h = hash(cell.x.mul(157).add(cell.y.mul(311)).add(cell.z.mul(523)));
   const f = fract(p).sub(0.5);
-  const off = vec3(hash(cell.x.add(13.1)), hash(cell.y.add(7.7)), hash(cell.z.add(3.3))).sub(0.5).mul(0.7);
+  const off = vec3(hash(cell.x.add(13.1)), hash(cell.y.add(7.7)), hash(cell.z.add(3.3))).sub(0.5).mul(0.6);
   const dd = length(f.sub(off));
-  const star = smoothstep(0.1, 0.0, dd).mul(smoothstep(0.968, 1.0, h));
+  // a cell is ~5 px at 1080p: a star covers about one pixel (a smaller dot falls between the samples and
+  // flickers out under the temporal AA)
+  const star = smoothstep(0.17, 0.03, dd).mul(smoothstep(0.962, 1.0, h)).mul(0.6);
   const tw = sin(atmo.time.mul(h.mul(9).add(2)).add(h.mul(40))).mul(0.3).add(0.7);
   const tint = mix(vec3(1.0, 0.85, 0.7), vec3(0.75, 0.85, 1.0), hash(cell.x.add(cell.z)));
   // the Milky Way: a broad, mottled band across the sky
@@ -185,11 +191,15 @@ export function skyColorNode(withSun: boolean) {
     const moon = normalize(atmo.moonDir);
     const above = vec3(dir.x, max(dir.y, 0.0), dir.z).normalize();
     const col = skyRadiance(above).toVar();
-    // overcast: the clear sky flattens toward a grey with the same brightness
-    const lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
-    col.assign(mix(col, vec3(lum).mul(vec3(0.92, 0.96, 1.02)), atmo.overcast));
-    // night sky glow so the darkest sky is deep blue, not black
-    col.addAssign(vec3(0.0005, 0.0009, 0.0021).mul(atmo.night));
+    // overcast: the clear sky gives way to a grey dome brightest overhead, its horizon a third as bright (the CIE
+    // overcast sky; a clear sky's bright hazy horizon would glow as a white band under the rain)
+    const zen = skyRadiance(vec3(0, 1, 0));
+    const lumZ = dot(zen, vec3(0.2126, 0.7152, 0.0722));
+    const cie = float(1).add(above.y.mul(2)).div(3);
+    col.assign(mix(col, vec3(0.92, 0.96, 1.02).mul(lumZ.mul(1.5).mul(cie)), atmo.overcast));
+    // night sky glow (moonlight scattered by the air, airglow, starlight) so the darkest sky is deep blue, not black,
+    // and the image-based light keeps shadowed ground readable under the moon
+    col.addAssign(vec3(0.0013, 0.0024, 0.0058).mul(atmo.night));
     // stars and moon (behind the clouds)
     const tr = transmittanceAt(float(R_GROUND).add(atmo.camHeight), max(dir.y, 0.02));
     const starL = stars(dir).mul(atmo.night).mul(float(1).sub(atmo.overcast)).mul(tr).mul(0.14);
@@ -228,7 +238,6 @@ export function skyColorNode(withSun: boolean) {
     const hg = (g: number) => float((1 - g * g) / (4 * Math.PI)).div(pow(float(1 + g * g).sub(cosT.mul(2 * g)), 1.5));
     const phase = hg(0.62).mul(0.55).add(hg(-0.12).mul(0.45));
     const lightRad = vec3(clouds.lightColor);
-    const zen = skyRadiance(vec3(0, 1, 0));
     const sigma = mix(float(0.03), float(0.05), clouds.thickness);
     // cloud base lit from below by the sea and the land (a little), from above by the sky dome
     const ambTop = zen.mul(2.1).add(vec3(0.0012, 0.0016, 0.0026).mul(atmo.night));
@@ -265,10 +274,44 @@ export function skyColorNode(withSun: boolean) {
       const seen = mix(Lc.mul(dark), col.mul(float(1).sub(T)), haze.mul(0.9));
       col.assign(col.mul(T).add(seen));
     });
+    if (withSun) {
+      // ---- rain shafts: grey curtains hanging from the bases of the raining cells, slanting downwind, seen low over
+      // the horizon (rain nearer than ~600 m is the scene's mist). Rain at a height left the base `below / fall`
+      // seconds ago, so its cloud is upwind by the drift in that time; noise on that source spot streaks the curtain
+      // along the fall line.
+      If(clouds.rain.greaterThan(0.02).and(dir.y.lessThan(0.5)).and(dir.y.greaterThan(-0.01)).and(camY.lessThan(base)), () => {
+        const drift = wetness.windDir.mul(wetness.wind.mul(8).div(9.5));
+        const Tr = float(1).toVar();
+        const acc = float(0).toVar();
+        // geometric steps from 1.4 km to ~19 km, each sample jittered within its step (per pixel and frame, which the
+        // temporal AA averages) so the steps never show as rings; the curtain fades in below the base, not at a line
+        const jit = interleavedGradientNoise(screenCoordinate.xy.add(clouds.frame.mul(5.588238)));
+        Loop(10, ({ i }: { i: N }) => {
+          const ta = float(1400).mul(pow(float(1.3), float(i)));
+          const tb = ta.mul(1.3);
+          const tm = mix(ta, tb, jit);
+          const p = cameraPosition.add(dir.mul(tm));
+          const below = base.sub(p.y);
+          If(below.greaterThan(0).and(p.y.greaterThan(-5)), () => {
+            const src = p.xz.sub(drift.mul(below));
+            const c = cloudAt(src);
+            // the rain falls in shafts a kilometre or two across under the heaviest cells, with gaps between them
+            const shaft = smoothstep(0.6, 0.8, mx_noise_float(vec3(src.mul(1 / 2600), 3.7)).mul(0.5).add(0.5));
+            const streak = mx_noise_float(vec3(src.mul(1 / 170), atmo.time.mul(0.015))).mul(0.5).add(0.5);
+            const dens = c.x.mul(shaft).mul(clouds.rain).mul(mix(float(0.3), float(1), smoothstep(0.3, 0.75, streak))).mul(smoothstep(0, 260, below));
+            const stepT = exp(dens.mul(2.2e-4).mul(tb.sub(ta)).negate());
+            acc.addAssign(Tr.mul(float(1).sub(stepT)));
+            Tr.mulAssign(stepT);
+          });
+        });
+        const grey = dot(col, vec3(0.2126, 0.7152, 0.0722)).mul(0.62);
+        col.assign(mix(col, vec3(0.95, 0.98, 1.02).mul(grey), acc.mul(smoothstep(0.5, 0.22, dir.y))));
+      });
+    }
     // below the horizon (the environment map's lower half): light bounced off the ground (sand, leaves, sea) under
     // the sun and the sky, so undersides and trunks get a neutral bounce instead of a colour of their own; it fades
     // at a low sun so shade stays cool (sky-lit) against the warm light
-    const horizon = skyRadiance(normalize(vec3(dir.x, 0.02, dir.z)));
+    const horizon = mix(skyRadiance(normalize(vec3(dir.x, 0.02, dir.z))), vec3(0.92, 0.96, 1.02).mul(lumZ.mul(0.52)), atmo.overcast);
     const sunIrr = transmittanceAt(float(R_GROUND).add(atmo.camHeight), max(sun.y, 0.0)).mul(SUN_E).mul(max(sun.y, 0)).mul(float(1).sub(atmo.overcast.mul(0.88)));
     const skyIrr = mix(zen, horizon, 0.5).mul(Math.PI);
     const ground = vec3(0.13, 0.12, 0.095).mul(sunIrr.add(skyIrr)).div(Math.PI);
@@ -286,6 +329,7 @@ export class Sky {
   private envAge = 1e9;
   private n = 0;
   private lastSun = new THREE.Vector3();
+  private lastLook = [-1, -1, -1];
   private mapState = { cov: -1, thick: -1, ox: 1e9, oz: 1e9 };
 
   constructor(private renderer: THREE.WebGPURenderer, scene: THREE.Scene) {
@@ -329,11 +373,16 @@ export class Sky {
       this.renderer.setRenderTarget(prev);
     }
     this.envAge += dt;
+    // the image-based light is re-rendered (a frame's worth of GPU work at once) only when what it shows has changed:
+    // the sun or moon has moved, the weather or the night has turned; otherwise every 20 s for the drifting clouds
     const sun = atmo.sunDir.value as THREE.Vector3;
-    const moved = sun.angleTo(this.lastSun) > 0.004;
-    if (force || this.envAge > 2.5 || (moved && this.envAge > 0.6)) {
+    const moved = sun.angleTo(this.lastSun) > 0.008;
+    const look = [atmo.overcast.value as number, cov, atmo.night.value as number];
+    const turned = look.some((v, i) => Math.abs(v - this.lastLook[i]) > 0.02);
+    if (force || this.envAge > 20 || ((moved || turned) && this.envAge > 0.6)) {
       this.envAge = 0;
       this.lastSun.copy(sun);
+      this.lastLook = look;
       this.envRT = this.pmrem.fromScene(this.envScene as unknown as THREE.Scene, 0, 0.1, 100, { size: 128, renderTarget: this.envRT ?? undefined } as never);
       scene.environment = this.envRT.texture;
     }

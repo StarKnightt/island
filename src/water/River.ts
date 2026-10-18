@@ -19,13 +19,9 @@ import { atmo, skyRadiance } from '../sky/Atmosphere';
 import { laceTex } from './surf';
 import { sprayU } from './Spray';
 import { preset } from '../core/quality';
+import { fallsPath } from './fallsPath';
 
 export const riverU = { time: uniform(0) };
-
-const smoothstep01 = (x: number) => {
-  const t = Math.min(1, Math.max(0, x));
-  return t * t * (3 - 2 * t);
-};
 
 export class River {
   readonly group = new THREE.Group();
@@ -210,17 +206,8 @@ export class River {
    * it depth. Splash and mist rise from the plunge.
    */
   private buildFalls() {
-    const { falls } = this.hf.meta;
-    const [lx, lz] = falls.lip, [tx, tz] = falls.toward;
-    const dx = tx - lx, dz = tz - lz, dl = Math.hypot(dx, dz);
-    const fx = dx / dl, fz = dz / dl;
-    const nx = -fz, nz = fx;
-    const top = falls.top + 0.55, bottom = falls.bottom;
-    const H = top - bottom;
-    const W = falls.width + 2.4;
-    const v0 = 2.2;
-    const tFall = Math.sqrt((2 * H) / 9.81);
-    const outEnd = 0.35 + v0 * tFall;
+    const path = fallsPath(this.hf);
+    const { lx, lz, fx, fz, W, tFall, outEnd, bottom } = path;
     this.fallsCenter.set(lx + fx * (outEnd - 1.4), bottom, lz + fz * (outEnd - 1.4));
     this.impact.set(lx + fx * outEnd, bottom, lz + fz * outEnd);
     this.fallDir.set(fx, fz);
@@ -228,18 +215,12 @@ export class River {
     const sheet = (offset: number, widen: number, name: string, veil: boolean) => {
       const rows = 40, cols = 26;
       const pos: number[] = [], uvs: number[] = [], idx: number[] = [];
+      const p = new THREE.Vector3();
       for (let j = 0; j <= rows; j++) {
         const f = j / rows;
-        const t = f * tFall;
-        // the lip is rounded: the water curls over it before it falls free
-        const out = 0.35 + v0 * t + offset * smoothstep01(f * 6);
-        const y = top - 0.5 * 9.81 * t * t + (f < 0.05 ? 0.12 * (1 - f / 0.05) : 0);
-        const spread = 1 + widen * Math.pow(f, 1.4);
         for (let i = 0; i <= cols; i++) {
-          const u = i / cols - 0.5;
-          // the sheet bows out in the middle and its edges trail a little behind
-          const bow = (0.25 - u * u) * 0.9 * f;
-          pos.push(lx + fx * (out + bow) + nx * u * W * spread, y, lz + fz * (out + bow) + nz * u * W * spread);
+          path.point(i / cols - 0.5, f, offset, widen, p);
+          pos.push(p.x, p.y, p.z);
           uvs.push(i / cols, f);
         }
       }
@@ -303,7 +284,8 @@ export class River {
     // light passing through the thin water toward the eye (backlit falls glow), and the glassy tongue's sky sheen
     const V = normalize(cameraPosition.sub(positionWorld));
     const fwd = pow(max(dot(atmo.sunDir.normalize().negate(), V), 0), 4);
-    m.emissiveNode = vec3(0.9, 0.95, 0.95).mul(fwd.mul(0.06).mul(float(1).sub(alpha.mul(0.6)))).mul(atmo.lightE).mul(cloudShadow(positionWorld));
+    // (only the thin, frayed water lets the sun through; the thick body is lit from the front like snow)
+    m.emissiveNode = vec3(0.9, 0.95, 0.95).mul(fwd.mul(0.012).mul(pow(float(1).sub(alpha.mul(0.85)), 2))).mul(atmo.lightE).mul(cloudShadow(positionWorld));
     // relief: the streaks and lumps as bumps across the sheet
     const bump = s1.mul(0.5).add(lumps.mul(0.4)).add(s2.mul(0.2));
     m.normalNode = transformNormalToView(normalize(vec3(normalWorldGeometry.x.add(bump.mul(this.fallDir.y)), normalWorldGeometry.y, normalWorldGeometry.z.sub(bump.mul(this.fallDir.x)))));

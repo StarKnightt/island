@@ -12,6 +12,7 @@ import { Rng } from '../core/noise';
 import { loadGLTF } from '../core/Assets';
 import {
   float, fract, smoothstep, uv, vec4, vec3, abs, min, max, attribute, mix, positionLocal, sin, uniform, Fn,
+  uniformArray, instanceIndex, vec2, length, pow,
 } from '../core/tsl';
 import { wetness } from './weatherUniforms';
 
@@ -26,6 +27,11 @@ export class Village {
   readonly boats: Boat[] = [];
   private boatMeshes: THREE.InstancedMesh[] = [];
   readonly lanterns: THREE.Vector3[] = [];
+  /** lit openings (windows, doorways): centre, the way they face, size, brightness */
+  private glows: { p: THREE.Vector3; yaw: number; w: number; h: number; k: number }[] = [];
+  /** the warm lights of the night: lanterns at the busiest huts, the communal house, the fire */
+  private lamps: { light: THREE.PointLight; base: number; phase: number }[] = [];
+  private firePos = new THREE.Vector3();
   readonly docks: { x0: number; z0: number; x1: number; z1: number; y: number; w: number }[] = [];
   private boatBase: THREE.Matrix4[] = [];
 
@@ -61,6 +67,7 @@ export class Village {
     this.netRack(kb, -488, 334, -0.1);
     this.fishRack(kb, -426, 328, -0.2);
     kb.build(this.group);
+    this.buildNight();
     this.buildBoats();
     this.scatterProps().catch((e) => console.warn('village props', e));
   }
@@ -160,6 +167,9 @@ export class Village {
     this.col.platform(rampC.x, rampC.z, 0.55, rampLen / 2, -h.rot + Math.PI / 2, (F + gy) / 2, 'wood', slope);
     // lantern by the door
     this.lanterns.push(W(0.8, F + 2.0, hd + 0.15));
+    // the lamp-lit inside seen through the windows and the doorway at night
+    for (const side of [-1, 1]) this.glows.push({ p: W(side * (hw - 0.07), F + 0.06 + 1.3, 0), yaw: h.rot + side * Math.PI / 2, w: h.d * 0.12, h: 0.8, k: 1 });
+    this.glows.push({ p: W(0, F + 0.06 + 1.0, hd - 0.07), yaw: h.rot, w: 0.9, h: 2.0, k: 0.75 });
     // inside: a mat, a crate (shade from the vertex colour)
     kb.add(floorMat, box(1.6, 0.03, 1.0, W(0.3, F + 0.08, -0.6), [0, h.rot + 0.2, 0], 1.0, 0.55));
     void r;
@@ -225,7 +235,7 @@ export class Village {
     // rope railing on one side of the outer half
     const pts: THREE.Vector3[] = [];
     for (let s2 = L * 0.35; s2 <= L; s2 += 2.4) pts.push(V(x0 + ux * s2 - uz * (w / 2 - 0.12), y + 0.82 - (s2 % 4.8 < 0.1 ? 0 : 0.12), z0 + uz * s2 + ux * (w / 2 - 0.12)));
-    if (pts.length > 2) kb.add(flat([0.55, 0.47, 0.34], 0.9), tubeGeo(pts, 0.022, 5));
+    if (pts.length > 2) kb.add(flat([0.24, 0.2, 0.15], 0.95), tubeGeo(pts, 0.022, 5));
     // walkable deck (ramps up from the sand at the shore end)
     const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     this.col.platform(cx, cz, w / 2, L / 2, -rot + Math.PI / 2 - Math.PI / 2, y + 0.03, 'wood');
@@ -375,7 +385,120 @@ export class Village {
     const char = flat([0.05, 0.045, 0.04], 0.95);
     for (let i = 0; i < 5; i++) kb.add(char, cylinder(0.05, 0.05, 0.8, V(x + r.range(-0.2, 0.2), g + 0.1, z + r.range(-0.2, 0.2)), [Math.PI / 2, r.next() * 3, 0.3], 6, 1, 1));
     this.lanterns.push(V(x, g + 0.4, z));
+    this.firePos.set(x, g + 0.15, z);
     this.col.circle(x, z, 0.9, g - 1, g + 0.4);
+  }
+
+  /**
+   * Night: the insides of the huts lamp-lit behind their windows and doorways, a glow round every lantern, real warm
+   * point lights at the fire, the communal house and the front huts (pools of light on the sand and the walls, and
+   * broken streaks on the water through the sea's own glints), flames and embers in the pit, smoke by day and night.
+   * Everything scales with `villageU.lights` (0 by day, 1 at night); the lights exist all the time (at zero
+   * intensity by day) so no shader ever recompiles at dusk.
+   */
+  private buildNight() {
+    const L = villageU.lights, t = villageU.time;
+    const warm = vec3(1.0, 0.52, 0.2);
+    // ---- lit openings
+    const geo = new THREE.PlaneGeometry(1, 1);
+    const gm = new THREE.MeshBasicNodeMaterial();
+    gm.name = 'village_glow';
+    gm.side = THREE.DoubleSide;
+    const flick = sin(t.mul(9.1).add(positionLocal.x.mul(30))).mul(0.04).add(sin(t.mul(3.7)).mul(0.03)).add(1);
+    // brighter low in the opening (the lamp stands on the floor), a little cooler at the top
+    const v = uv().y;
+    gm.colorNode = vec4(mix(warm, vec3(0.9, 0.6, 0.35), v).mul(mix(float(1.2), float(0.6), v)).mul(flick).mul(L).mul(0.05), 1);
+    const glow = new THREE.InstancedMesh(geo, gm, this.glows.length);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+    this.glows.forEach((g, i) => {
+      q.setFromAxisAngle(up, g.yaw);
+      glow.setMatrixAt(i, m4.compose(g.p, q, new THREE.Vector3(g.w, g.h, 1)));
+    });
+    glow.name = 'village_windows';
+    this.group.add(glow);
+    // ---- lantern glows: a hot core and a soft halo, camera-facing
+    const pos = this.lanterns.slice(0, 16);
+    const arr = uniformArray(pos.map((p) => new THREE.Vector3(p.x, p.y, p.z)), 'vec3');
+    for (const [size, k] of [[0.28, 1.0], [1.6, 0.12]] as [number, number][]) {
+      const sm = new THREE.SpriteNodeMaterial();
+      sm.transparent = true;
+      sm.depthWrite = false;
+      sm.blending = THREE.AdditiveBlending;
+      sm.positionNode = arr.element(instanceIndex);
+      sm.scaleNode = vec2(size, size);
+      const r = length(uv().sub(0.5)).mul(2);
+      const a = smoothstep(1.0, 0.0, r).pow(size < 1 ? 1.5 : 2.6);
+      const fl = sin(t.mul(11).add(float(instanceIndex).mul(2.3))).mul(0.06).add(1);
+      sm.colorNode = vec4(warm.mul(a).mul(fl).mul(L).mul(k * 0.6), 1);
+      const sp = new THREE.Sprite(sm);
+      (sp as unknown as { count: number }).count = pos.length;
+      sp.frustumCulled = false;
+      sp.renderOrder = 30;
+      sp.name = 'village_lantern_glow';
+      this.group.add(sp);
+    }
+    // ---- real lights at the fire, the communal house and the front huts
+    const pick = [pos.length - 1, pos.length - 2, 1, 2, 3, 4].filter((i) => i >= 0 && i < pos.length);
+    for (const [n, i] of pick.entries()) {
+      const fire = i === pos.length - 1;
+      // no range cutoff: the falloff is inverse-square, so a lamp still reaches the water tens of metres out, where
+      // the sea's glints draw its reflection as a long broken streak toward the viewer
+      const light = new THREE.PointLight(fire ? 0xff8a3a : 0xffa560, 0, 0, 2);
+      light.position.copy(pos[i]).add(new THREE.Vector3(0, fire ? 0.6 : 0, 0));
+      light.castShadow = false;
+      this.group.add(light);
+      this.lamps.push({ light, base: fire ? 26 : 5, phase: n * 1.7 });
+    }
+    // ---- the fire: flames, embers and smoke
+    const fp = this.firePos;
+    const flame = new THREE.SpriteNodeMaterial();
+    flame.transparent = true;
+    flame.depthWrite = false;
+    flame.blending = THREE.AdditiveBlending;
+    {
+      const id = float(instanceIndex);
+      const seed = (k: number) => fract(sin(id.mul(k).add(1.3)).mul(43758.5453));
+      const life = float(0.55).add(seed(3.1).mul(0.5));
+      const age = fract(t.div(life).add(seed(7.7)));
+      const sway = sin(t.mul(2.3).add(seed(5.1).mul(6))).mul(0.12).mul(age);
+      flame.positionNode = vec3(fp.x, fp.y, fp.z).add(vec3(seed(1.9).sub(0.5).mul(0.6).add(sway), age.mul(age.mul(0.3).add(0.9)), seed(2.9).sub(0.5).mul(0.6)));
+      const size = mix(float(0.55), float(0.12), age).mul(seed(4.4).mul(0.5).add(0.75));
+      flame.scaleNode = vec2(size, size.mul(1.6));
+      const r = length(uv().sub(0.5).mul(vec2(1, 0.8))).mul(2);
+      const hot = mix(vec3(1.0, 0.85, 0.45), vec3(1.0, 0.32, 0.05), age);
+      flame.colorNode = vec4(hot.mul(smoothstep(1.0, 0.1, r)).mul(float(1).sub(age)).mul(mix(float(0.15), float(1), L)).mul(0.9), 1);
+    }
+    const flames = new THREE.Sprite(flame);
+    (flames as unknown as { count: number }).count = 26;
+    flames.frustumCulled = false;
+    flames.renderOrder = 31;
+    flames.name = 'village_fire';
+    this.group.add(flames);
+    const smoke = new THREE.SpriteNodeMaterial();
+    smoke.transparent = true;
+    smoke.depthWrite = false;
+    {
+      const id = float(instanceIndex);
+      const seed = (k: number) => fract(sin(id.mul(k).add(7.3)).mul(43758.5453));
+      const life = float(7).add(seed(3.1).mul(5));
+      const age = fract(t.div(life).add(seed(7.7)));
+      const tt = age.mul(life);
+      const wd = wetness.windDir.mul(wetness.wind.mul(1.4).add(0.35)).mul(tt);
+      smoke.positionNode = vec3(fp.x, fp.y + 0.8, fp.z).add(vec3(wd.x.add(seed(1.9).sub(0.5).mul(tt).mul(0.25)), tt.mul(0.7).add(tt.mul(tt).mul(0.01)), wd.y.add(seed(2.9).sub(0.5).mul(tt).mul(0.25))));
+      const size = mix(float(0.6), float(5.5), pow(age, 0.7));
+      smoke.scaleNode = vec2(size, size);
+      const r = length(uv().sub(0.5)).mul(2);
+      const a = smoothstep(1.0, 0.0, r).pow(1.8).mul(smoothstep(0.0, 0.08, age)).mul(pow(float(1).sub(age), 1.5)).mul(0.22);
+      // grey-blue wood smoke, lit a little from below by the fire at night
+      smoke.colorNode = vec4(mix(vec3(0.5, 0.52, 0.55), vec3(0.9, 0.5, 0.25), L.mul(float(1).sub(age).pow(3)).mul(0.6)).mul(0.06), a);
+      smoke.opacityNode = a;
+    }
+    const smk = new THREE.Sprite(smoke);
+    (smk as unknown as { count: number }).count = 34;
+    smk.frustumCulled = false;
+    smk.renderOrder = 29;
+    smk.name = 'village_smoke';
+    this.group.add(smk);
   }
 
   // ---------------------------------------------------------------- props (Poly Haven models)
@@ -433,8 +556,14 @@ export class Village {
     for (const p of this.lanterns.slice(0, 9)) place('wooden_lantern_01', p.x, p.z, 0, p.y - 0.4, 0.9);
   }
 
-  update(t: number, probe: (i: number) => [number, number, number]) {
+  update(t: number, probe: (i: number) => [number, number, number], night = 0) {
     villageU.time.value = t;
+    const lit = THREE.MathUtils.smoothstep(night, 0.25, 0.8);
+    villageU.lights.value = lit;
+    for (const l of this.lamps) {
+      const fl = 0.86 + 0.08 * Math.sin(t * 7.3 + l.phase) + 0.06 * Math.sin(t * 17.1 + l.phase * 2.1);
+      l.light.intensity = l.base * lit * fl;
+    }
     this.updateBoats(t, probe);
   }
 }

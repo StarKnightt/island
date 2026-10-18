@@ -18,6 +18,8 @@ import type { Heightfield } from './Heightfield';
 import type { Colliders } from './Colliders';
 import { COAST, HALF_WORLD, ISLETS, MASK_RES, WORLD_SIZE } from './layout';
 import { wetness } from './weatherUniforms';
+import { fallsPath } from '../water/fallsPath';
+import { sunLit } from '../core/lighting';
 
 /**
  * Piece geometry at scale 1 (from rocks.json and the lod1 meshes): plan extent, how far the face's foot stands out
@@ -38,8 +40,13 @@ const SPEC: Record<string, Spec> = {
 };
 const FILES = { cliff: 'assets/rocks/cliff_kit.glb', stack: 'assets/rocks/stacks.glb' };
 
-/** where a piece stands: origin, yaw (local +Z = the way the face looks), uniform scale; zone 0 sea, 1 falls, 2 stack */
-export interface RockPlace { piece: string; x: number; y: number; z: number; yaw: number; s: number; zone: number }
+/** where a piece stands: origin, yaw (local +Z = the way the face looks), uniform scale; zone 0 sea cliffs, 1 the
+ *  gorge, 2 sea stacks; `wall` marks the piece right behind the falls */
+export interface RockPlace { piece: string; x: number; y: number; z: number; yaw: number; s: number; zone: number; wall?: boolean }
+
+/** the falls' sheet and the escarpment's direction there (+ north), kept for the gorge (see RockKit.clearFalls) */
+let sheet: ReturnType<typeof fallsPath> | null = null;
+let gorgeT: THREE.Vector2 | null = null;
 
 export const rockU = {
   falls: uniform(new THREE.Vector3()),
@@ -373,15 +380,17 @@ function falls(hf: Heightfield): RockPlace[] {
     const ox = bx + fx * (w - back), oz = bz + fz * (w - back);
     const cx = ((sp.x0 + sp.x1) / 2) * s;
     // (a piece at its largest scale keeps its skyline at the plateau; the skirt reaches the foot)
-    out.push({ piece, x: ox - fz * cx, y: Math.max(foot, top - sp.top * s), z: oz + fx * cx, yaw: Math.atan2(fx, fz), s, zone: 1 });
+    out.push({ piece, x: ox - fz * cx, y: Math.max(foot, top - sp.top * s), z: oz + fx * cx, yaw: Math.atan2(fx, fz), s, zone: 1, wall: along === 0 });
   }
+  sheet = fallsPath(hf);
+  gorgeT = new THREE.Vector2(Tx, Tz);
   return out;
 }
 
 /** the kit's rock: its scan textures, darker and glossier where spray, the falls or rain wet it, moss and grass on
  * ledges and in the damp gorge, rust and lichen bands and dark runoff stains down the faces */
 function kitMaterial(src: THREE.MeshStandardMaterial) {
-  const m = new THREE.MeshStandardNodeMaterial();
+  const m = sunLit(new THREE.MeshStandardNodeMaterial());
   m.name = `kit_${src.name}`;
   const U = uv();
   const p = positionWorld;
@@ -415,11 +424,14 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
   const green = max(ledge, gorgeMoss).clamp(0, 1);
   const mossCol = mix(vec3(0.035, 0.06, 0.016), vec3(0.075, 0.105, 0.03), fine);
   alb = mix(alb, mossCol, green.mul(0.92));
-  // wet: darker, smoother
-  const wet = max(max(spray, fallsWet), wetness.rain.mul(0.85)).clamp(0, 1);
+  // wet: darker, smoother. Spray and the falls keep a glassy film; rain only darkens the rough scan and gives it a
+  // soft sheen (a sharp one mirrors the bright overcast in every boss and reads as frost)
+  const soaked = max(spray, fallsWet).clamp(0, 1);
+  const wet = max(soaked, wetness.rain.mul(0.85)).clamp(0, 1);
   alb = alb.mul(mix(float(1), float(0.48), wet));
   m.colorNode = vec4(alb, 1);
-  m.roughnessNode = mix(orm.g.mul(float(1).sub(green.mul(0.1))), min(orm.g, float(0.24)), wet.mul(float(1).sub(green.mul(0.5))));
+  const wetRough = mix(min(orm.g, float(0.48)), min(orm.g, float(0.24)), soaked.div(wet.max(0.001)));
+  m.roughnessNode = mix(orm.g.mul(float(1).sub(green.mul(0.1))), wetRough, wet.mul(float(1).sub(green.mul(0.5))));
   m.metalnessNode = float(0);
   m.aoNode = orm.r;
   if (src.normalMap) m.normalNode = normalMap(texture(src.normalMap, U));
@@ -442,19 +454,22 @@ export class RockKit {
   private sc = new THREE.Vector3();
   private yAxis = new THREE.Vector3(0, 1, 0);
 
-  constructor(readonly places: RockPlace[], colliders: Colliders) {
+  constructor(readonly places: RockPlace[], private colliders: Colliders) {
     this.group.name = 'rockkit';
-    for (const p of places) {
-      const sp = SPEC[p.piece];
-      // the swimmer (and the camera) are kept out of the rock: a box from behind the face to its foot
-      const c = Math.cos(p.yaw), s = Math.sin(p.yaw);
-      const zf = sp.front * p.s * (sp.file === 'stack' ? 0.75 : 0.8), zb = sp.file === 'stack' ? -zf : -1.5;
-      const hx = ((sp.x1 - sp.x0) / 2) * p.s * (sp.file === 'stack' ? 0.75 : 0.9), cxl = ((sp.x0 + sp.x1) / 2) * p.s;
-      const czl = (zf + zb) / 2;
-      // local (x, z) -> world: x * (c, -s) + z * (s, c)
-      const wx = p.x + cxl * c + czl * s, wz = p.z - cxl * s + czl * c;
-      colliders.box(wx, wz, hx, (zf - zb) / 2, -p.yaw, p.y - 4, p.y + sp.top * p.s);
-    }
+    // (the gorge's pieces may still move to clear the falls: theirs are made once the kit has loaded)
+    for (const p of places) if (p.zone !== 1) this.collide(p);
+  }
+
+  /** the swimmer (and the camera) are kept out of the rock: a box from behind the face to its foot */
+  private collide(p: RockPlace) {
+    const sp = SPEC[p.piece];
+    const c = Math.cos(p.yaw), s = Math.sin(p.yaw);
+    const zf = sp.front * p.s * (sp.file === 'stack' ? 0.75 : 0.8), zb = sp.file === 'stack' ? -zf : -1.5;
+    const hx = ((sp.x1 - sp.x0) / 2) * p.s * (sp.file === 'stack' ? 0.75 : 0.9), cxl = ((sp.x0 + sp.x1) / 2) * p.s;
+    const czl = (zf + zb) / 2;
+    // local (x, z) -> world: x * (c, -s) + z * (s, c)
+    const wx = p.x + cxl * c + czl * s, wz = p.z - cxl * s + czl * c;
+    this.colliders.box(wx, wz, hx, (zf - zb) / 2, -p.yaw, p.y - 4, p.y + sp.top * p.s);
   }
 
   async load() {
@@ -493,6 +508,8 @@ export class RockKit {
       }
       set.places.push(p);
     }
+    this.clearFalls();
+    for (const p of this.places) if (p.zone === 1) this.collide(p);
     this.findLedges();
     for (const [name, set] of this.sets) {
       set.meshes = set.lods.map((parts, l) => parts.map((part) => {
@@ -508,6 +525,64 @@ export class RockKit {
         return mesh;
       }));
     }
+  }
+
+  /**
+   * No rock pokes through the falling water: rays from in front of the sheet find each gorge piece's real surface
+   * (its flutes and bosses reach well past its placement box). The wall behind the falls steps back until all of it
+   * is at least `margin` behind the water; a flank whose edge swings in front of the sheet (they are turned toward
+   * the pool) slides along the escarpment, away from the falls, until that edge is past the sheet's.
+   */
+  private clearFalls(margin = 0.8) {
+    if (!sheet || !gorgeT) return;
+    const T = gorgeT;
+    const ray = new THREE.Raycaster();
+    const back = new THREE.Vector3(-sheet.fx, 0, -sheet.fz);
+    const o = new THREE.Vector3();
+    const pts: THREE.Vector3[] = [];
+    for (let j = 0; j <= 12; j++) for (let i = 0; i <= 10; i++) pts.push(sheet.point(i / 10 - 0.5, j / 12, 0, 0.35));
+    // metres along the escarpment from the lip (+ north)
+    const along = (x: number, z: number) => (x - sheet!.lx) * T.x + (z - sheet!.lz) * T.y;
+    const aMin = Math.min(...pts.map((q) => along(q.x, q.z))), aMax = Math.max(...pts.map((q) => along(q.x, q.z)));
+    const moves: string[] = [];
+    for (const [name, set] of this.sets) {
+      const geo = (set.lods[1] ?? set.lods[0])[0]?.geometry;
+      if (!geo) continue;
+      const probe = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ side: THREE.FrontSide }));
+      for (const pl of set.places) {
+        if (pl.zone !== 1) continue;
+        for (let pass = 0; pass < 3; pass++) {
+          probe.position.set(pl.x, pl.y, pl.z);
+          probe.rotation.set(0, pl.yaw, 0);
+          probe.scale.setScalar(pl.s);
+          probe.updateMatrixWorld(true);
+          let push = 0, lo = Infinity, hi = -Infinity;
+          for (const q of pts) {
+            ray.set(o.copy(q).addScaledVector(back, -12), back);
+            const hit = ray.intersectObject(probe, false)[0];
+            if (!hit || hit.distance > 12 + margin) continue;
+            push = Math.max(push, 12 + margin - hit.distance);
+            const a = along(q.x, q.z);
+            lo = Math.min(lo, a);
+            hi = Math.max(hi, a);
+          }
+          if (push === 0) break;
+          if (pl.wall) {
+            const d = Math.min(push, 6);
+            pl.x += back.x * d;
+            pl.z += back.z * d;
+            moves.push(`${name} back ${d.toFixed(1)} m`);
+          } else {
+            const side = Math.sign(along(pl.x, pl.z)) || 1;
+            const d = Math.min(side > 0 ? aMax + 1 - lo : hi - (aMin - 1), 14);
+            pl.x += T.x * side * d;
+            pl.z += T.y * side * d;
+            moves.push(`${name} along ${(side * d).toFixed(1)} m`);
+          }
+        }
+      }
+    }
+    if (moves.length) console.info(`[island] rock kit: cleared the falls (${moves.join(', ')})`);
   }
 
   /** where plants hold on to the rock: ferns, vine curtains and dripping mats on the walls, moss on the ledges */

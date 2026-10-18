@@ -36,7 +36,8 @@ export const terrainU = {
 };
 
 export function createTerrainMaterial(hf: Heightfield) {
-  const m = new THREE.MeshStandardNodeMaterial();
+  // (physical only for the specular intensity: the forest floor mirrors the canopy above it, not the open sky)
+  const m = new THREE.MeshPhysicalNodeMaterial();
   m.name = 'terrain';
   const heightAt = heightLookup(hf);
   const maskUV = (p: N) => p.add(HALF_WORLD).div(WORLD_SIZE);
@@ -130,7 +131,7 @@ export function createTerrainMaterial(hf: Heightfield) {
   // uneven layer thickness: the band coordinate runs faster and slower with height
   const bandC = h.add(warp).div(4.2).add(mx_noise_float(vec3(h.mul(1 / 9), 0.4, 6.1)).mul(0.6));
   const bandF = fract(bandC);
-  const bandShade = hash(floor(bandC).mul(17.3).add(4.1)).mul(0.24).add(0.88);
+  const bandShade = hash(floor(bandC).add(400).mul(17.3)).mul(0.24).add(0.88);
   // joints are broken and come and go along the face
   const jointOn = smoothstep(0.42, 0.62, mx_noise_float(vec3(xz.mul(1 / 9), h.mul(1 / 6))).mul(0.5).add(0.5));
   const groove = smoothstep(0.84, 0.94, bandF).mul(smoothstep(1.0, 0.96, bandF)).mul(jointOn);
@@ -234,6 +235,7 @@ export function createTerrainMaterial(hf: Heightfield) {
   m.colorNode = vec4(albedo.mul(float(1).add(caustic.mul(cloud))), 1);
   m.roughnessNode = rough;
   m.metalnessNode = float(0);
+  m.specularIntensityNode = float(1).sub(forest.mul(0.75));
   m.normalNode = transformNormalToView(finalN);
   m.aoNode = mix(float(1), ao, 0.7);
 
