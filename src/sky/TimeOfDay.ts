@@ -57,9 +57,10 @@ export class TimeOfDay {
   private compute() {
     const H = ((this.hour - 12) / 24) * Math.PI * 2;
     celestial(H, DECL, this.sun);
-    // a waning gibbous moon: it rises in the east about three hours after sunset, so late in the evening it hangs
-    // low over the sea off the spawn beach and lays its path on the water
-    celestial(H + Math.PI - 0.83, MOON_DECL, this.moon);
+    // a waxing gibbous moon: it rises in the east about an hour before sunset, so at dusk it hangs low over the sea
+    // off the spawn beach and lays its path on the water, lights the whole night (no black hours before moonrise)
+    // and sets about half an hour before the dawn twilight begins
+    celestial(H + Math.PI + 0.3, MOON_DECL, this.moon);
     this.sunElevation = Math.asin(this.sun.y);
     this.night = THREE.MathUtils.smoothstep(-this.sun.y, -0.02, 0.16);
     atmo.sunDir.value.copy(this.sun);
@@ -105,7 +106,9 @@ export class TimeOfDay {
     } else {
       const m = Math.max(0, this.moon.y);
       this.light.color.setRGB(0.62, 0.74, 1.0);
-      const moonE = 0.07 * THREE.MathUtils.smoothstep(m, -0.02, 0.22);
+      // (fading in through the twilight: the key light hands over from the sun at a moon already up, and a moonlight
+      // switched on at full strength would flip every shadow in one frame)
+      const moonE = 0.07 * THREE.MathUtils.smoothstep(m, -0.02, 0.22) * THREE.MathUtils.smoothstep(-this.sun.y, 0.035, 0.14);
       this.light.intensity = moonE * (1 - this.overcast * 0.9);
       (clouds.lightDir.value as THREE.Vector3).copy(this.moon);
       // moonlit cumulus read dim and grey-blue to the night-adapted eye, not as the white daytime clouds a long
