@@ -99,8 +99,12 @@ export function createTerrainMaterial(hf: Heightfield) {
   const rock = max(m1.x, smoothstep(0.42, 0.6, slope.add(micro.mul(0.05))).mul(float(1).sub(m0.x.mul(0.9))).mul(smoothstep(1.5, 4.0, positionWorld.y)));
   const grass = m0.y, dirt = m0.z, forest = m0.w;
   const underwater = smoothstep(0.15, -0.5, h);
-  const reefN = mx_fractal_noise_float(vec3(xz.mul(1 / 24), 7.0), 3, 2, 0.5).mul(0.5).add(0.5);
-  const reef = underwater.mul(smoothstep(0.42, 0.62, reefN)).mul(smoothstep(-0.9, -2.2, h)).mul(sand);
+  // the live bottom baked under the sea (mask1 G there; wet ground on land): coral heads and patch reefs in the lagoon,
+  // the reef flat and its crest, the fore-reef, seagrass meadows; broken up a little so no two patches match
+  const liveB = m1.y.mul(underwater).add(micro.mul(0.06)).clamp(0, 1);
+  const reef = smoothstep(0.1, 0.42, liveB).mul(underwater);
+  const liveDark = smoothstep(0.3, 0.85, liveB);
+  const liveHue = mx_noise_float(vec3(xz.mul(1 / 17), 5.3)).mul(0.5).add(0.5);
   const notRock = float(1).sub(rock);
   const wBase = float(1).sub(max(max(sand, rock), max(max(grass, dirt), forest))).clamp(0, 1);
   // the plunge pool's banks: wet dark gravel, rock and moss instead of beach sand; the gorge walls round it wet
@@ -164,6 +168,11 @@ export function createTerrainMaterial(hf: Heightfield) {
       const wall = mix(vec3(1), streakTint.mul(reach), steepW);
       tA = vec4(tA.rgb.mul(patch).mul(strata).mul(wall), mix(tA.a, rockBig.a, 0.5));
     }
+    if (i === 7) {
+      // living coral and algae are dark from above (brown, olive, a purple cast), coral rubble pale
+      const tint = mix(vec3(0.42, 0.31, 0.27), vec3(0.27, 0.33, 0.17), liveHue);
+      tA = vec4(tA.rgb.mul(mix(vec3(1), tint, liveDark)), tA.a);
+    }
     // height blend: each layer's height sharpens its edges against the others
     const w = max(ws[i], 0).mul(tA.a.mul(1.4).add(0.3)).pow(2.2);
     if (i === 5) wRock = w;
@@ -179,10 +188,15 @@ export function createTerrainMaterial(hf: Heightfield) {
   const ao = aoAcc.div(total);
   // macro variation breaks the tiling
   albedo = albedo.mul(macro.mul(0.16).add(1)).mul(vec3(1.0, mix(1.0, 1.05, macro.mul(0.5).add(0.5)), 1.0));
+  // from afar the ground between the crowns is the shade of the understory, not bare litter, and open grass a deeper,
+  // less lime green (seen from the hills and the gallery the floor read as bare brown ground or a pale lawn)
+  const camFar = smoothstep(50, 220, length(cameraPosition.sub(p)));
+  albedo = mix(albedo, vec3(0.022, 0.036, 0.016), forest.mul(notRock).mul(camFar).mul(0.85));
+  albedo = mix(albedo, albedo.mul(vec3(0.62, 0.72, 0.52)), grass.mul(notRock).mul(float(1).sub(forest)).mul(camFar).mul(0.7));
 
   // ---- wetness: shore swash, rain on upward faces, the river banks; darker and glossier
   const rainWet = wetness.rain.mul(smoothstep(0.3, 0.9, n.y));
-  const wet = max(max(max(wetShore, rainWet), m1.y.mul(0.65)), max(poolBank.mul(0.75), gorge.mul(0.7))).clamp(0, 1);
+  const wet = max(max(max(wetShore, rainWet), m1.y.mul(0.65).mul(float(1).sub(underwater))), max(poolBank.mul(0.75), gorge.mul(0.7))).clamp(0, 1);
   albedo = albedo.mul(mix(float(1), float(0.58), wet.mul(float(1).sub(underwater.mul(0.6)))));
   rough = mix(rough, float(0.4), wet.mul(0.8));
   const puddle = wetness.rain.mul(smoothstep(0.58, 0.74, mx_noise_float(vec3(xz.mul(1 / 4.5), 1.3)).mul(0.5).add(0.5)))

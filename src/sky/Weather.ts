@@ -7,10 +7,10 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, float, fract, hash, instanceIndex, length, smoothstep, texture, uniform, uv, vec2, vec3, vec4, cameraPosition,
-  cameraViewMatrix, max, abs, atan, type N,
+  cameraViewMatrix, max, abs, atan, dot, normalize, varying, type N,
 } from '../core/tsl';
 import { clouds } from './Sky';
-import { atmo } from './Atmosphere';
+import { atmo, skyRadiance } from './Atmosphere';
 import { initTerrainShadow } from './TerrainShadow';
 import { wetness } from '../world/weatherUniforms';
 import { oceanU } from '../water/Ocean';
@@ -181,9 +181,9 @@ export class Weather {
 
   /**
    * Rain: drops falling with the wind in a box that follows the camera, each drawn as the streak a camera sees in a
-   * 1/15 s exposure: along its own motion on screen (slanted downwind, short when it falls toward the lens), about a
-   * pixel and a half wide at any distance, lit by the light around it, so streaks show against dark trees and rock
-   * and vanish against the bright sky.
+   * 1/30 s exposure: along its own motion on screen (slanted downwind, short when it falls toward the lens), about a
+   * pixel and a half wide at any distance, a little darker than the overcast sky behind it, so streaks show against
+   * dark trees and rock and vanish against the bright sky.
    */
   private buildRain() {
     const count = Q.rainParticles;
@@ -195,25 +195,32 @@ export class Weather {
     const box = vec3(40, 24, 40);
     const seed = vec3(hash(id.mul(1.31)), hash(id.mul(7.77)), hash(id.mul(3.19)));
     const speed = float(8).add(seed.x.mul(3.5));
+    // gusts: each drop rides its own share of the wind plus a little turbulence, so the streaks are not ruled lines
+    const g1 = hash(id.mul(2.17)), g2 = hash(id.mul(5.03)), g3 = hash(id.mul(9.41));
+    const share = g1.mul(0.7).add(0.65);
+    const vel = vec3(rainU.wind.x.mul(share).add(g2.sub(0.5).mul(3)), speed.negate(), rainU.wind.y.mul(share).add(g3.sub(0.5).mul(3)));
     const t = rainU.time;
     // positions wrap inside a camera-centred box
     const base = seed.mul(box);
     const p = vec3(
-      fract(base.x.add(rainU.wind.x.mul(t)).sub(cameraPosition.x).div(box.x)).sub(0.5).mul(box.x).add(cameraPosition.x),
-      fract(base.y.sub(speed.mul(t)).sub(cameraPosition.y).div(box.y)).sub(0.5).mul(box.y).add(cameraPosition.y),
-      fract(base.z.add(rainU.wind.y.mul(t)).sub(cameraPosition.z).div(box.z)).sub(0.5).mul(box.z).add(cameraPosition.z),
+      fract(base.x.add(vel.x.mul(t)).sub(cameraPosition.x).div(box.x)).sub(0.5).mul(box.x).add(cameraPosition.x),
+      fract(base.y.add(vel.y.mul(t)).sub(cameraPosition.y).div(box.y)).sub(0.5).mul(box.y).add(cameraPosition.y),
+      fract(base.z.add(vel.z.mul(t)).sub(cameraPosition.z).div(box.z)).sub(0.5).mul(box.z).add(cameraPosition.z),
     );
     m.positionNode = p;
-    const vv = cameraViewMatrix.mul(vec4(rainU.wind.x, speed.negate(), rainU.wind.y, 0)).xy;
+    const vv = cameraViewMatrix.mul(vec4(vel, 0)).xy;
     const dist = length(p.sub(cameraPosition));
     m.rotationNode = atan(vv.x.negate(), vv.y);
-    m.scaleNode = vec2(max(float(0.005), dist.mul(0.0015)), length(vv).mul(1 / 15).max(0.04));
+    m.scaleNode = vec2(max(float(0.005), dist.mul(0.0015)), length(vv).mul(g2.mul(0.6).add(0.7).mul(1 / 30)).max(0.03));
     const fade = smoothstep(0.7, 2.5, dist).mul(smoothstep(21, 12, dist));
     const keep = smoothstep(seed.z.sub(0.02), seed.z, rainU.intensity);
-    const a = fade.mul(keep).mul(0.34).mul(smoothstep(0.0, 0.15, rainU.intensity));
-    // a drop is a little lens showing the sky above and the darker ground below: about as bright as the sky's average
-    // over a mid-grey ground, so a streak shows against trees and rock and fades out against a bright misty sea
-    const lit = float(atmo.lightE).mul(0.6 / Math.PI).mul(float(1).add(rainU.flash.mul(3)));
+    const a = fade.mul(keep).mul(g3.mul(0.5).add(0.6)).mul(0.34).mul(smoothstep(0.0, 0.15, rainU.intensity));
+    // a drop is a little lens showing the sky above and the darker ground below: a little darker than the rain deck
+    // behind it (about 0.4 of the clear sky's luminance 15 degrees up), so it vanishes against the sky and shows
+    // against trees and rock
+    const v = normalize(p.sub(cameraPosition));
+    const lumRef = varying(dot(skyRadiance(normalize(vec3(v.x, 0.27, v.z))), vec3(0.2126, 0.7152, 0.0722)));
+    const lit = lumRef.mul(0.3).mul(float(1).add(rainU.flash.mul(3)));
     m.colorNode = vec4(vec3(0.92, 0.95, 1.0).mul(lit), a);
     const across = abs(uv().x.sub(0.5)), along = uv().y;
     m.opacityNode = a.mul(smoothstep(0.5, 0.1, across)).mul(smoothstep(0.0, 0.25, along)).mul(smoothstep(1.0, 0.7, along));

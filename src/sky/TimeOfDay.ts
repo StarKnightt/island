@@ -67,17 +67,18 @@ export class TimeOfDay {
     atmo.night.value = this.night;
     atmo.overcast.value = this.overcast;
 
-    // the air. Midday: a clean trade-wind haze. Toward sunrise the humid night air holds a whitish haze of large
-    // droplets (low Angstrom exponent: it greys the light rather than reddening it) and a ground mist over the sea
-    // and the flats; toward sunset a day of sea spray, convection and cooking smoke leaves more, finer aerosol that
-    // reddens the low sun and lays an orange band along the horizon. Rain fills the air with grey droplets.
+    // the air. Midday: a clean trade-wind haze. At sunrise the night has settled the aerosol into a shallow layer: the
+    // air above is clean (a golden sun with a small glow, a pastel sky) and the haze is a ground mist over the sea and
+    // the flats; toward sunset a day of sea spray, convection and cooking smoke leaves more, finer aerosol that
+    // reddens the low sun, widens its glow and lays an orange band along the horizon. Rain fills the air with grey
+    // droplets.
     const { smoothstep, lerp } = THREE.MathUtils;
     const low = 1 - smoothstep(this.sunElevation, 0.04, 0.42);
     // afternoon air from midday until the night has settled it, morning air from about midnight until midday
     const pm = smoothstep(this.hour, 11, 13) * (1 - smoothstep(this.hour, 21, 23.9));
     const cover = Math.min(1, this.overcast / 0.9);
-    let mie = lerp(2.0e-5, lerp(5.5e-5, 4.5e-5, pm), low);
-    let ang = lerp(1.0, lerp(0.35, 1.35, pm), low);
+    let mie = lerp(2.0e-5, lerp(2.5e-5, 4.5e-5, pm), low);
+    let ang = lerp(1.0, lerp(0.8, 1.35, pm), low);
     mie = lerp(mie, 3.5e-5, cover);
     ang = lerp(ang, 0.3, cover);
     atmo.mieScatter.value = mie;
@@ -107,7 +108,9 @@ export class TimeOfDay {
       const moonE = 0.07 * THREE.MathUtils.smoothstep(m, -0.02, 0.22);
       this.light.intensity = moonE * (1 - this.overcast * 0.9);
       (clouds.lightDir.value as THREE.Vector3).copy(this.moon);
-      cl.setRGB(0.62, 0.74, 1.0).multiplyScalar(moonE * 0.5);
+      // moonlit cumulus read dim and grey-blue to the night-adapted eye, not as the white daytime clouds a long
+      // exposure shows (at the moon's full light they outshone the sand)
+      cl.setRGB(0.72, 0.8, 0.95).multiplyScalar(moonE * 0.18);
     }
     // exposure: from the illuminance of a horizontal surface (sun + sky), toward a mid-grey key. With the sun low the
     // meter takes the light on surfaces that face it (walls, trunks, cliffs: ten times what a horizontal one gets),
@@ -125,7 +128,7 @@ export class TimeOfDay {
     // under a storm overcast the eye does not fully open up: rain stays moody instead of a bright flat day (the grey
     // dome and the deck light the ground about twice as much as the meter's sky term assumes, so the cut is larger
     // than it looks: without it the wet forest and the haze wash out to pale grey)
-    this.exposureTarget = THREE.MathUtils.clamp(0.42 / Math.pow(L, 0.66), 0.15, 20) * (1 - 0.35 * this.overcast);
+    this.exposureTarget = THREE.MathUtils.clamp(0.42 / Math.pow(L, 0.66), 0.15, 16) * (1 - 0.35 * this.overcast);
     void clouds;
   }
 }

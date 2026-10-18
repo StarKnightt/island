@@ -36,7 +36,7 @@ def log(*a):
 VARIANTS = {
     'a': dict(seed=5, trunk_len=2.6, lean=22, r0=0.15, depth=3, kids=2, branch_len=1.3, roots=14, tuft_leaves=25,
               leaf_len=(1.05, 1.45), fruit=1),
-    'b': dict(seed=9, trunk_len=1.8, lean=10, r0=0.12, depth=2, kids=3, branch_len=1.25, roots=11, tuft_leaves=28,
+    'b': dict(seed=9, trunk_len=1.8, lean=10, r0=0.12, depth=2, kids=3, branch_len=1.25, roots=11, tuft_leaves=34,
               leaf_len=(0.95, 1.3), fruit=0),
 }
 
@@ -177,7 +177,7 @@ def strap_leaf(mb, p, d0, length, width, strip, droop, twist, rng, lod, g0, phas
 
 def tuft(mb, tip, P, rng, lod):
     pos, d, r, g0 = tip
-    n = {0: P['tuft_leaves'], 1: int(P['tuft_leaves'] * 0.55), 2: 5}[lod]
+    n = {0: P['tuft_leaves'], 1: int(P['tuft_leaves'] * 0.55), 2: 4}[lod]
     ldead = {0: int(rng.integers(3, 6)), 1: 2, 2: 1}[lod]
     n1, b1 = frame(d)
     a0 = rng.uniform(0, 2 * math.pi)

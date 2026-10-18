@@ -36,15 +36,19 @@ export const atmo = {
   mieScatter: uniform(2e-5),
   /** aerosol scattering and extinction per channel relative to green (680, 550, 440 nm): (lambda / 550)^-angstrom */
   mieTint: uniform(new THREE.Vector3(1, 1, 1)),
-  mieG: uniform(0.78),
+  /** aerosol phase asymmetry: marine aerosol ~0.7 (0.78 piled the low sun's glow into a blown-out blob round it) */
+  mieG: uniform(0.72),
   /** gain on the multiple-scattering LUT */
   msK: uniform(1.0),
   /** fog: extra extinction for rain, per metre at sea level */
   mist: uniform(0.0),
   /** ground mist at dawn: extinction per metre at sea level, thinning with a scale height of DAWN_H */
   dawnMist: uniform(0.0),
-  /** boundary-layer haze for the aerial perspective, per metre at sea level */
-  haze: uniform(1.5e-5),
+  /**
+   * boundary-layer haze for the aerial perspective, per metre at sea level: with the aerosol and the air about 1.1e-4
+   * at noon (visibility ~35 km), ridges 1-2 km out pale by 10-20 %, a coast 5 km out by ~40 %, the sea horizon soft
+   */
+  haze: uniform(8e-5),
   mistColor: uniform(new THREE.Color(0.57, 0.6, 0.63)),
   /** 0..1 overcast: flattens the sky toward grey */
   overcast: uniform(0),
@@ -379,10 +383,10 @@ export function aerialFogNode() {
     const v = normalize(positionWorld.sub(cameraPosition));
     const dir = vec3(v.x, max(v.y, 0.02), v.z).normalize();
     const sky = skyRadiance(dir);
-    // under an overcast the haze is the grey of the overcast sky's horizon (Sky.ts: a third of the dome overhead,
-    // scaled from the clear sky 15 degrees up in this direction)
+    // under an overcast the haze is the grey of the overcast sky's horizon (Sky.ts: about a fifth of the dome
+    // overhead, scaled from the clear sky 15 degrees up in this direction)
     const lumRef = skyRadiance(normalize(vec3(v.x, 0.27, v.z))).dot(vec3(0.2126, 0.7152, 0.0722));
-    return mix(sky, vec3(atmo.mistColor).mul(lumRef.mul(1.12)), atmo.overcast);
+    return mix(sky, vec3(atmo.mistColor).mul(lumRef.mul(0.73)), atmo.overcast);
   })();
   return fog(colorN, factor);
 }

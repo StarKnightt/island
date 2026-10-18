@@ -103,11 +103,18 @@ await __island.stage({ tod: 'sunset', weather: 'clear', camera: { pos: [600, 6, 
 
 ## Harness commands
 
-All of them use the installed Chrome (`C:\Program Files\Google\Chrome\Application\chrome.exe`) headed, on the RTX
-4060 (`--force_high_performance_gpu`), with a temporary profile, pointer lock stubbed out, audio muted (except where
-noted), and close the browser when done.
+All of them use the installed Chrome (`C:\Program Files\Google\Chrome\Application\chrome.exe`) on the RTX 4060
+(`--force_high_performance_gpu`), with a temporary profile (the development captures keep a persistent one, below),
+pointer lock stubbed out, audio muted (except where noted), and close the browser when done.
 
-Window placement: each launch asks Windows for the monitor layout and opens the window on the display named in
+Headless: when `%USERPROFILE%\.island-display` (or `ISLAND_DISPLAY`) says `headless`, every harness command runs Chrome
+in its headless mode with the same flags: no window opens on any screen, the page is a real 1920x1080 viewport at
+devicePixelRatio 1, and WebGPU runs on the RTX 4060 as headed (checked round 3: same adapter, same draw counts and
+frame times, captures within run-to-run noise of headed ones, mean difference 2-4 / 255). This is the setting on this
+PC while the user works at it (each run prints `[browser] headless 1920x1080 at (0,0): headless 1920x1080
+viewport`). In headless mode the page still reports the main display's refresh (200 Hz), so the frame cap is 66.7 fps.
+
+Window placement (headed): each launch asks Windows for the monitor layout and opens the window on the display named in
 `%USERPROFILE%\.island-display` (`primary`, `secondary` or a device name such as `DISPLAY2`). That file is the user's
 machine-wide choice and overrides everything else; without it, `ISLAND_DISPLAY` (the same values, or a 1-based index in
 Windows' order) decides, and the default is the primary (DISPLAY1, 1920x1080 at (0,0), ~200 Hz). The vertical second
@@ -153,15 +160,20 @@ every shot.
 ### `pnpm perf`: frame-time statistics
 
 ```bash
-pnpm perf --round round-01                     # every spot x condition, 5 s each, with the game's frame cap
-pnpm perf --round round-01 --uncapped          # Chrome without vsync or frame limit: headroom
-pnpm perf --round round-01 --spots village --conditions rain --seconds 10
+pnpm perf --round round-03                     # every spot x condition, 5 s each: uncapped, then with the frame cap
+pnpm perf --round round-03 --mode uncapped     # only uncapped (same as --uncapped)
+pnpm perf --round round-03 --mode capped       # only with the game's frame cap (--fps <n> to set it)
+pnpm perf --round round-03 --spots village --conditions rain --seconds 10
 ```
 
-The player walks during each measurement so streaming, culling and LOD run as in play.
-Output: `E:\shots\island\<round>\perf\perf.json` and `perf.md` (fps and cap, frame avg / p95 / p99, CPU avg, GPU
-avg / p95 / p99, draw calls and triangles of a whole frame (shadow cascades, scene and post passes) per spot and
-condition). `--q "skip=veg"` etc. passes extra URL parameters for A/B measurements.
+By default every combination is measured twice, in two browser sessions: uncapped (Chrome's vsync and frame-rate limit
+off and the game's cap off: what the view costs on this GPU, whatever display the window is on, so this is the
+headroom number) and capped (the game's own cap for the refresh of that display: what a player sees there). The
+player walks during each measurement so streaming, culling and LOD run as in play.
+Output: `E:\shots\island\<round>\perf\perf.json` (both runs per row) and `perf.md` (uncapped fps and frame avg / p95 /
+p99, capped fps with its cap and the refresh it came from, capped p99, CPU avg, GPU avg, draw calls and triangles of a
+whole frame (shadow cascades, scene and post passes) per spot and condition, and a summary line: how many
+combinations hold 60 and 70 fps uncapped). `--q "skip=veg"` etc. passes extra URL parameters for A/B measurements.
 
 ### `pnpm clip`: motion clips
 
@@ -187,8 +199,11 @@ Output: `E:\shots\island\<round>\clips\<name>\frame_0000.png ...` (`.jpg` for th
 
 `pnpm tsx scripts/look.ts --q "spot=village&tod=noon" --name v1` (one URL to one PNG in `E:\shots\island\dev\`),
 `pnpm tsx scripts/poses.ts --file poses.json` (a list of camera poses in one session; a y of `"+2"` means 2 m above
-the ground there) and `pnpm tsx scripts/loadtime.ts` (load timeline of a first visit and a returning visit in one
-persistent Chrome profile).
+the ground there), `pnpm tsx scripts/session.ts --steps steps.mjs` (one page load, then a steps module stages and
+captures as it likes; see its header) and `pnpm tsx scripts/loadtime.ts` (load timeline of a first visit and a
+returning visit in one persistent Chrome profile). look, poses and session keep a persistent profile
+(`E:\tmp\island\chrome-dev`, so Chrome's compiled shaders survive and a page loads in seconds; `--fresh` for a new
+one) and take `--uncapped` (vsync and frame limit off).
 
 ## Gotchas
 

@@ -464,16 +464,18 @@ export class Vegetation {
     const BS = 3.6 / Math.sqrt(D);
     for (let z = -700; z < 700; z += BS) for (let x = -950; x < 950; x += BS) {
       const px = x + r.range(-0.5, 0.5) * BS, pz = z + r.range(-0.5, 0.5) * BS;
-      const g = hf.grass(px, pz);
-      if (g < 0.3 || hf.forest(px, pz) > 0.55 || hf.shoreDist(px, pz) < 28) continue;
+      // (open ground is grass and the bare dirt of the slopes alike; under a sparse forest the lawn shows too)
+      const dirt = hf.dirt(px, pz), forest = hf.forest(px, pz);
+      const g = Math.max(hf.grass(px, pz), dirt * 0.8) * (1 - THREE.MathUtils.smoothstep(forest, 0.45, 0.8));
+      if (g < 0.25 || hf.shoreDist(px, pz) < 28) continue;
       const h = hf.height(px, pz);
-      if (h < 2 || hf.rock(px, pz) > 0.45 || hf.water(px, pz) > 0.05 || hf.dirt(px, pz) > 0.35 || hf.sand(px, pz) > 0.5) continue;
+      if (h < 2 || hf.rock(px, pz) > 0.45 || hf.water(px, pz) > 0.05 || dirt > 0.75 || hf.sand(px, pz) > 0.5) continue;
       if (hf.normal(px, pz).y < 0.72 || clearing(px, pz, 4)) continue;
       if (Math.hypot(px - LIGHTHOUSE.p[0], pz - LIGHTHOUSE.p[1]) < LIGHTHOUSE.platformR + 6) continue;
       // (the huts' own ground stays open; the hill behind them is thicket)
       const open = THREE.MathUtils.smoothstep(Math.hypot(px - VILLAGE.center[0], pz - VILLAGE.center[1]), 52, 80);
       const thicket = THREE.MathUtils.smoothstep(noise.fbm(px / 26 - 11, pz / 26 + 4, 3), -0.5, 0.25);
-      if (r.next() > g * thicket * 0.8 * open || !free(px, pz, 1.3) || inSightline(px, pz)) continue;
+      if (r.next() > Math.min(1, g * 1.1) * thicket * 0.9 * open || !free(px, pz, 1.3) || inSightline(px, pz)) continue;
       // on the windswept headland round the summit the shrubs stay low
       const exposed = THREE.MathUtils.smoothstep(h, 150, 200);
       const q = r.next();

@@ -534,7 +534,8 @@ export class Village {
       light.position.copy(pos[i]).add(new THREE.Vector3(0, fire ? 0.6 : 0, 0));
       light.castShadow = false;
       this.group.add(light);
-      this.lamps.push({ light, base: fire ? 26 : 5, phase: n * 1.7 });
+      // (small warm pools that fall off fast, the unlit sand dark between them; the streaks on the water stay)
+      this.lamps.push({ light, base: fire ? 18 : 2.6, phase: n * 1.7 });
     }
     // ---- the fire: flames, embers and smoke
     const fp = this.firePos;

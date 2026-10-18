@@ -14,8 +14,9 @@ import {
 import { SUN_E, atmo, renderAtmosphereLUTs, skyRadiance, transmittanceAt, R_GROUND } from './Atmosphere';
 import { Q } from '../core/quality';
 import { wetness } from '../world/weatherUniforms';
-import { updateViewExposure } from '../core/grade';
+import { updateGradeLook, updateViewExposure } from '../core/grade';
 import { terrainShadowAt, updateTerrainShadow } from './TerrainShadow';
+import { initSunProbe, updateSunProbe } from './SunProbe';
 
 /**
  * The camera the visible sky is drawn for, captured while the sky renders (the post chain draws with a camera of its
@@ -193,10 +194,11 @@ function stars(dir: N) {
   const star = smoothstep(0.17, 0.03, dd).mul(smoothstep(0.962, 1.0, h)).mul(0.6);
   const tw = sin(atmo.time.mul(h.mul(9).add(2)).add(h.mul(40))).mul(0.3).add(0.7);
   const tint = mix(vec3(1.0, 0.85, 0.7), vec3(0.75, 0.85, 1.0), hash(cell.x.add(cell.z)));
-  // the Milky Way: a broad, mottled band across the sky
+  // the Milky Way: a broad, mottled band across the sky, faint (no brighter than the airglow: under the moon it is all
+  // but washed out; brighter, it turned the whole night sky lavender and, reddened near the horizon, pink)
   const bandD = abs(dot(dir, normalize(vec3(0.3, 0.55, -0.78))));
   const band = exp(bandD.mul(bandD).mul(-26)).mul(mx_fractal_noise_float(dir.mul(7), 4, 2, 0.55).mul(0.6).add(0.55));
-  return tint.mul(star.mul(tw).mul(pow(h, 40).mul(7).add(0.6))).add(vec3(0.62, 0.66, 0.82).mul(band.mul(0.16)));
+  return tint.mul(star.mul(tw).mul(pow(h, 40).mul(7).add(0.6))).add(vec3(0.55, 0.62, 0.8).mul(band.mul(0.022)));
 }
 
 /** full sky radiance: atmosphere, clouds, sun and moon discs, stars. `withSun` false for the environment map */
@@ -213,7 +215,9 @@ export function skyColorNode(withSun: boolean) {
     // cloud is lighter toward the hidden sun.
     const zen = skyRadiance(vec3(0, 1, 0));
     const lumRef = dot(skyRadiance(normalize(vec3(dir.x, 0.27, dir.z))), vec3(0.2126, 0.7152, 0.0722));
-    const cie = float(1).add(above.y.mul(2)).div(3);
+    // (darker still in the last ten degrees, where the deck pales into it: brighter, the dome showed below the deck as
+    // a white band over the sea with a hard top edge; Atmosphere.ts's rain haze matches this horizon)
+    const cie = float(1).add(above.y.mul(2)).div(3).mul(mix(float(0.65), float(1), smoothstep(0.0, 0.25, above.y)));
     col.assign(mix(col, vec3(0.95, 0.97, 1.0).mul(lumRef.mul(2.0).mul(cie)), atmo.overcast));
     // night sky glow (moonlight scattered by the air, airglow, starlight) so the darkest sky is deep blue, not black,
     // and the image-based light keeps shadowed ground readable under the moon
@@ -323,22 +327,23 @@ export function skyColorNode(withSun: boolean) {
             const src = p.xz.sub(drift.mul(below));
             const c = cloudAt(src);
             // the rain falls in shafts a kilometre or two across under the heaviest cells, with gaps between them
-            const shaft = smoothstep(0.6, 0.8, mx_noise_float(vec3(src.mul(1 / 2600), 3.7)).mul(0.5).add(0.5));
+            const shaft = smoothstep(0.55, 0.75, mx_noise_float(vec3(src.mul(1 / 2600), 3.7)).mul(0.5).add(0.5));
             const streak = mx_noise_float(vec3(src.mul(1 / 170), atmo.time.mul(0.015))).mul(0.5).add(0.5);
             const dens = c.x.mul(shaft).mul(clouds.rain).mul(mix(float(0.3), float(1), smoothstep(0.3, 0.75, streak))).mul(smoothstep(0, 260, below));
-            const stepT = exp(dens.mul(2.2e-4).mul(tb.sub(ta)).negate());
+            // (a shaft two kilometres across greys the sky behind it by about a quarter: a curtain, not a tint)
+            const stepT = exp(dens.mul(4e-4).mul(tb.sub(ta)).negate());
             acc.addAssign(Tr.mul(float(1).sub(stepT)));
             Tr.mulAssign(stepT);
           });
         });
-        const grey = dot(col, vec3(0.2126, 0.7152, 0.0722)).mul(0.62);
+        const grey = dot(col, vec3(0.2126, 0.7152, 0.0722)).mul(0.5);
         col.assign(mix(col, vec3(0.95, 0.98, 1.02).mul(grey), acc.mul(smoothstep(0.5, 0.22, dir.y))));
       });
     }
     // below the horizon (the environment map's lower half): light bounced off the ground (sand, leaves, sea) under
     // the sun and the sky, so undersides and trunks get a neutral bounce instead of a colour of their own; it fades
     // at a low sun so shade stays cool (sky-lit) against the warm light
-    const horizon = mix(skyRadiance(normalize(vec3(dir.x, 0.02, dir.z))), vec3(0.95, 0.97, 1.0).mul(lumRef.mul(0.68)), atmo.overcast);
+    const horizon = mix(skyRadiance(normalize(vec3(dir.x, 0.02, dir.z))), vec3(0.95, 0.97, 1.0).mul(lumRef.mul(0.44)), atmo.overcast);
     const sunIrr = transmittanceAt(float(R_GROUND).add(atmo.camHeight), max(sun.y, 0.0)).mul(SUN_E).mul(max(sun.y, 0)).mul(float(1).sub(atmo.overcast.mul(0.88)));
     const skyIrr = mix(zen, horizon, 0.5).mul(Math.PI);
     const ground = vec3(0.13, 0.12, 0.095).mul(sunIrr.add(skyIrr)).div(Math.PI);
@@ -363,6 +368,7 @@ export class Sky {
     scene.backgroundNode = skyColorNode(true);
     this.envScene.backgroundNode = skyColorNode(false);
     this.pmrem = new THREE.PMREMGenerator(renderer);
+    initSunProbe(scene);
   }
 
   /**
@@ -382,9 +388,11 @@ export class Sky {
     this.n++;
     clouds.frame.value = this.n % 64;
     if (viewCamera) {
+      const sun = atmo.sunDir.value as THREE.Vector3;
       viewCamera.getWorldDirection(viewDir);
-      updateViewExposure(viewDir, atmo.sunDir.value as THREE.Vector3, atmo.overcast.value as number, dt);
+      updateViewExposure(viewDir, sun, atmo.overcast.value as number, dt, updateSunProbe(viewCamera, sun, dt));
     }
+    updateGradeLook(atmo.night.value as number, atmo.overcast.value as number, (atmo.sunDir.value as THREE.Vector3).y);
     updateTerrainShadow(this.renderer, clouds.lightDir.value as THREE.Vector3, dt, force);
     if (force || this.n % 3 === 0) renderAtmosphereLUTs(this.renderer);
     const st = this.mapState;

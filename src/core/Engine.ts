@@ -14,6 +14,12 @@ export { grade };
 
 export type Updater = (dt: number, t: number) => void;
 
+/** a measured refresh to the display rate it is (a busy main thread reads 200 Hz as 196) */
+function snapHz(hz: number) {
+  for (const r of [30, 48, 50, 60, 72, 75, 90, 100, 120, 144, 165, 170, 180, 200, 240, 280, 360]) if (Math.abs(hz - r) / r < 0.04) return r;
+  return Math.round(hz);
+}
+
 interface GpuPool { timestamps: Map<string, number>; frames?: number[] }
 
 export class Engine {
@@ -233,7 +239,7 @@ export class Engine {
     });
     ts.sort((a, b) => a - b);
     const med = ts[Math.floor(ts.length / 2)] || 16.7;
-    this.refreshHz = Math.round(1000 / med);
+    this.refreshHz = snapHz(1000 / med);
     this.applyCap(params.fps);
   }
 
@@ -249,7 +255,7 @@ export class Engine {
     // two windows in a row must agree before the cap changes (a hitch or a busy GPU can skew one)
     if (Math.abs(hz - this.refreshHz) / this.refreshHz > 0.08) {
       if (++this.refreshVotes >= 2) {
-        this.refreshHz = Math.round(hz);
+        this.refreshHz = snapHz(hz);
         this.refreshVotes = 0;
         this.applyCap(this.capMode);
       }

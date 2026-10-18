@@ -282,6 +282,40 @@ def to_alocasia(lin, alpha):
     return np.clip(out, 0, 1)
 
 
+def damage_leaves(lin, alpha, seed, holes=90):
+    """Wild-leaf wear on a scan texture: yellowing patches, browned (necrotic) stretches of margin, insect holes with
+    brown rims and nibbled edges. Returns (colour, alpha)."""
+    rng = np.random.default_rng(seed)
+    h, w = alpha.shape
+    m = alpha > 0.5
+    edge = np.clip((alpha - T.blur(alpha, 5.0, wrap=False)) * 4, 0, 1)        # ~1 near the leaf outline
+    band = T.smoothstep(0.02, 0.35, edge) * m
+    n1 = T.fft_noise(h, w, beta=2.2, seed=seed + 1)
+    n2 = T.fft_noise(h, w, beta=1.6, seed=seed + 2)
+    yel = T.smoothstep(0.6, 1.6, n1) * m
+    out = lin * (1 - 0.6 * yel[..., None]) + T.srgb8(138, 136, 52) * 0.6 * yel[..., None]
+    nec = band * T.smoothstep(0.2, 1.0, n2)
+    out = out * (1 - 0.85 * nec[..., None]) + T.srgb8(96, 70, 40) * 0.85 * nec[..., None]
+    out = out * (1 - 0.35 * band[..., None] * (1 - nec[..., None])) + T.srgb8(120, 118, 46) * 0.35 * band[..., None] * (1 - nec[..., None])
+    al = alpha.copy()
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    ys, xs = np.nonzero(m)
+    for k in range(holes):
+        i = rng.integers(0, len(ys))
+        cy, cx = ys[i], xs[i]
+        r = rng.uniform(2.5, 9.0)
+        el = rng.uniform(0.6, 1.0)
+        y0, y1, x0, x1 = max(cy - 14, 0), min(cy + 15, h), max(cx - 14, 0), min(cx + 15, w)
+        d = np.sqrt(((yy[y0:y1, x0:x1] - cy) / r) ** 2 + ((xx[y0:y1, x0:x1] - cx) / (r * el)) ** 2)
+        d = d + 0.25 * n2[y0:y1, x0:x1]
+        al[y0:y1, x0:x1] *= np.clip((d - 1.0) * r + 0.5, 0, 1)
+        ring = T.smoothstep(1.6, 1.0, d) * (d >= 1.0)
+        out[y0:y1, x0:x1] = out[y0:y1, x0:x1] * (1 - 0.8 * ring[..., None]) + T.srgb8(88, 62, 36) * 0.8 * ring[..., None]
+    nib = T.smoothstep(0.7, 1.5, T.fft_noise(h, w, beta=1.2, seed=seed + 3))
+    al = al * (1 - (edge > 0.12) * nib)
+    return np.clip(out, 0, 1), al
+
+
 def build_scan_atlas():
     Q = 1024
     A = np.zeros((N, N, 3), np.float32)
@@ -297,6 +331,9 @@ def build_scan_atlas():
         lin = T.srgb_to_lin(a)
         if name == 'alocasia':
             lin = to_alocasia(lin, al)
+        if name in ('alocasia', 'calathea', 'anthurium'):
+            lin, al = damage_leaves(lin, al, {'alocasia': 91, 'calathea': 92, 'anthurium': 93}[name],
+                                    holes=90 if name == 'alocasia' else 40)
         if kind == 'arm':
             ao, rough = r[..., 0], r[..., 1]
         else:

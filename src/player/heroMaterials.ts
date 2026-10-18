@@ -51,6 +51,9 @@ interface HairNodes {
   depth: N;
   /** hair colour normalised to unit luminance, for the secondary highlight */
   tint: N;
+  /** 0 in the gaps between strands of the texture .. 1 on a strand; and a per-strand shift of the highlights */
+  strandMask: N;
+  jitter: N;
 }
 
 class HairLighting extends PhysicalLightingModel {
@@ -68,16 +71,18 @@ class HairLighting extends PhysicalLightingModel {
     // Kajiya-Kay: highlights where the half vector is perpendicular to the strand, shifted along the normal
     const hv = normalize(l.add(v));
     const lobe = (shift: number, exponent: N) => {
-      const t = normalize(this.h.strand.add(n.mul(shift)));
+      // each strand of the texture shifts its highlight a little: the band breaks up along the hair
+      const t = normalize(this.h.strand.add(n.mul(this.h.jitter.add(shift))));
       const th = dot(t, hv);
       const sinTH = sqrt(max(float(1).sub(th.mul(th)), 0));
       return smoothstep(-1, 0, th).mul(pow(sinTH, exponent));
     };
     const wet = heroU.wet;
-    const primary = lobe(-0.07, mix(float(110), float(260), wet)).mul(mix(float(0.075), float(0.2), wet));
-    const secondary = lobe(0.11, float(26)).mul(0.11);
-    // highlights only where the light reaches the strands (soft toward the terminator), weaker deep in the volume
-    const vis = saturate(ndl.mul(1.6).add(0.45)).mul(ao).mul(ao);
+    const primary = lobe(-0.07, mix(float(140), float(300), wet)).mul(mix(float(0.03), float(0.09), wet));
+    const secondary = lobe(0.11, float(30)).mul(0.07);
+    // highlights only where the light reaches the strands (soft toward the terminator), weaker deep in the volume,
+    // and on the strands of the texture rather than across whole cards
+    const vis = saturate(ndl.mul(1.6).add(0.45)).mul(ao).mul(ao).mul(this.h.strandMask);
     const spec = vec3(primary).add(this.h.tint.mul(secondary)).mul(vis);
     reflectedLight.directSpecular.addAssign(lightColor.mul(spec));
   }
@@ -90,11 +95,19 @@ class HairLighting extends PhysicalLightingModel {
 
   indirectSpecular(builder: N) {
     // hair shadows itself: only the outer strands see the sky, and only at grazing angles much
-    const { radiance, reflectedLight } = builder.context;
-    const nv = saturate(dot(normalView, positionViewDirection));
-    const fres = float(0.025).add(pow(float(1).sub(nv), 5).mul(0.1));
-    const occ = this.h.depth.mul(this.h.depth).mul(mix(float(0.45), float(0.9), heroU.wet));
+    const { radiance, iblIrradiance, reflectedLight } = builder.context;
+    const n = normalView, v = positionViewDirection;
+    const nv = saturate(dot(n, v));
+    const fres = float(0.03).add(pow(float(1).sub(nv), 5).mul(0.1));
+    const occ = this.h.depth.mul(this.h.depth).mul(mix(float(0.6), float(0.95), heroU.wet));
     reflectedLight.indirectSpecular.addAssign(radiance.mul(fres).mul(occ));
+    // the sky's sheen along the strands: a broad Kajiya-Kay lobe toward the bright sky overhead (in shade, where no
+    // sun highlight falls, dark hair still shows a soft band)
+    const sky = normalize(TSL.cameraViewMatrix.mul(vec4(0, 1, 0, 0)).xyz);
+    const hv = normalize(sky.add(v));
+    const th = dot(this.h.strand, hv);
+    const band = pow(sqrt(max(float(1).sub(th.mul(th)), 0)), float(36)).mul(saturate(dot(n, sky).mul(0.8).add(0.3)));
+    reflectedLight.indirectSpecular.addAssign(vec3(luminance(iblIrradiance)).mul(INV_PI).mul(band).mul(0.12).mul(occ));
   }
 }
 
@@ -114,10 +127,11 @@ export function hairMaterial(map: THREE.Texture) {
   m.name = 'hero_hair';
   const tex = texture(map, uv());
   const depth = saturate(attribute('hairDepth', 'float'));
-  // roots darker and a touch warmer than the tips
+  // roots darker and a touch warmer than the tips; the scan's albedo is near black (baked occlusion), lifted to a
+  // dark brown so strands read in the light
   const root = mix(vec3(0.62, 0.55, 0.5), vec3(1), depth);
   const wetDark = mix(float(1), float(0.55), heroU.wet);
-  m.colorNode = vec4(tex.rgb.mul(root).mul(wetDark), tex.a);
+  m.colorNode = vec4(tex.rgb.mul(root).mul(wetDark).mul(1.9), tex.a);
   const lum = max(luminance(tex.rgb), 1e-4);
   // dithered coverage: discard below a per-pixel threshold that changes every frame; the shadow pass uses the
   // numeric alphaTest (a stable cut) because it does not see alphaTestNode
@@ -133,6 +147,8 @@ export function hairMaterial(map: THREE.Texture) {
     strand: normalize(varying(modelViewMatrix.mul(vec4(tangentLocal, 0)).xyz, 'v_heroStrand')),
     depth,
     tint: saturate(tex.rgb.div(lum).mul(0.22)).mul(mix(float(1), float(0.7), heroU.wet)),
+    strandMask: smoothstep(0.004, 0.03, lum).mul(0.75).add(0.25),
+    jitter: lum.sub(0.012).mul(6).clamp(-0.12, 0.12),
   };
   return m;
 }
@@ -277,7 +293,7 @@ interface SkinNodes {
   eye: N;
 }
 
-const SSS_TINT = [0.95, 0.3, 0.2] as const;
+const SSS_TINT = [0.9, 0.42, 0.3] as const;
 
 class SkinLighting extends PhysicalLightingModel {
   constructor(private s: SkinNodes) {
@@ -290,7 +306,7 @@ class SkinLighting extends PhysicalLightingModel {
     // plain Lambert, tinted
     const ndl = dot(normalView, lightDirection);
     const band = max(saturate(ndl.add(0.5).div(1.5)).sub(saturate(ndl)), 0);
-    const sss = vec3(...SSS_TINT).mul(band).mul(this.s.skin).mul(0.75);
+    const sss = vec3(...SSS_TINT).mul(band).mul(this.s.skin).mul(0.45);
     reflectedLight.directDiffuse.addAssign(lightColor.mul(sss).mul(diffuseColor.rgb).mul(INV_PI));
     super.direct(data, builder);
   }
@@ -308,8 +324,8 @@ class SkinLighting extends PhysicalLightingModel {
     // a catchlight in the wet cornea: the bright sky above and behind the viewer, as bright as the sky light is
     const { iblIrradiance, reflectedLight } = builder.context;
     const r = reflect(positionViewDirection.negate(), normalView);
-    const glint = pow(saturate(dot(r, normalize(vec3(0.22, 0.55, 0.8)))), 260);
-    reflectedLight.indirectSpecular.addAssign(vec3(luminance(iblIrradiance.add(heroU.fill))).mul(glint).mul(this.s.eye).mul(0.5));
+    const glint = pow(saturate(dot(r, normalize(vec3(0.22, 0.55, 0.8)))), 120);
+    reflectedLight.indirectSpecular.addAssign(vec3(luminance(iblIrradiance.add(heroU.fill))).mul(glint).mul(this.s.eye));
   }
 }
 

@@ -31,7 +31,7 @@ SPECIES = {
               buttress=dict(n=5, reach=(2.6, 3.9), height=(3.2, 5.2), thick=(0.18, 0.28)),
               crown=dict(width=21.0, depth=0.45, clumps=12, tiles=('ell_spray_a', 'ell_spray_b', 'ell_spray_b'),
                          clump_tile='ell_clump', young=0.5, dead=0.04, limbs=5, fill=10, mass='ell_mass', lead=0.74),
-              lianas=3, loops=1, nests=3, broms=4, climber=None, strangler=False, aerial=4),
+              lianas=3, loops=1, nests=3, broms=4, climber=None, strangler=False, aerial=0),
     'b': dict(desc='strangler fig', seed=202, height=27.0, bole=0.5, dbh=0.85, lean=(0.02, 200),
               buttress=dict(n=3, reach=(1.2, 1.8), height=(1.2, 2.0), thick=(0.2, 0.3)),
               crown=dict(width=21.0, depth=0.42, clumps=13, tiles=('obo_rosette_a', 'obo_rosette_b', 'obo_rosette_a'),
@@ -877,83 +877,123 @@ class Tree:
         i = int(rng.uniform(*frac) * (len(P) - 1))
         return P[i], l
 
+    def twin(self, mb, path, radii, colf, frac=0.7, r2=0.02, pitch=0.5):
+        """Second strand twined round the first part of a liana path."""
+        T_, N_, B_ = J.frames(path)
+        m = max(4, int(len(path) * frac))
+        tw = [path[i] + (N_[i] * math.cos(i * pitch) + B_[i] * math.sin(i * pitch)) * (radii[i] + r2 * 0.9)
+              for i in range(m)]
+        J.tube(mb, np.array(tw), np.full(m, r2), 4, colf, mat=0, u_wrap=1, v_scale=0.5 / BARK_W, seg_v=v_seg_clean)
+
     def lianas(self, mb, lod):
-        """Woody lianas hanging from limbs: a short droop at the anchor, a long near-vertical fall with gentle sway
-        drifting toward the trunk, rooted in the ground (some with a loose coil). One gets a twin strand."""
+        """Woody lianas, thick (4.5-8.5 cm) and twisting: climbers that rise from the forest floor with a sag, spiral
+        loosely round the trunk, run out along a limb into the crown and drop from a clump; and deep loops hanging
+        between two limbs (twin strands twined at LOD0). LOD1 keeps the climbers only."""
         rng = np.random.default_rng(self.sp['seed'] + 31)
-        n = self.sp['lianas']
         prims = [x for x in self.limbs if x['level'] == 0 and x['parent'] is not None]
         order = rng.permutation(len(prims))
-        for k in range(n):
+        sides, sub = (6, 2) if lod == 0 else (3, 1)
+        c0 = self.centre(0.0)
+        for k in range(self.sp['lianas']):
             l = prims[order[k % len(prims)]]
-            Pc = J.catmull(l['ctrl'], 4)
-            P0 = Pc[int(rng.uniform(0.45, 0.95) * (len(Pc) - 1))]
-            loop = k < self.sp['loops']
-            base_c = self.centre(0.0)
-            off = P0[:2] - base_c[:2]
-            gxy = base_c[:2] + off * rng.uniform(0.45, 0.85) + rng.normal(0, 0.6, 2)
-            if np.linalg.norm(gxy - base_c[:2]) < self.radius(0.3) + 1.2:
-                gxy = base_c[:2] + J.norm(np.append(gxy - base_c[:2], 0))[:2] * (self.radius(0.3) + 1.6)
-            G = np.array([gxy[0], gxy[1], 0.0])
-            sway_a = rng.uniform(0.2, 0.6)
-            sway_l = rng.uniform(5, 10)
-            sway_p = rng.uniform(0, 6.28)
-            sway_d = J.norm(np.array([rng.normal(), rng.normal(), 0]))
-            pts = [P0, P0 + np.array([0, 0, -0.6]) + np.append(off, 0) / max(np.linalg.norm(off), 1e-3) * 0.4]
-            z0 = pts[-1][2]
-            nz = max(4, int(z0 / 2.6))
-            for i in range(1, nz + 1):
-                t = i / (nz + 1)
-                e = 1 - (1 - t) ** 1.8  # most of the horizontal drift happens high up
-                xy = pts[1][:2] * (1 - e) + G[:2] * e
-                z = z0 * (1 - t) + 1.2 * t
-                p = np.array([xy[0], xy[1], z]) + sway_d * sway_a * math.sin(z / sway_l * 6.28 + sway_p) * math.sin(math.pi * t)
-                pts.append(p)
-            if loop:
-                c = G + np.array([rng.uniform(-0.4, 0.4), rng.uniform(-0.4, 0.4), 0.0])
-                a0 = rng.uniform(0, 6.28)
-                for i in range(7):
-                    a = a0 + i * 1.15
-                    rr = rng.uniform(0.45, 0.9)
-                    pts.append(c + np.array([math.cos(a) * rr, math.sin(a) * rr, rng.uniform(0.08, 0.5)]))
-            pts.append(G + np.array([0, 0, 0.15]))
-            pts.append(G + np.array([rng.uniform(-0.6, 0.6), rng.uniform(-0.6, 0.6), -0.4]))
-            path = J.catmull(np.array(pts), 3 if lod == 0 else 1)
-            r = rng.uniform(0.035, 0.06)
-            radii = r * (1 + 0.35 * np.linspace(0, 1, len(path)))
+            r = rng.uniform(0.045, 0.085)
             ph = float(rng.uniform())
+            a0 = rng.uniform(0, 2 * math.pi)
+            dg = self.radius(0.3) + rng.uniform(1.4, 3.6)
+            G = np.array([c0[0] + math.cos(a0) * dg, c0[1] + math.sin(a0) * dg, -0.35])
+            pts = [G, G + np.array([rng.normal(0, 0.2), rng.normal(0, 0.2), 0.45])]
+            z_touch = rng.uniform(3.0, 7.5)
+            for i in range(1, 5):  # hangs in a sag between the ground and where it grips the trunk
+                t = i / 5
+                zt = 0.45 + (z_touch - 0.45) * t
+                ct = self.centre(zt)
+                rad = self.radius(zt) + r + (dg - self.radius(0.3)) * (1 - t) ** 1.4
+                a = a0 + 0.35 * t
+                pts.append(np.array([ct[0] + math.cos(a) * rad, ct[1] + math.sin(a) * rad, zt - 0.9 * math.sin(math.pi * t)]))
+            z_top = float(min(l['start'][2], self.Hb + 1.5)) - 0.4
+            turns = rng.uniform(0.7, 1.5) * (1 if rng.uniform() < 0.5 else -1)
+            for i in range(1, 11):  # loose spiral up the trunk
+                t = i / 10
+                zt = z_touch + (z_top - z_touch) * t
+                ct = self.centre(zt)
+                a = a0 + 0.35 + turns * 2 * math.pi * t
+                rad = self.radius(zt) + r * 1.05 + 0.04 * math.sin(t * 11 + k)
+                pts.append(np.array([ct[0] + math.cos(a) * rad, ct[1] + math.sin(a) * rad, zt]))
+            Pl = J.catmull(l['ctrl'], 2)
+            nl = len(Pl)
+            for i in range(1, int(nl * rng.uniform(0.7, 0.95)), 2):  # out along the limb, riding on its upper side
+                f = i / (nl - 1)
+                lr = l['r0'] + (l['r1'] - l['r0']) * f
+                pts.append(Pl[i] + np.array([0, 0, lr + r * 0.9]) + rng.normal(0, 0.05, 3))
+            end = pts[-1]
+            drop = rng.uniform(2.5, 6.0)  # and falls out of the crown in a swinging curve
+            dd = J.norm(np.array([rng.normal(), rng.normal(), 0.0]))
+            for i in range(1, 4):
+                t = i / 3
+                pts.append(end + dd * 0.8 * math.sin(math.pi * t * 0.8) + np.array([0, 0, -drop * t]))
+            path = J.catmull(np.array(pts), sub)
+            npth = len(path)
+            radii = r * (1.15 - 0.45 * np.linspace(0, 1, npth))
+            ig = 6 + 10 * sub  # roughly where the stem leaves the trunk for the limb
+
+            def colf(i, f, a, ph=ph, n=npth, ig=ig):
+                g = 0.04 + 0.3 * min(1.0, i / max(ig, 1)) + 0.35 * max(0.0, (i - ig) / max(n - ig, 1))
+                return np.tile([0.45 + 0.35 * f, min(g, 0.72), 0.0, ph], (len(a), 1))
+            J.tube(mb, path, radii, sides, colf, mat=0, u_wrap=1, v_scale=0.5 / BARK_W, seg_v=v_seg_clean, twist=1.6)
+            if lod == 0 and k % 2 == 0:
+                self.twin(mb, path, radii, colf, frac=0.55, r2=r * 0.4)
+        if lod > 0:
+            return
+        for k in range(self.sp['loops'] + (1 if self.sp['lianas'] else 0)):
+            l1, l2 = prims[order[(2 * k) % len(prims)]], prims[order[(2 * k + 1) % len(prims)]]
+            P1 = J.catmull(l1['ctrl'], 2)
+            P2 = J.catmull(l2['ctrl'], 2)
+            A = P1[int(rng.uniform(0.35, 0.85) * (len(P1) - 1))]
+            B = P2[int(rng.uniform(0.35, 0.85) * (len(P2) - 1))]
+            sag = rng.uniform(3.5, 8.5)
+            r = rng.uniform(0.035, 0.065)
+            ph = float(rng.uniform())
+            sw = J.norm(np.array([rng.normal(), rng.normal(), 0.0])) * rng.uniform(0.3, 1.0)
+            pts = [A + (B - A) * t + np.array([0, 0, -sag * 4 * t * (1 - t)]) + sw * math.sin(math.pi * t)
+                   for t in np.linspace(0, 1, 11)]
+            path = J.catmull(np.array(pts), 2)
+            radii = np.full(len(path), r)
 
             def colf(i, f, a, ph=ph):
-                return np.tile([0.5 + 0.3 * f, 0.6 * (1 - f) ** 1.5 + 0.03, 0.0, ph], (len(a), 1))
-            J.tube(mb, path, radii, 6 if lod == 0 else 3, colf, mat=0, u_wrap=1, v_scale=0.5 / BARK_W,
-                   seg_v=v_seg_clean, twist=1.4)
-            if k == 0 and lod == 0:  # twin strand spiralling around the upper part
-                T_, N_, B_ = J.frames(path)
-                m = int(len(path) * 0.65)
-                tw = []
-                for i in range(m):
-                    a = i * 0.55
-                    rr = radii[i] + 0.022
-                    tw.append(path[i] + (N_[i] * math.cos(a) + B_[i] * math.sin(a)) * rr)
-                J.tube(mb, np.array(tw), np.full(m, 0.018), 4, colf, mat=0, u_wrap=1, v_scale=0.5 / BARK_W,
-                       seg_v=v_seg_clean)
+                return np.tile([0.5 + 0.25 * math.sin(math.pi * f), 0.6 + 0.12 * math.sin(math.pi * f), 0.0, ph], (len(a), 1))
+            J.tube(mb, path, radii, 5, colf, mat=0, u_wrap=1, v_scale=0.5 / BARK_W, seg_v=v_seg_clean, twist=1.2)
+            self.twin(mb, path, radii, colf, frac=1.0, r2=r * 0.45, pitch=0.42)
 
     def aerial_roots(self, mb, lod):
+        """Fig aerial roots: wavy, kinked cords; most reach the ground and thicken there (future pillar roots), the
+        rest end 1.5-4 m up; some braided in pairs."""
         rng = np.random.default_rng(self.sp['seed'] + 41)
-        for k in range(self.sp['aerial'] if lod == 0 else self.sp['aerial'] // 3):
-            P0, l = self.limb_point(rng, level=rng.integers(0, 2), frac=(0.2, 0.95))
-            end_z = rng.uniform(0.3, 6.0) if rng.uniform() < 0.7 else -0.3
-            n = 6
-            pts = [P0 + np.array([rng.normal(0, 0.05), rng.normal(0, 0.05), -(P0[2] - end_z) * i / n]) for i in range(n + 1)]
-            for p in pts[1:]:
-                p[:2] += rng.normal(0, 0.06, 2)
-            r = rng.uniform(0.008, 0.02) if end_z > 0 else rng.uniform(0.02, 0.04)
+        for k in range(int(self.sp['aerial'] * 0.6) if lod == 0 else self.sp['aerial'] // 4):
+            grounded = rng.uniform() < 0.7
+            # rooted ones drop from near the trunk and thicken into pillar roots; the rest hang short and wavy
+            P0, l = self.limb_point(rng, level=0 if grounded else rng.integers(0, 2), frac=(0.1, 0.45) if grounded else (0.3, 0.95))
+            end_z = -0.3 if grounded else rng.uniform(2.0, 5.0)
+            n = max(5, int((P0[2] - end_z) / 1.4))
+            drift = np.array([rng.normal(0, 0.6), rng.normal(0, 0.6), 0.0])
+            walk = np.zeros(3)
+            pts = [P0]
+            for i in range(1, n + 1):
+                t = i / n
+                walk[:2] += rng.normal(0, 0.3, 2)
+                pts.append(P0 + drift * t + walk * math.sin(math.pi * min(t * 1.2, 1.0))
+                           + np.array([0, 0, -(P0[2] - end_z) * t]))
+            path = J.catmull(np.array(pts), 2 if lod == 0 else 1)
+            f = np.linspace(0, 1, len(path))
+            r = rng.uniform(0.012, 0.022) if not grounded else rng.uniform(0.028, 0.05)
+            radii = r * (1.2 - 0.4 * f) if not grounded else r * (0.8 + 1.4 * f ** 2.5)
             ph = float(rng.uniform())
 
-            def colf(i, f, a, ph=ph):
-                return np.tile([0.6, 0.5 + 0.4 * f, 0.15 * f, ph], (len(a), 1))
-            J.tube(mb, np.array(pts), np.linspace(r * 1.3, r * 0.7, n + 1), 3, colf, mat=0, u_wrap=1,
-                   v_scale=0.5 / BARK_W, seg_v=v_seg_clean)
+            def colf(i, f, a, ph=ph, gr=grounded):
+                return np.tile([0.55 + 0.1 * f, 0.5 + (0.0 if gr else 0.4) * f, 0.0 if gr else 0.15 * f, ph], (len(a), 1))
+            J.tube(mb, path, radii, 4 if lod == 0 else 3, colf, mat=0, u_wrap=1, v_scale=0.5 / BARK_W,
+                   seg_v=v_seg_clean, twist=0.8)
+            if lod == 0 and k % 3 == 0:
+                self.twin(mb, path, radii, colf, frac=0.8, r2=r * 0.7, pitch=0.35)
 
     def rosette(self, mb, at, tile, centre, n, length, width_scale, elev, droop, g_att, phase, rng, lod, nseg=5,
                 dead_frac=0.15):
@@ -1155,8 +1195,8 @@ class Tree:
         if lod < 2:
             self.fill_stems(mb, lod)
             self.strangler(mb, lod)
-        if lod == 0:
             self.lianas(mb, lod)
+        if lod == 0:
             self.aerial_roots(mb, lod)
             self.climber(mb, at, lod)
             self.epiphytes(mb, at, lod)
