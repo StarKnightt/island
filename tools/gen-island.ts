@@ -21,8 +21,9 @@ import { Noise2, clamp, lerp, smax, smin, smoothstep } from '../src/core/noise.t
 
 const N = HEIGHT_RES;
 const CELL = WORLD_SIZE / N;
-const outDir = join(import.meta.dirname, '..', 'public', 'world');
-const previewDir = 'E:\\tmp\\island';
+// (ISLAND_WORLD_OUT bakes somewhere else, to compare a change with the shipped data before replacing it)
+const outDir = process.env.ISLAND_WORLD_OUT ?? join(import.meta.dirname, '..', 'public', 'world');
+const previewDir = process.env.ISLAND_WORLD_OUT ?? 'E:\\tmp\\island';
 mkdirSync(outDir, { recursive: true });
 mkdirSync(previewDir, { recursive: true });
 
@@ -229,6 +230,135 @@ function blur(src: Float32Array, n: number, r: number, passes: number): Float32A
 kind = blur(kind, N, 10, 2);
 log('coast kinds');
 
+// ---------------------------------------------------------------- the fringing reef
+// Off the beach coasts the island grows a fringing reef: past the beach's own surf zone a sandy lagoon (2-5 m, sand
+// waves, coral heads, seagrass, shoals), then a reef flat a hand's depth under the surface, its crest, and a steep
+// fore-reef down to the deep floor; a pass cuts through it off the river mouth (fresh water keeps coral away). None
+// off the cliffs and rock points or in the village cove. Only the sea bed past 90 m offshore changes: the shoreline,
+// the beach and its surf zone stay as they were.
+const COVE: V2 = [-455, 425]; // (surf.ts: the sheltered village cove)
+const REEF_SHELF = 90; // metres offshore kept as the beach profile (the surf model's shoaling zone)
+const mainBoundary = new Uint8Array(N * N);
+const insideMain = new Uint8Array(N * N);
+{
+  const xsOf = (z: number) => {
+    const xs: number[] = [];
+    for (let i = 0; i < coast.length; i++) {
+      const a = coast[i], b = coast[(i + 1) % coast.length];
+      if ((a.z <= z && b.z > z) || (b.z <= z && a.z > z)) xs.push(a.x + ((z - a.z) / (b.z - a.z)) * (b.x - a.x));
+    }
+    return xs.sort((p, q) => p - q);
+  };
+  for (let j = 0; j < N; j++) {
+    const xs = xsOf(wx(j));
+    for (let k = 0; k + 1 < xs.length; k += 2) {
+      const i0 = Math.max(0, Math.ceil((xs[k] + HALF_WORLD) / CELL - 0.5));
+      const i1 = Math.min(N - 1, Math.floor((xs[k + 1] + HALF_WORLD) / CELL - 0.5));
+      for (let i = i0; i <= i1; i++) insideMain[j * N + i] = 1;
+    }
+  }
+  for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
+    const k = j * N + i;
+    if (insideMain[k] && (!insideMain[k - 1] || !insideMain[k + 1] || !insideMain[k - N] || !insideMain[k + N])) mainBoundary[k] = 1;
+  }
+}
+const toMain = edt(mainBoundary, N); // distance (texels) to the main island's coast, and the nearest coast texel
+/**
+ * How far out the reef crest lies (m from the main island's shore), by bearing round the island (the angle surf.ts
+ * uses for its along-shore coordinate), so the crest follows the distance field's smooth iso-lines and does not jump
+ * where the nearest stretch of coast changes in front of a crescent bay: the whole east bay (taking in the palm
+ * islet, cut by the river pass) and the beaches of the south shore; nothing off the south-east point, the cliffs and
+ * rock coasts, or the village cove.
+ */
+function reefWidthAt(x: number, z: number) {
+  const th = (Math.atan2(z + 35, x) * 180) / Math.PI;
+  const east = smoothstep(-23, -11, th) * (1 - smoothstep(10, 21, th));
+  const south = smoothstep(32, 42, th) * (1 - smoothstep(72, 88, th));
+  const w = 272 * east + 245 * south;
+  return w * (1 + 0.08 * noise.simplex(th / 9, 4.2) + 0.04 * noiseB.simplex(th / 2.5, 9.1));
+}
+const reefW = new Float32Array(N * N);
+for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) reefW[j * N + i] = reefWidthAt(wx(i), wx(j));
+if (process.env.ISLAND_REEF_DEBUG) {
+  for (const [x, z] of [[700, 0], [800, 100], [900, 0], [720, -150], [450, 600], [450, 700], [160, -560]] as V2[]) {
+    const i = Math.floor(x + HALF_WORLD), j = Math.floor(z + HALF_WORLD), k = j * N + i;
+    const nb = toMain.nearest[k];
+    console.log(`reef debug (${x}, ${z}): dm ${(toMain.dist[k] * CELL).toFixed(1)} W ${reefW[k].toFixed(1)} sd ${sd[k].toFixed(1)} nearest (${(nb % N) - HALF_WORLD}, ${Math.floor(nb / N) - HALF_WORLD})`);
+  }
+}
+/** live bottom (coral, algae, seagrass) under the sea, 0..1, for the masks */
+const liveBed = new Float32Array(N * N);
+// the pass off the river mouth: a channel through the lagoon and the reef, out to deep water
+const PASS_O: V2 = [652, -116], PASS_D: V2 = [0.999, -0.04];
+function reefBed(h: number, idx: number, x: number, z: number, d: number): number {
+  const dm = toMain.dist[idx] * CELL;
+  const W = reefW[idx];
+  // (the height texture clamps at the world's edge, so the sea out there must stay deep)
+  const edge = 1 - smoothstep(935, 1000, Math.max(Math.abs(x), Math.abs(z)));
+  const wR = smoothstep(105, 175, W) * smoothstep(REEF_SHELF, REEF_SHELF + 25, dm) * edge;
+  if (wR <= 0) return h;
+  const D0 = -h;
+  // the crest, ragged along its length; the flat behind it
+  const C = W + 15 * noise.simplex(x / 95, z / 95) + 5 * noiseB.simplex(x / 21, z / 21);
+  const F = clamp(0.26 * W, 40, 85);
+  const flatIn = Math.max(C - F, REEF_SHELF + 40);
+  // local frame: across (toward the open sea) and along the shore, from the distance field's gradient
+  const i = idx % N, j = (idx - i) / N;
+  const gx = toMain.dist[j * N + Math.min(i + 1, N - 1)] - toMain.dist[j * N + Math.max(i - 1, 0)];
+  const gz = toMain.dist[Math.min(j + 1, N - 1) * N + i] - toMain.dist[Math.max(j - 1, 0) * N + i];
+  const gl = Math.hypot(gx, gz) || 1;
+  const ax = -gz / gl, az = gx / gl; // along the shore
+  const along = x * ax + z * az;
+  // the lagoon floor: 2-5 m of sand with sand waves; long shoals running with the shore
+  const lagD = 2.4 + 1.1 * noiseC.fbm(x / 130, z / 130, 3) + 0.2 * noise.simplex(x / 19, z / 19) + 0.12 * noiseB.simplex(along / 6.5, dm / 2.2);
+  const shoal = smoothstep(0.62, 0.8, 0.5 + 0.5 * noiseB.fbm(along / 170, dm / 38, 3)) * smoothstep(REEF_SHELF + 20, REEF_SHELF + 80, dm) * (1 - smoothstep(flatIn - 60, flatIn - 20, dm));
+  // (never deeper than the shelf already was where it meets the beach profile: no moat behind the surf zone)
+  let D = lerp(D0, Math.min(lagD, Math.max(D0, 2.0)), smoothstep(REEF_SHELF, REEF_SHELF + 30, dm));
+  D = lerp(D, lagD, smoothstep(REEF_SHELF + 20, REEF_SHELF + 70, dm));
+  D = lerp(D, 0.75 + 0.25 * noise.simplex(x / 30, z / 30), shoal * 0.85);
+  // up onto the reef flat: a hand's depth over rubble and coral, sand grooves running seaward through it
+  const groove = smoothstep(0.55, 0.85, Math.abs(noise.simplex(along / 26, dm / 90)));
+  const flatD = 0.5 + 0.22 * noise.simplex(x / 12, z / 12) + 0.18 * noiseC.simplex(x / 35, z / 35) + 0.5 * groove;
+  const tFlat = smoothstep(flatIn - 30, flatIn + 12, dm);
+  D = lerp(D, flatD, tFlat);
+  // coral heads in the lagoon (more toward the reef), a few broad patch reefs
+  const heads = smoothstep(0.62, 0.8, 0.5 + 0.5 * noiseB.fbm(x / 24, z / 24, 3) + 0.18 * smoothstep(REEF_SHELF + 60, flatIn, dm));
+  const patch = smoothstep(0.66, 0.78, 0.5 + 0.5 * noiseC.fbm(x / 75 + 3.3, z / 75 - 1.1, 3));
+  const headD = 0.9 + 0.5 * noise.simplex(x / 7, z / 7);
+  const inLagoon = smoothstep(REEF_SHELF + 25, REEF_SHELF + 70, dm) * (1 - tFlat);
+  D = lerp(D, Math.min(D, headD), Math.max(heads, patch * 0.9) * inLagoon);
+  // seagrass meadows on the inner lagoon floor (dark from above, no relief)
+  const grassBed = smoothstep(0.58, 0.72, 0.5 + 0.5 * noise.fbm(x / 55 - 7, z / 55 + 2, 3)) * inLagoon * (1 - shoal);
+  // the crest and the fore-reef: steep to ~20 m, then easing into the deep floor; spurs and grooves down it
+  const out = dm - C;
+  let live = Math.max(Math.max(heads, patch) * inLagoon, grassBed * 0.7);
+  live = lerp(live, (0.38 + 0.4 * smoothstep(-0.2, 0.5, noise.simplex(x / 16, z / 16))) * (1 - groove * 0.8), tFlat);
+  if (out > -10) {
+    const spur = 0.5 + 0.5 * Math.sin(along / 3.2 + 2.0 * noise.simplex(along / 40, dm / 25));
+    const foreD = out < 0 ? 0.35 : out < 30 ? 0.35 + out * (0.55 + 0.25 * spur) : 0.35 + 30 * (0.55 + 0.25 * spur) + (out - 30) * 0.22;
+    // (down the fore-reef until it meets the old floor, and at least 30 m deep past it, so the drop always reads)
+    D = out < 0 ? lerp(D, 0.35 + 0.1 * spur, smoothstep(-10, 0, out)) : Math.max(Math.min(foreD, D0), Math.min(foreD, 30));
+    live = Math.max(live, smoothstep(-12, -2, out) * (0.75 + 0.25 * spur) * (1 - smoothstep(60, 120, out)));
+  }
+  // the pass: sand-floored, 6-11 m deep, its walls coral
+  const px = x - PASS_O[0], pz = z - PASS_O[1];
+  const pt = px * PASS_D[0] + pz * PASS_D[1], pd = Math.abs(-px * PASS_D[1] + pz * PASS_D[0]) + 7 * noise.simplex(pt / 60, 1.7);
+  if (pt > 0) {
+    const inPass = (1 - smoothstep(16, 38, pd)) * smoothstep(REEF_SHELF - 10, REEF_SHELF + 50, pt);
+    const passD = 5.5 + pt * 0.012 + 1.2 * noise.simplex(x / 25, z / 25);
+    D = lerp(D, Math.max(D, passD), inPass);
+    live *= 1 - (1 - smoothstep(10, 26, pd)) * smoothstep(REEF_SHELF - 10, REEF_SHELF + 50, pt);
+  }
+  // islets keep their own shores and beaches: near one (its coast closer than the main island's) never deeper than
+  // the old bed, so the islet stands on the lagoon floor with its own beach slope
+  const islet = d < dm - 4 ? 1 - smoothstep(35, 90, d) : 0;
+  D = lerp(D, Math.min(D, D0), islet);
+  live *= 1 - islet * (1 - smoothstep(10, 40, d));
+  liveBed[idx] = clamp(live, 0, 1) * wR;
+  if (process.env.ISLAND_REEF_DEBUG && (idx % 9973 === 0) && dm > 100 && dm < 400) console.log(`  reefBed (${x.toFixed(0)}, ${z.toFixed(0)}) dm ${dm.toFixed(0)} W ${W.toFixed(0)} wR ${wR.toFixed(2)} C ${C.toFixed(0)} flatIn ${flatIn.toFixed(0)} D0 ${D0.toFixed(2)} D ${D.toFixed(2)} islet ${islet.toFixed(2)} d ${d.toFixed(0)}`);
+  return lerp(h, -Math.max(D, 0.25), wR);
+}
+
 // ---------------------------------------------------------------- polyline helpers
 interface Near { d: number; s: number; seg: number; t: number; side: number }
 function nearestOnPolyline(pts: V2[], x: number, z: number, cum: number[]): Near {
@@ -387,7 +517,10 @@ for (let j = 0; j < N; j++) {
       }
       h = s < 0 ? lerp(seabed(0.01, k, x, z), land, smoothstep(-2, 0, s)) : land;
     } else {
-      h = seabed(-s, k, x, z);
+      h = reefBed(seabed(-s, k, x, z), idx, x, z, -s);
+      // the height texture clamps at the world's edge: the sea seen beyond it must read as deep water
+      const edgeDeep = smoothstep(955, 1020, Math.max(Math.abs(x), Math.abs(z)));
+      if (edgeDeep > 0) h = Math.min(h, -45 * edgeDeep);
     }
     H[idx] = h;
   }
@@ -811,7 +944,8 @@ for (let j = 0; j < M; j++) {
     sand = Math.max(sand, (1 - smoothstep(-2, 6, rd)) * (1 - smoothstep(1.5, 4, h)));
     if (s < 0) sand = Math.max(sand, beachK * 0.9 + 0.1);
     // rock: cliffs and rock shelves at the coast, steep ground, the summit
-    let rock = smoothstep(38, 50, slope + 6 * n2);
+    // (not the reef's coral slopes)
+    let rock = smoothstep(38, 50, slope + 6 * n2) * (s < 0 && liveBed[ci] > 0.02 ? 0 : 1);
     rock = Math.max(rock, clamp(k - 0.6, 0, 1) * (1 - smoothstep(10 + 10 * n1, 26 + 10 * n1, s)) * (s > -6 ? 1 : 0.5));
     rock = Math.max(rock, smoothstep(196, 206, h + 8 * n2) * 0.85);
     // falls gorge
@@ -840,7 +974,8 @@ for (let j = 0; j < M; j++) {
     forest *= smoothstep(-0.62, -0.32, noiseC.fbm(x / 160, z / 160, 3));
     forest *= smoothstep(LIGHTHOUSE.platformR + 8, LIGHTHOUSE.platformR + 30, dl);
     forest = clamp(forest, 0, 1);
-    const wet = Math.max((1 - smoothstep(0, 7, rd)) * (h > 0.3 ? 1 : 0), (1 - smoothstep(0, 4, s)) * 0.6);
+    // (G: wet ground on land; under the sea the live bottom instead: coral, algae and seagrass, for the terrain shader)
+    const wet = s >= 0 ? Math.max((1 - smoothstep(0, 7, rd)) * (h > 0.3 ? 1 : 0), (1 - smoothstep(0, 4, s)) * 0.6) : liveBed[ci];
     const water = 1 - smoothstep(-0.8, 0.4, rd);
     mask0[o] = Math.round(clamp(sand, 0, 1) * 255);
     mask0[o + 1] = Math.round(clamp(grass, 0, 1) * 255);
@@ -888,9 +1023,11 @@ log('preview...');
     const o = (j * M + i) * 4;
     let r: number, g: number, b: number;
     if (h < 0) {
-      const d = clamp(-h / 40, 0, 1);
-      r = lerp(120, 10, Math.sqrt(d)); g = lerp(220, 50, Math.sqrt(d)); b = lerp(210, 110, d);
-      if (-h < 0.6) { r = 200; g = 230; b = 220; }
+      // roughly as seen from above: white sand fading through turquoise to navy, the live bottom dark
+      const live = mask1[o + 1] / 255;
+      const tr = [Math.exp(-0.9 * -h), Math.exp(-0.14 * -h), Math.exp(-0.07 * -h)];
+      const bed = [lerp(235, 70, live), lerp(225, 62, live), lerp(200, 45, live)];
+      r = bed[0] * tr[0] + 4 * (1 - tr[0]); g = bed[1] * tr[1] + 40 * (1 - tr[1]); b = bed[2] * tr[2] + 95 * (1 - tr[2]);
     } else {
       const sand = mask0[o] / 255, grass = mask0[o + 1] / 255, dirt = mask0[o + 2] / 255, forest = mask0[o + 3] / 255;
       const rock = mask1[o] / 255, water = mask1[o + 2] / 255;

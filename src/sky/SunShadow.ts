@@ -16,8 +16,18 @@ export function addSunOcclusion(f: Factor) {
 }
 
 export class SunShadowNode extends CSMShadowNode {
+  /** shadow-map size per cascade (near to far); the outer cascades cover far more ground where texels can be coarser,
+   * and their fill (alpha-tested leaf cards, many times over) is most of the shadow cost. Unset: the light's size. */
+  mapSizes: number[] = [];
+
   setup(builder: unknown) {
     let s = (super.setup as (b: unknown) => N)(builder);
+    // (the cascade lights exist from the first setup on; each render resizes its map to its shadow's mapSize)
+    const lights = (this as unknown as { lights: { shadow: { mapSize: { set: (w: number, h: number) => void } } }[] }).lights;
+    lights.forEach((l, i) => {
+      const m = this.mapSizes[i];
+      if (m) l.shadow.mapSize.set(m, m);
+    });
     let k: N = float(1);
     for (const f of factors) k = k.mul(f(positionWorld));
     s = s.mul(k);

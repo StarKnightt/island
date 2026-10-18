@@ -1,7 +1,8 @@
 /**
  * Shared browser launcher for the harness scripts: the installed Chrome, headed, on the high-performance GPU, with its
- * own temporary profile, on one monitor chosen from the layout Windows reports at launch (the primary display unless
- * ISLAND_DISPLAY names another: a 1-based index in Windows' order, a device name such as DISPLAY2, or "secondary").
+ * own temporary profile, on one monitor chosen from the layout Windows reports at launch: the one named in
+ * ~/.island-display (primary, secondary or a device name such as DISPLAY2), else in ISLAND_DISPLAY (the same, or a
+ * 1-based index in Windows' order), else the primary.
  * When that display is exactly the requested viewport (1920x1080), the window goes borderless fullscreen on it and the
  * page renders a real 1920x1080 viewport; on any other display size the window fits the work area and the viewport is
  * emulated at 1920x1080. Pointer lock is stubbed so a test window can never capture the real mouse.
@@ -9,6 +10,8 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 import { createServer as createNetServer } from 'node:net';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 export const ROOT = join(import.meta.dirname, '..', '..');
@@ -56,14 +59,23 @@ export function displays(): Display[] {
 export function targetDisplay(): Display {
   const list = displays();
   const primary = list.find((d) => d.primary) ?? list[0];
-  const want = (process.env.ISLAND_DISPLAY ?? '').trim().toLowerCase();
+  const want = (displayOverride() ?? process.env.ISLAND_DISPLAY ?? '').trim().toLowerCase();
   if (!want || want === 'primary') return primary;
   if (want === 'secondary') return list.find((d) => !d.primary) ?? primary;
   const byName = list.find((d) => d.name.toLowerCase() === want || d.name.toLowerCase() === `display${want}`);
   const byIndex = /^\d+$/.test(want) ? list[Number(want) - 1] : undefined;
   const d = byName ?? byIndex;
-  if (!d) console.warn(`[browser] ISLAND_DISPLAY=${want} not found (have ${list.map((x) => x.name).join(', ')}); using the primary`);
+  if (!d) console.warn(`[browser] display "${want}" not found (have ${list.map((x) => x.name).join(', ')}); using the primary`);
   return d ?? primary;
+}
+
+/** the user's machine-wide choice in ~/.island-display; it beats ISLAND_DISPLAY so one edit moves every test window */
+function displayOverride(): string | undefined {
+  try {
+    return readFileSync(join(homedir(), '.island-display'), 'utf8').trim() || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Chrome flags: placed on the target display, the high-performance GPU, never throttled in the background */

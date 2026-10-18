@@ -105,11 +105,13 @@ def arc_path(start, d0, length, bend, n, side_axis=None, twist=0.0, rng=None, wo
         side_axis = J.norm(np.cross(d0, np.array([0, 0, 1.0])) + 1e-9)
     P = [np.asarray(start, np.float64)]
     T_ = []
+    # one draw from the caller's generator whatever n is, so every LOD of a plant keeps the same random sequence
+    wr = np.random.default_rng(int(rng.integers(1 << 30))) if (wob and rng is not None) else None
     for i in range(n):
         t = (i + 0.5) / n
         d = J.rot(side_axis, -bend * t ** 1.6) @ d0
-        if wob and rng is not None:
-            d = J.norm(d + rng.normal(0, wob, 3))
+        if wr is not None:
+            d = J.norm(d + wr.normal(0, wob * math.sqrt(12 / n), 3))
         P.append(P[-1] + d * length / n)
         T_.append(d)
     T_.append(T_[-1])
@@ -218,6 +220,87 @@ def make_banana(at, seed, lod, tall):
             banana_leaf(mb, at, rng, pb, az, math.radians(rng.uniform(-88, -72)), L, L * 0.22,
                         math.radians(rng.uniform(-8, 8)), 'banana_dead', lod, gtop, float(rng.uniform()),
                         droop_a=math.radians(rng.uniform(65, 80)), hang=True)
+    return mb
+
+
+def bract_spike(mb, at, rng, base, d, height, lod, g0, ph):
+    """Erect lobster-claw inflorescence: two crossed cards of the heliconia_bracts tile on a short peduncle, so the
+    planar (distichous) spike keeps some volume from every side."""
+    t_ = at.t['heliconia_bracts']
+    Sw, Sh = t_['size_wh']
+    k = height / t_['height']
+    W, H = Sw * k, Sh * k
+    up = J.norm(d)
+    s0 = J.norm(np.cross(up, np.array([0.31, 0.95, 0.0])))
+    nseg = 3 if lod == 0 else 1
+    for side in (s0, J.norm(np.cross(up, s0))):
+        rows = []
+        for j in range(nseg + 1):
+            f = j / nseg
+            c = base + up * H * f + np.array([0, 0, 0]) - side * 0 + J.norm(np.cross(side, up)) * 0.02 * f * f
+            P = np.array([c - side * W / 2, c + side * W / 2])
+            col = [(0.65 + 0.3 * f, min(1.0, g0 + (1 - g0) * 0.6 * f), 0.08 + 0.1 * f, ph)] * 2
+            nn = J.norm(np.cross(side, up))
+            rows.append(mb.verts(P, np.array(col), np.array([nn, nn])))
+        for j in range(nseg):
+            v0, v1 = j / nseg, (j + 1) / nseg
+            mb.face((rows[j], rows[j] + 1, rows[j + 1] + 1, rows[j + 1]),
+                    [at.tile_uv('heliconia_bracts', 0.0, v0), at.tile_uv('heliconia_bracts', 1.0, v0),
+                     at.tile_uv('heliconia_bracts', 1.0, v1), at.tile_uv('heliconia_bracts', 0.0, v1)], LEAF)
+
+
+def make_heliconia(at, seed, lod, tall, nspike):
+    """Lobster-claw heliconia clump: pseudostems (petioles + sheaths) carrying upright banana-like paddle leaves in one
+    plane per stem, and a few erect red / yellow bract spikes."""
+    rng = np.random.default_rng(seed)
+    mb = J.MB()
+    ph0 = float(rng.uniform())
+    nst = int(rng.integers(7, 11))
+    spikes = set(rng.choice(nst, size=min(nspike, nst), replace=False).tolist())
+    for si in range(nst):
+        a = rng.uniform(0, 2 * math.pi)
+        pos = np.array([math.cos(a), math.sin(a)]) * (rng.uniform(0.05, 0.75) if si else 0.0)
+        h = tall * rng.uniform(0.6, 1.05)
+        lean = J.norm(np.array([pos[0] * 0.25 + rng.normal(0, 0.05), pos[1] * 0.25 + rng.normal(0, 0.05), 1.0]))
+        ph = float((ph0 + 0.17 * si) % 1.0)
+        hs = h * rng.uniform(0.5, 0.62)            # height where the last blade leaves the stem
+        base = np.array([pos[0], pos[1], -0.1])
+        path = np.array([base + lean * (hs + 0.1) * f for f in np.linspace(0, 1, 5)])
+        g1 = 0.1 + 0.15 * h / 3.0
+        stem_tube(mb, path, np.linspace(0.034, 0.022, 5), 6 if lod == 0 else 3, 'banana', 0.0, g1, ph, ao0=0.4,
+                  ao1=0.85, v_per_m=0.6)
+        top = path[-1]
+        az0 = rng.uniform(0, 2 * math.pi)
+        nl = int(rng.integers(3, 6))
+        for k in range(nl):
+            az = az0 + math.pi * k + rng.normal(0, 0.15)        # distichous: alternate sides of one plane
+            f = (k + 1) / nl
+            pb = path[0] + (top - path[0]) * (0.3 + 0.7 * f)
+            pet = rng.uniform(0.2, 0.4) * h / tall
+            pdir = J.norm(np.array([math.cos(az) * 0.4, math.sin(az) * 0.4, 1.0]))
+            pe = pb + pdir * pet
+            if lod == 0:
+                stem_tube(mb, np.array([pb, (pb + pe) / 2, pe]), [0.016, 0.013, 0.011], 4, 'banana',
+                          g1 * (0.3 + 0.7 * f), g1 + 0.06, ph, v_per_m=0.8)
+            L = h * rng.uniform(0.38, 0.5) * (0.8 + 0.2 * f)
+            W = L * rng.uniform(0.25, 0.3)
+            elev = math.radians(rng.uniform(40, 72))
+            tile = 'banana_intact' if rng.uniform() < 0.8 else 'banana_torn'
+            banana_leaf(mb, at, rng, pe, az, elev, L, W, math.radians(rng.uniform(35, 70)), tile, lod, g1 + 0.06,
+                        float(rng.uniform()), droop_a=math.radians(rng.uniform(4, 14)))
+        if si in spikes:
+            d = J.norm(lean + np.array([rng.normal(0, 0.12), rng.normal(0, 0.12), 0.4]))
+            ped = top + d * rng.uniform(0.1, 0.25)
+            stem_tube(mb, np.array([top, ped]), [0.014, 0.011], 4 if lod == 0 else 3, 'banana', g1, g1 + 0.05, ph,
+                      v_per_m=1.0)
+            bract_spike(mb, at, rng, ped, d, rng.uniform(0.32, 0.48) * (tall / 2.6) ** 0.5, lod, g1 + 0.05,
+                        float(rng.uniform()))
+        else:  # a rolled young leaf (spear) on some stems (random draws identical in both LODs)
+            spear, sl = rng.uniform() < 0.35, rng.uniform(0.3, 0.6)
+            if spear and lod == 0:
+                sp = top + lean * sl
+                stem_tube(mb, np.array([top, (top + sp) / 2, sp]), [0.02, 0.016, 0.004], 5, 'banana', g1, g1 + 0.2,
+                          ph, v_per_m=1.0)
     return mb
 
 
@@ -335,12 +418,12 @@ def make_colocasia(at, seed, lod, size):
     return mb
 
 
-def frond(mb, at, rng, base, az, elev, L, bend, tile, lod, g0, ph, droop_a=0.25, scale_w=1.0, twist=0.0):
+def frond(mb, at, rng, base, az, elev, L, bend, tile, lod, g0, ph, droop_a=0.25, scale_w=1.0, twist=0.0, lod1=(5, 1)):
     t_ = at.t[tile]
     Sw, Sh = t_['size_wh']
     piv = t_['pivot']
     cu0, cv0, cu1, cv1 = t_['content']
-    n = 12 if lod == 0 else 5
+    n = 12 if lod == 0 else lod1[0]
     d0 = np.array([math.cos(az) * math.cos(elev), math.sin(az) * math.cos(elev), math.sin(elev)])
     P, Tn, _ = arc_path(base, d0, L, bend, n, rng=rng, wob=0.015)
     side, up = leaf_frame(P, Tn, roll=twist)
@@ -360,7 +443,7 @@ def frond(mb, at, rng, base, az, elev, L, bend, tile, lod, g0, ph, droop_a=0.25,
 
     def dr(i, f):
         return droop_a * (0.5 + 0.7 * t[i]) * f
-    ribbon(mb, P, side, up, hw, uvf, colf, LEAF, droop=dr, cols=2 if lod == 0 else 1)
+    ribbon(mb, P, side, up, hw, uvf, colf, LEAF, droop=dr, cols=2 if lod == 0 else lod1[1])
     return P
 
 
@@ -378,25 +461,52 @@ def make_treefern(at, seed, lod, height):
         pts.append(p)
     pts = np.array(pts)
     zf = np.linspace(0, 1, n + 1)
-    radii = 0.13 * (1 - 0.25 * zf) + 0.16 * np.exp(-zf * height / 0.5)  # root-mass flare
+    # fibrous root mantle at the base, slight thickening under the crown
+    radii = 0.12 * (1 - 0.15 * zf) + 0.13 * np.exp(-zf * height / 0.6) + 0.04 * zf ** 5
     gtop = 0.1 + 0.04 * height
-    stem_tube(mb, pts, radii, 10 if lod == 0 else 5, 'fern', 0.0, gtop, ph0, ao0=0.4, ao1=0.85, v_per_m=0.45)
+    stem_tube(mb, pts, radii, 10 if lod == 0 else 5, 'fern', 0.0, gtop, ph0, ao0=0.35, ao1=0.8, v_per_m=0.45)
     top = pts[-1]
-    nf = int(rng.integers(17, 23)) if lod == 0 else int(rng.integers(12, 15))
+    srng = np.random.default_rng(int(rng.integers(1 << 30)))  # own generator: LOD1 keeps LOD0's frond sequence
+    if lod == 0:  # shaggy trunk: old stipe bases spiralling up, densest just under the crown
+        rng, mrng = srng, rng
+        nst = int(rng.integers(52, 62))
+        for k in range(nst):
+            f = 1 - (1 - (k + rng.uniform()) / nst) ** 1.3
+            z = height - 0.04 - (1 - f) * min(1.3, 0.22 * height)
+            i = min(int(z / height * n), n - 1)
+            fz = z / height * n - i
+            c = pts[i] * (1 - fz) + pts[i + 1] * fz
+            rr = radii[i] * (1 - fz) + radii[i + 1] * fz
+            a = k * 2.4 + rng.normal(0, 0.25)
+            d = np.array([math.cos(a), math.sin(a), 0.0])
+            # old stipe bases: stiff and rising near the crown, broken and drooping lower down
+            el = math.radians(rng.uniform(25, 60) if f > 0.4 else rng.uniform(-30, 30))
+            dd = J.norm(d * math.cos(el) + np.array([0, 0, math.sin(el)]))
+            ln = rng.uniform(0.08, 0.22) * (0.6 + 0.4 * f)
+            p0 = c + d * rr * 0.7
+            mid = p0 + dd * ln * 0.55 + np.array([0, 0, -0.03])
+            stem_tube(mb, [p0, mid, p0 + dd * ln + np.array([0, 0, -0.05 * (1 - f)])],
+                      [rng.uniform(0.035, 0.06), 0.03, 0.01], 4, 'fern', gtop * z / height, gtop * z / height, ph0,
+                      ao0=0.4, ao1=0.7, v_per_m=2.0)
+        rng = mrng
+    nf = int(rng.integers(26, 33)) if lod == 0 else int(rng.integers(18, 23))
     a0 = rng.uniform(0, 2 * math.pi)
     for k in range(nf):
         az = a0 + k * 2.4 + rng.normal(0, 0.1)
-        young = rng.uniform() < 0.2
-        elev = math.radians(rng.uniform(55, 75) if young else rng.uniform(10, 45))
-        L = rng.uniform(2.2, 3.0) * (0.8 if young else 1.0)
+        young = rng.uniform() < 0.18
+        # shuttlecock: young fronds stand up in the centre, mature ones arch out and droop at the tips
+        elev = math.radians(rng.uniform(58, 78) if young else rng.uniform(22, 52))
+        L = rng.uniform(2.6, 3.5) * (0.75 if young else 1.0) * (0.85 + 0.03 * height)
         tile = 'treefern_a' if rng.uniform() < 0.6 else 'treefern_b'
-        frond(mb, at, rng, top + np.array([0, 0, 0.05]), az, elev, L, math.radians(rng.uniform(60, 105) if not young else 25),
-              tile, lod, gtop, float(rng.uniform()), droop_a=math.radians(rng.uniform(5, 20)), scale_w=1.2)
+        ring = 0.04 if young else rng.uniform(0.08, 0.16)
+        base = top + np.array([math.cos(az) * ring, math.sin(az) * ring, 0.06 if young else -rng.uniform(0.0, 0.12)])
+        frond(mb, at, rng, base, az, elev, L, math.radians(rng.uniform(95, 135) if not young else 30),
+              tile, lod, gtop, float(rng.uniform()), droop_a=math.radians(rng.uniform(16, 32)), scale_w=1.5, lod1=(7, 2))
     # dead skirt
-    for k in range(int(rng.integers(4, 8)) if lod == 0 else 3):
+    for k in range(int(rng.integers(7, 11)) if lod == 0 else 4):
         az = rng.uniform(0, 2 * math.pi)
-        base = top + np.array([math.cos(az) * 0.1, math.sin(az) * 0.1, -rng.uniform(0.0, 0.2)])
-        frond(mb, at, rng, base, az, math.radians(rng.uniform(-80, -62)), rng.uniform(1.4, 2.0), math.radians(rng.uniform(-15, 10)),
+        base = top + np.array([math.cos(az) * 0.12, math.sin(az) * 0.12, -rng.uniform(0.05, 0.35)])
+        frond(mb, at, rng, base, az, math.radians(rng.uniform(-82, -60)), rng.uniform(1.4, 2.2), math.radians(rng.uniform(-15, 10)),
               'frond_dead', lod, gtop, float(rng.uniform()), droop_a=math.radians(60), scale_w=0.6, twist=rng.normal(0, 0.4))
     # fiddleheads (crosiers) at the crown
     if lod == 0:
@@ -576,7 +686,7 @@ def make_sapling(at, seed, lod, height, tiers):
             d = np.array([math.cos(az) * math.cos(elev), math.sin(az) * math.cos(elev), math.sin(elev)])
             pe = C + d * rng.uniform(0.04, 0.12)
             stem_tube(mb, np.array([C, pe]), [0.006, 0.004], 3, 'bark', gc, gc + 0.05, ph0, v_per_m=1.0)
-            vi = int(rng.integers(0, 4))
+            vi = int(rng.integers(0, 3))  # sub 3 holds the heliconia bracts
             s = at.t['sapling_leaves']['subs'][vi]
             L = rng.uniform(0.38, 0.58)
             W = s['width'] * L / s['length']
@@ -703,6 +813,8 @@ def main():
         ('licuala_a', lambda lod: make_licuala(at, 52, lod, 2.3)),
         ('sapling_a', lambda lod: make_sapling(at, 61, lod, 3.2, 0)),
         ('sapling_b', lambda lod: make_sapling(at, 62, lod, 2.6, 3)),
+        ('heliconia_a', lambda lod: make_heliconia(at, 71, lod, 2.8, 4)),
+        ('heliconia_b', lambda lod: make_heliconia(at, 72, lod, 1.9, 3)),
     ]
     objs, info = [], {}
     for name, fn in plants:

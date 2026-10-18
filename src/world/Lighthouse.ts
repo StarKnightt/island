@@ -104,7 +104,8 @@ export class Lighthouse {
     const y0 = this.baseY, gy = this.galleryY;
     const kb = new KitBuilder();
     const kbGlass = new KitBuilder();
-    const stucco = pbr('stucco', { vcolor: true, key: 'lh_stucco' });
+    // whitewash: in sun the brightest thing in the frame, light blue-grey in shade
+    const stucco = pbr('stucco', { vcolor: true, key: 'lh_stucco', tint: [1.3, 1.29, 1.25] });
     const stone = pbr('stone', { vcolor: true, key: 'lh_stone' });
     const red = pbr('rust', { vcolor: true, key: 'lh_red', tint: [1.25, 0.42, 0.34], roughMul: 0.8 });
     const iron = flat([0.035, 0.038, 0.04], 0.5, 0.55);
@@ -248,7 +249,8 @@ export class Lighthouse {
     const core = pow(smoothstep(1.0, 0.0, rad), 2.0);
     const view = abs(dot(normalize(positionWorld.sub(cameraPosition)), normalize(positionWorld.sub(vec3(this.lampPos.x, this.lampPos.y, this.lampPos.z)))));
     const k = smoothstep(0.0, 0.015, along).mul(pow(float(1).sub(along), 2.2)).mul(core).mul(mix(float(1), float(0.3), view));
-    bm.colorNode = vec4(vec3(1.0, 0.86, 0.62).mul(k).mul(lighthouseU.on).mul(float(0.25).add(min(atmo.mist.mul(9000), 6.5))), 1);
+    // (tropical night air is humid: the beams read even on a clear night, more in haze and rain)
+    bm.colorNode = vec4(vec3(1.0, 0.86, 0.62).mul(k).mul(lighthouseU.on).mul(float(0.9).add(min(atmo.mist.mul(14000), 8))), 1);
     this.beam = new THREE.Mesh(cone, bm);
     const beam2 = new THREE.Mesh(cone, bm);
     beam2.rotation.y = Math.PI;
@@ -421,12 +423,15 @@ export class Lighthouse {
     const c = Math.cos(rot), s = Math.sin(rot);
     const g = Math.min(hf.height(cx, cz), hf.height(cx + 2.5 * c, cz - 2.5 * s), hf.height(cx - 2.5 * c, cz + 2.5 * s));
     const P = (lx: number, y: number, lz: number) => V(cx + lx * c + lz * s, y, cz - lx * s + lz * c);
-    const walls = pbr('stucco', { vcolor: true, key: 'keeper_stucco' });
+    // (whitewash: the brightest thing on the headland at noon, as the tower)
+    const walls = pbr('stucco', { vcolor: true, key: 'keeper_stucco', tint: [1.3, 1.29, 1.25] });
     const stone = pbr('stone', { vcolor: true, key: 'keeper_stone' });
     const tiles = pbr('roof_tiles', { vcolor: true, key: 'keeper_tiles' });
     const wood = pbr('wood', { vcolor: true, key: 'keeper_wood' });
     const paint = pbr('paint_wood', { vcolor: true, key: 'keeper_paint', tint: [0.45, 0.8, 0.7] });
-    const glass = flat([0.025, 0.03, 0.035], 0.05, 0);
+    // the keeper is home at night: warm lamplight behind the panes (its own colour key: flat() shares materials)
+    const glass = flat([0.026, 0.03, 0.035], 0.05, 0);
+    glass.emissiveNode = vec3(1.0, 0.6, 0.28).mul(lighthouseU.on.mul(2.6));
     const floor = g + 0.35;
     // plinth
     kb.add(stone, box(W + 0.25, 0.75, D + 0.25, P(0, g - 0.02, 0), [0, rot, 0], 1.2, 0.85));
@@ -640,6 +645,7 @@ function lensMaterial() {
   m.colorNode = vec4(vec3(0.16, 0.19, 0.17), 1);
   m.roughnessNode = float(0.08);
   m.metalnessNode = float(0.6);
-  m.emissiveNode = vec3(1.0, 0.8, 0.5).mul(lighthouseU.on.mul(14));
+  // (the lit optic is a hard point far brighter than anything else at night: it blooms)
+  m.emissiveNode = vec3(1.0, 0.8, 0.5).mul(lighthouseU.on.mul(60));
   return m;
 }

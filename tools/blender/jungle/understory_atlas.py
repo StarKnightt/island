@@ -34,8 +34,8 @@ TILES = [
     ('banana_torn', (256, 0, 256, 1024), 'image', None, None, 'bottom', 0),
     ('banana_shredded', (512, 0, 256, 1024), 'image', None, None, 'bottom', 0),
     ('banana_dead', (768, 0, 256, 1024), 'image', None, None, 'bottom', 0),
-    ('treefern_a', (1024, 0, 512, 1024), 'frond_bipinnate', 'pinna', {'mid': 0.4, 'young': 0.35, 'apple': 0.15, 'olive': 0.1}, 'bottom', 21),
-    ('treefern_b', (1536, 0, 512, 1024), 'frond_bipinnate', 'pinna', {'mid': 0.35, 'olive': 0.25, 'old': 0.2, 'yellowing': 0.1, 'dead': 0.1}, 'bottom', 22),
+    ('treefern_a', (1024, 0, 512, 1024), 'frond_bipinnate', 'pinna', {'young': 0.45, 'apple': 0.35, 'mid': 0.2}, 'bottom', 21),
+    ('treefern_b', (1536, 0, 512, 1024), 'frond_bipinnate', 'pinna', {'young': 0.35, 'apple': 0.25, 'mid': 0.25, 'olive': 0.05, 'yellowing': 0.06, 'dead': 0.04}, 'bottom', 22),
     ('rattan', (0, 1024, 512, 1024), 'frond_palm', 'palmlet', {'dark': 0.3, 'mid': 0.35, 'young': 0.2, 'blue': 0.15}, 'bottom', 23),
     ('frond_dead', (512, 1024, 512, 1024), 'frond_dead', 'pinna', {'dead': 0.7, 'yellowing': 0.3}, 'bottom', 24),
     ('colocasia', (1024, 1024, 512, 512), 'image', None, None, 'bottom', 0),
@@ -52,7 +52,7 @@ def frond_bipinnate(mb, rng, sh, moods, length, lmax, dead=False):
     SA.add_twig(mb, path, 0.016, 0.003)
     s = J.arclen(path)
     L = s[-1]
-    npair = int(rng.integers(34, 42))
+    npair = int(rng.integers(40, 47))
     aged = 0.0 if dead else sum(w for v, w in moods.items() if v in ('yellowing', 'dead'))
     green = {v: w for v, w in moods.items() if v not in ('yellowing', 'dead')}
     for k in range(npair):
@@ -221,7 +221,7 @@ def build_leaf_atlas(only):
             sh = SA.Sheet(sheet)
             mb = J.MB()
             if kind == 'frond_bipinnate':
-                frond_bipinnate(mb, rng, sh, moods, rng.uniform(2.2, 2.5), 0.55)
+                frond_bipinnate(mb, rng, sh, moods, rng.uniform(2.2, 2.5), 0.6)
             elif kind == 'frond_dead':
                 frond_bipinnate(mb, rng, sh, moods, 2.0, 0.45, dead=True)
             elif kind == 'frond_palm':

@@ -14,6 +14,21 @@ import {
 import { SUN_E, atmo, renderAtmosphereLUTs, skyRadiance, transmittanceAt, R_GROUND } from './Atmosphere';
 import { Q } from '../core/quality';
 import { wetness } from '../world/weatherUniforms';
+import { updateViewExposure } from '../core/grade';
+import { terrainShadowAt, updateTerrainShadow } from './TerrainShadow';
+
+/**
+ * The camera the visible sky is drawn for, captured while the sky renders (the post chain draws with a camera of its
+ * own, and the environment map's cube faces are square): the grade's exposure for shooting into a low sun needs its
+ * direction. The probe is a zero added to the sky so that it updates with it.
+ */
+let viewCamera: THREE.PerspectiveCamera | null = null;
+const viewProbe = uniform(0).onRenderUpdate((frame: { camera?: THREE.Camera | null }) => {
+  const c = frame.camera as THREE.PerspectiveCamera | null | undefined;
+  if (c && c.isPerspectiveCamera && Math.abs(c.aspect - 1) > 0.01) viewCamera = c;
+  return 0;
+});
+const viewDir = new THREE.Vector3();
 
 /** cloud layer */
 export const clouds = {
@@ -148,8 +163,9 @@ function cloudDensity(p: N, h: N, detail = true) {
 }
 
 /**
- * Direct light let through the clouds at a world point (1 = clear sky): the cloud map sampled where the light ray
- * crosses the lower half of the slab.
+ * Direct light let through at a world point (1 = clear sky) beyond what the cascades see: the clouds' shadow (the
+ * cloud map sampled where the light ray crosses the lower half of the slab) times the island's own shadow at a low
+ * sun or moon (TerrainShadow.ts).
  */
 export const cloudShadow = Fn(([worldPos]: N[]) => {
   const l = normalize(clouds.lightDir);
@@ -157,7 +173,7 @@ export const cloudShadow = Fn(([worldPos]: N[]) => {
   const t = y.sub(worldPos.y).div(max(l.y, 0.06));
   const c = cloudAt(worldPos.xz.add(l.xz.mul(t)));
   const opacity = c.x.mul(smoothstep(0.02, 0.3, c.y)).mul(mix(float(0.86), float(0.96), clouds.thickness));
-  return float(1).sub(opacity);
+  return float(1).sub(opacity).mul(terrainShadowAt(worldPos));
 });
 
 // ---------------------------------------------------------------- the sky dome node
@@ -220,8 +236,13 @@ export function skyColorNode(withSun: boolean) {
       const mu = sqrt(max(float(1).sub(float(1).sub(sd).div(1 - sunCos)), 0));
       const limb = float(1).sub(float(0.6).mul(float(1).sub(mu)));
       const sunL = transmittanceAt(float(R_GROUND).add(atmo.camHeight), sun.y).mul(disc).mul(limb).mul(SUN_E * 220);
+      // scaled down as a whole below the post chain's per-channel clamp (64), so a low sun keeps its colour into the
+      // tone curve and the bloom (clamped channel by channel it turned into a white dot with a white glare)
+      const peak = max(sunL.x, max(sunL.y, sunL.z));
+      const sunC = sunL.mul(min(float(1), float(60).div(max(peak, 1e-4))));
       // a thick overcast hides the disc completely (5 % of it would still bloom into a glare)
-      col.addAssign(sunL.mul(float(1).sub(smoothstep(0.25, 0.85, atmo.overcast))));
+      col.addAssign(sunC.mul(float(1).sub(smoothstep(0.25, 0.85, atmo.overcast))));
+      col.addAssign(vec3(viewProbe));
     }
     // ---- cumulus: ray-marched through the slab between the base and the tallest tops
     const base = clouds.base, depth = clouds.depth;
@@ -360,6 +381,11 @@ export class Sky {
     // the sun and the haze change slowly: the LUTs every third frame
     this.n++;
     clouds.frame.value = this.n % 64;
+    if (viewCamera) {
+      viewCamera.getWorldDirection(viewDir);
+      updateViewExposure(viewDir, atmo.sunDir.value as THREE.Vector3, atmo.overcast.value as number, dt);
+    }
+    updateTerrainShadow(this.renderer, clouds.lightDir.value as THREE.Vector3, dt, force);
     if (force || this.n % 3 === 0) renderAtmosphereLUTs(this.renderer);
     const st = this.mapState;
     const drift = clouds.drift.value as THREE.Vector2;

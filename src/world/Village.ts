@@ -13,7 +13,7 @@ import { loadGLTF } from '../core/Assets';
 import { instancedMesh } from '../core/instancing';
 import {
   float, fract, smoothstep, uv, vec4, vec3, abs, min, max, attribute, mix, positionLocal, sin, uniform, Fn,
-  uniformArray, instanceIndex, vec2, length, pow,
+  uniformArray, instanceIndex, vec2, length, pow, positionWorld, type N,
 } from '../core/tsl';
 import { wetness } from './weatherUniforms';
 
@@ -67,6 +67,7 @@ export class Village {
     this.netRack(kb, -522, 338, 0.25);
     this.netRack(kb, -488, 334, -0.1);
     this.fishRack(kb, -426, 328, -0.2);
+    this.lifeProps(kb);
     kb.build(this.group);
     this.buildNight();
     this.buildBoats();
@@ -207,30 +208,43 @@ export class Village {
   private dock(kb: KitBuilder, x0: number, z0: number, x1: number, z1: number, w: number, y: number, tee: boolean) {
     const deck = pbr('planks_grey', { vcolor: true, key: 'dockdeck' });
     const post = pbr('wood', { vcolor: true, key: 'dockpost' });
+    if (!(post as unknown as { _wet?: boolean })._wet) {
+      // the posts dark and green with weed below the high-water mark, bleached above it
+      (post as unknown as { _wet: boolean })._wet = true;
+      post.colorNode = (post.colorNode as N).mul(vec4(mix(vec3(0.28, 0.34, 0.24), vec3(1.0), smoothstep(-0.15, 0.45, positionWorld.y)), 1));
+    }
     const dx = x1 - x0, dz = z1 - z0, L = Math.hypot(dx, dz);
     const ux = dx / L, uz = dz / L;
     const rot = Math.atan2(ux, uz);
     const r = new Rng(Math.round(x0 * 7 + z0));
-    // planks across, with gaps and small height noise
-    const nPl = Math.floor(L / 0.24);
-    for (let i = 0; i < nPl; i++) {
-      const t = (i + 0.5) / nPl;
+    // planks across, each its own width, gap, warp and weathering (silver-grey to brown), not one board repeated
+    for (let s = 0.1; s < L - 0.1;) {
+      const bw = r.range(0.15, 0.27);
+      const t = (s + bw / 2) / L;
+      s += bw + r.range(0.012, 0.028);
       const px = x0 + dx * t, pz = z0 + dz * t;
       const gy = this.ground(px, pz);
       const yy = Math.max(y, gy + 0.25) + r.range(-0.012, 0.012);
-      kb.add(deck, box(w + r.range(-0.05, 0.08), 0.05, 0.21, V(px, yy, pz), [r.range(-0.01, 0.01), rot, r.range(-0.015, 0.015)], 1.2, r.range(0.7, 1.0)));
+      kb.add(deck, box(w + r.range(-0.06, 0.1), 0.038, bw, V(px + r.range(-0.03, 0.03), yy, pz), [r.range(-0.012, 0.012), rot + r.range(-0.012, 0.012), r.range(-0.018, 0.018)], 1.2, r.range(0.55, 1.05)));
     }
     // stringers and posts
     for (const side of [-1, 1]) {
       const ox = -uz * side * (w / 2 - 0.12), oz = ux * side * (w / 2 - 0.12);
       kb.add(post, box(0.1, 0.16, L, V((x0 + x1) / 2 + ox, y - 0.1, (z0 + z1) / 2 + oz), [0, rot, 0], 1.5, 0.75));
       for (let s2 = 0; s2 <= L; s2 += 2.4) {
-        const px = x0 + ux * s2 + ox, pz = z0 + uz * s2 + oz;
+        const px = x0 + ux * s2 + ox + r.range(-0.08, 0.08), pz = z0 + uz * s2 + oz + r.range(-0.08, 0.08);
         const gy = this.ground(px, pz);
         const bottom = Math.min(gy, -0.2) - 0.6;
-        const top = y + (s2 % 4.8 < 0.1 ? 0.9 : 0.15);
-        kb.add(post, cylinder(0.11, 0.13, top - bottom, V(px, (top + bottom) / 2, pz), [r.range(-0.03, 0.03), 0, r.range(-0.03, 0.03)], 7, 1.2, 0.7));
+        const top = y + (s2 % 4.8 < 0.1 ? 0.9 : 0.15) + r.range(-0.06, 0.1);
+        // crooked round poles of mixed thickness, leaning a little each their own way
+        const rad = r.range(0.085, 0.15);
+        kb.add(post, cylinder(rad * 0.9, rad, top - bottom, V(px, (top + bottom) / 2, pz), [r.range(-0.07, 0.07), 0, r.range(-0.07, 0.07)], 7, 1.2, r.range(0.55, 0.85)));
         if (top > y + 0.5) this.col.circle(px, pz, 0.14, bottom, top);
+        // a diagonal brace to the next pair, alternating
+        if (side === 1 && s2 + 2.4 <= L && Math.round(s2 / 2.4) % 2 === 0) {
+          const qx = x0 + ux * (s2 + 1.2), qz = z0 + uz * (s2 + 1.2);
+          kb.add(post, box(0.07, 0.14, w + 0.1, V(qx, y - 0.55, qz), [0.42 * (Math.round(s2 / 4.8) % 2 ? 1 : -1), rot + Math.PI / 2, 0], 1.2, 0.65));
+        }
       }
     }
     // rope railing on one side of the outer half
@@ -257,6 +271,55 @@ export class Village {
     }
   }
 
+  /** signs of the people who live here: mooring lines, washing on a line, the firewood by the fire */
+  private lifeProps(kb: KitBuilder) {
+    const r = new Rng(901);
+    const rope = flat([0.55, 0.47, 0.34], 0.95);
+    // a rope sagging between two points (a catenary is a parabola at this sag)
+    const sagLine = (a: THREE.Vector3, b: THREE.Vector3, sag: number, rad: number) => {
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= 10; i++) {
+        const t = i / 10;
+        pts.push(a.clone().lerp(b, t).add(V(0, -sag * 4 * t * (1 - t), 0)));
+      }
+      kb.add(rope, tubeGeo(pts, rad, 4));
+    };
+    // mooring lines: each moored canoe's bow to a post of the nearest jetty (the canoes ride to them)
+    const posts = [...[-451.0, -453.0].flatMap((px) => Array.from({ length: 23 }, (_, i) => V(px, 1.62, 334 + i * 2.4))),
+      ...[-399.2, -400.8].flatMap((px) => Array.from({ length: 14 }, (_, i) => V(px + i * 0.25 * 0.25, 1.5, 340 + i * 2.4)))];
+    for (const b of [{ x: -445.3, z: 357, rot: 0.08 }, { x: -458.8, z: 368, rot: -0.12 }, { x: -445.5, z: 378, rot: 0.15 }, { x: -459, z: 391, rot: 0.05 }, { x: -392, z: 362, rot: 0.2 }]) {
+      const bow = V(b.x + Math.sin(b.rot) * 2.9, 0.62, b.z + Math.cos(b.rot) * 2.9);
+      let best = posts[0], bd = Infinity;
+      for (const p of posts) {
+        const d = p.distanceTo(bow);
+        if (d < bd) { bd = d; best = p; }
+      }
+      sagLine(bow, best, Math.min(0.6, 0.12 + bd * 0.06), 0.014);
+    }
+    // washing on a line between two poles in front of the huts
+    const pole = pbr('wood', { vcolor: true, key: 'villagepole' });
+    const a = V(-487, 0, 314), b = V(-473, 0, 311);
+    const ga = this.ground(a.x, a.z), gb = this.ground(b.x, b.z);
+    for (const [p, g] of [[a, ga], [b, gb]] as [THREE.Vector3, number][]) kb.add(pole, cylinder(0.045, 0.055, 2.3, V(p.x, g + 1.15, p.z), [r.range(-0.04, 0.04), 0, r.range(-0.04, 0.04)], 6, 1, 0.75));
+    const top = (p: THREE.Vector3, g: number) => V(p.x, g + 2.2, p.z);
+    sagLine(top(a, ga), top(b, gb), 0.28, 0.008);
+    const cloths: [number, number, number][] = [[0.72, 0.12, 0.1], [0.92, 0.88, 0.8], [0.12, 0.32, 0.6], [0.85, 0.62, 0.15], [0.3, 0.55, 0.42], [0.9, 0.9, 0.88], [0.55, 0.2, 0.45]];
+    const run = b.clone().sub(a), len = Math.hypot(run.x, run.z), rotY = Math.atan2(run.x, run.z) + Math.PI / 2;
+    for (let s = 0.9; s < len - 0.7; s += r.range(0.75, 1.2)) {
+      const t = s / len;
+      const lineY = THREE.MathUtils.lerp(ga, gb, t) + 2.2 - 0.28 * 4 * t * (1 - t);
+      const cw = r.range(0.45, 0.75), ch = r.range(0.5, 0.95);
+      const c = r.pick(cloths);
+      kb.add(flat(c, 0.9), box(cw, ch, 0.012, V(a.x + run.x * t, lineY - ch / 2 - 0.02, a.z + run.z * t), [r.range(-0.05, 0.05), rotY + r.range(-0.15, 0.15), r.range(-0.04, 0.04)], 1, r.range(0.8, 1)));
+    }
+    // a stack of split firewood beside the fire pit
+    const logs = pbr('wood', { vcolor: true, key: 'firewood' });
+    const fx = -480.2, fz = 333.2, fg = this.ground(fx, fz);
+    for (let row = 0; row < 4; row++) for (let i = 0; i < 5 - row; i++) {
+      kb.add(logs, cylinder(r.range(0.05, 0.075), r.range(0.05, 0.075), r.range(0.75, 1.0), V(fx + (i - (4 - row) / 2) * 0.15 + r.range(-0.02, 0.02), fg + 0.07 + row * 0.12, fz + r.range(-0.06, 0.06)), [Math.PI / 2 + r.range(-0.08, 0.08), 0.6 + r.range(-0.1, 0.1), 0], 6, 1, r.range(0.55, 0.9)));
+    }
+  }
+
   // ---------------------------------------------------------------- canoes
   private buildBoats() {
     const hull = boatHull();
@@ -265,10 +328,13 @@ export class Village {
       { x: -445.3, z: 357, rot: 0.08, moored: true, probe: 1, paint: 0 },
       { x: -458.8, z: 368, rot: -0.12, moored: true, probe: 2, paint: 1 },
       { x: -445.5, z: 378, rot: 0.15, moored: true, probe: 3, paint: 2 },
-      { x: -459, z: 391, rot: 1.45, moored: true, probe: 4, paint: 3 },
-      { x: -392, z: 362, rot: 0.25, moored: true, probe: 5, paint: 4 },
-      { x: -500, z: 342, rot: 2.6, moored: false, probe: -1, paint: 1 },
-      { x: -486, z: 345, rot: 2.9, moored: false, probe: -1, paint: 0 },
+      { x: -459, z: 391, rot: 0.05, moored: true, probe: 4, paint: 3 },
+      { x: -392, z: 362, rot: 0.2, moored: true, probe: 5, paint: 4 },
+      // pulled up on the sand in a row, bows to the sea
+      { x: -500, z: 342, rot: 2.85, moored: false, probe: -1, paint: 1 },
+      { x: -486, z: 345, rot: 2.95, moored: false, probe: -1, paint: 0 },
+      { x: -514, z: 341, rot: 2.75, moored: false, probe: -1, paint: 3 },
+      { x: -528, z: 339, rot: 2.9, moored: false, probe: -1, paint: 4 },
       { x: -372, z: 352, rot: -2.4, moored: false, probe: -1, paint: 2 },
     ];
     this.boats.push(...defs);
@@ -282,6 +348,21 @@ export class Village {
       this.group.add(im);
       this.boatMeshes.push(im);
     }
+    // the sea stays out of the boats: a depth-only lid across each hull just above its waterline, drawn after the
+    // hull and before the sea (the sea is transparent, so it comes later and fails the depth test inside the hull)
+    const lidMat = new THREE.MeshBasicNodeMaterial();
+    lidMat.name = 'boat_waterlid';
+    lidMat.colorWrite = false;
+    lidMat.depthWrite = true;
+    lidMat.side = THREE.DoubleSide;
+    const lid = instancedMesh(hullLid(-0.17), lidMat, defs.length);
+    lid.name = 'boat_waterlid';
+    lid.castShadow = false;
+    lid.receiveShadow = false;
+    lid.frustumCulled = false;
+    lid.renderOrder = 2;
+    this.group.add(lid);
+    this.boatMeshes.push(lid);
     for (const b of defs) {
       const gy = this.ground(b.x, b.z);
       const y = b.moored ? 0 : gy + 0.05;
@@ -300,11 +381,12 @@ export class Village {
       const b = this.boats[i];
       if (b.moored) {
         const d = b.probe >= 0 ? probe(b.probe) : [0, 0, 0];
-        const heave = d[1] * 0.45 + Math.sin(t * 1.1 + i * 1.7) * 0.03;
+        // riding the swell, about 8 cm down (the keel is 0.28 m under the hull's origin)
+        const heave = d[1] * 0.85 + Math.sin(t * 1.1 + i * 1.7) * 0.02 + 0.2;
         const roll = Math.sin(t * 0.9 + i * 2.1) * 0.04 + d[0] * 0.03;
         const pitch = Math.sin(t * 0.7 + i) * 0.02 + d[2] * 0.02;
         q.setFromEuler(new THREE.Euler(pitch, b.rot + Math.sin(t * 0.15 + i) * 0.04, roll));
-        m.compose(V(b.x, heave - 0.08, b.z), q, V(1, 1, 1));
+        m.compose(V(b.x, heave, b.z), q, V(1, 1, 1));
       } else m.copy(this.boatBase[i]);
       for (const im of this.boatMeshes) im.setMatrixAt(i, m);
     }
@@ -648,9 +730,34 @@ function netMaterial() {
 
 interface BoatPart { geometry: THREE.BufferGeometry; material: THREE.Material; painted: boolean }
 
+const HULL = { L: 6.2, B: 1.05, Dp: 0.62, sections: 26 };
+
+/** the hull's inside cut flat at height y (boat space): the outline of its inner skin there, as a triangle strip */
+function hullLid(y: number): THREE.BufferGeometry {
+  const { L, B, Dp, sections } = HULL;
+  const pos: number[] = [], idx: number[] = [];
+  for (let i = 0; i <= sections; i++) {
+    const t = i / sections;
+    const k = Math.pow(Math.sin(Math.PI * t), 0.65);
+    const sheer = 0.18 * Math.pow(Math.abs(t - 0.5) * 2, 2.2);
+    // where the U-section reaches height y: sin(ang) = (top - y) / depth; shallower than that at the ends: closed
+    const s = (Dp * 0.55 + sheer - (y - 0.02)) / (Dp * (0.35 + 0.65 * k));
+    const half = s >= 1 || k < 1e-3 ? 0 : Math.cos(Math.asin(Math.max(0, s))) * B * 0.5 * k * 0.93;
+    pos.push(-half, y, (t - 0.5) * L, half, y, (t - 0.5) * L);
+  }
+  for (let i = 0; i < sections; i++) {
+    const p = i * 2;
+    idx.push(p, p + 2, p + 1, p + 1, p + 2, p + 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  return g;
+}
+
 /** a planked outrigger canoe: lofted hull (painted outside, raw wood inside), seats, outrigger booms and float */
 function boatHull(): BoatPart[] {
-  const L = 6.2, B = 1.05, Dp = 0.62;
+  const { L, B, Dp } = HULL;
   const sections = 26, around = 14;
   const pos: number[] = [], uvs: number[] = [], idx: number[] = [], cols: number[] = [];
   const inner: number[] = [], innerUv: number[] = [], innerIdx: number[] = [];

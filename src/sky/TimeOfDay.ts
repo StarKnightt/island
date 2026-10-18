@@ -67,6 +67,24 @@ export class TimeOfDay {
     atmo.night.value = this.night;
     atmo.overcast.value = this.overcast;
 
+    // the air. Midday: a clean trade-wind haze. Toward sunrise the humid night air holds a whitish haze of large
+    // droplets (low Angstrom exponent: it greys the light rather than reddening it) and a ground mist over the sea
+    // and the flats; toward sunset a day of sea spray, convection and cooking smoke leaves more, finer aerosol that
+    // reddens the low sun and lays an orange band along the horizon. Rain fills the air with grey droplets.
+    const { smoothstep, lerp } = THREE.MathUtils;
+    const low = 1 - smoothstep(this.sunElevation, 0.04, 0.42);
+    // afternoon air from midday until the night has settled it, morning air from about midnight until midday
+    const pm = smoothstep(this.hour, 11, 13) * (1 - smoothstep(this.hour, 21, 23.9));
+    const cover = Math.min(1, this.overcast / 0.9);
+    let mie = lerp(2.0e-5, lerp(5.5e-5, 4.5e-5, pm), low);
+    let ang = lerp(1.0, lerp(0.35, 1.35, pm), low);
+    mie = lerp(mie, 3.5e-5, cover);
+    ang = lerp(ang, 0.3, cover);
+    atmo.mieScatter.value = mie;
+    (atmo.mieTint.value as THREE.Vector3).set(Math.pow(680 / 550, -ang), 1, Math.pow(440 / 550, -ang));
+    const dawn = smoothstep(this.hour, 4.6, 5.8) * (1 - smoothstep(this.hour, 6.9, 8.2));
+    atmo.dawnMist.value = 7e-4 * dawn * (1 - cover);
+
     // the key light: the sun by day, the moon by night
     const sunUp = this.sun.y > -0.035;
     const dir = sunUp ? this.sun : this.moon;
@@ -91,8 +109,11 @@ export class TimeOfDay {
       (clouds.lightDir.value as THREE.Vector3).copy(this.moon);
       cl.setRGB(0.62, 0.74, 1.0).multiplyScalar(moonE * 0.5);
     }
-    // exposure: from the illuminance of a horizontal surface (sun + sky), toward a mid-grey key
-    const sunH = sunUp ? this.light.intensity * Math.max(0.03, this.sun.y) : this.light.intensity * Math.max(0, this.moon.y);
+    // exposure: from the illuminance of a horizontal surface (sun + sky), toward a mid-grey key. With the sun low the
+    // meter takes the light on surfaces that face it (walls, trunks, cliffs: ten times what a horizontal one gets),
+    // as a photographer keys a golden-hour scene on its lit faces: the shade stays dark and the light stays warm and
+    // rich, instead of the whole frame opening up into a flat bright late afternoon
+    const sunH = sunUp ? this.light.intensity * Math.max(0.35, this.sun.y) : this.light.intensity * Math.max(0, this.moon.y);
     const sky = sunUp ? SUN_E * 0.14 * Math.max(0.02, Math.sin(Math.max(this.sunElevation, 0) + 0.06)) * (1 - this.overcast * 0.45) : 0;
     const twilight = SUN_E * 0.004 * THREE.MathUtils.smoothstep(this.sun.y, -0.2, 0.02);
     const E = sunH + sky + twilight + 0.0006;
@@ -101,8 +122,10 @@ export class TimeOfDay {
     // and surf near clipping), sunsets stay rich, and a moonlit night stays a night (about twenty times darker on
     // screen than noon) with silhouettes readable against the sky
     const L = (E * 0.18) / Math.PI;
-    // under a storm overcast the eye does not fully open up: rain stays moody instead of a bright flat day
-    this.exposureTarget = THREE.MathUtils.clamp(0.42 / Math.pow(L, 0.66), 0.15, 20) * (1 - 0.15 * this.overcast);
+    // under a storm overcast the eye does not fully open up: rain stays moody instead of a bright flat day (the grey
+    // dome and the deck light the ground about twice as much as the meter's sky term assumes, so the cut is larger
+    // than it looks: without it the wet forest and the haze wash out to pale grey)
+    this.exposureTarget = THREE.MathUtils.clamp(0.42 / Math.pow(L, 0.66), 0.15, 20) * (1 - 0.35 * this.overcast);
     void clouds;
   }
 }
