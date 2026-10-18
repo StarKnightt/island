@@ -32,6 +32,16 @@
     "orm": "2048 KTX2 (R AO, G roughness, B 0)"
    },
    "notes": "closed single-sided meshes; origin at the centre of the footprint at the ground line: the part below y = 0 (the 'bury' fraction of the height) is meant to be inside the terrain / sand / water; granite_* use a lighter grey to rust-tan granite palette, basalt_* and pebbles_a / pebbles_b the cliff-kit basalt palette, pebbles_c the granite palette"
+  },
+  "shelf": {
+   "file": "shelves.glb",
+   "material": "rock_shelf",
+   "textures": {
+    "albedo": "2048 sRGB KTX2",
+    "normal": "2048 OpenGL KTX2",
+    "orm": "2048 KTX2 (R AO, G roughness, B 0)"
+   },
+   "notes": "low wave-cut basalt platforms, single-sided meshes open only at the bottom (z = floor, buried); origin at the centre of the footprint; y = 0 is the foot of the seaward wall; the seaward wall (with the wave-cut notch and the fallen blocks) faces +Z, the landward side (-Z) slopes down and is meant to be buried in the beach / terrain; sink each shelf so the sea surface sits at waterline_y (times the scale): the notch and the dark spray zone then sit at the water"
   }
  },
  "pieces": {
@@ -301,6 +311,44 @@
    "face_dir": "+Z",
    "source_scan": "coastal_cliff_01"
   },
+  "cliff_h": {
+   "kit": "cliff",
+   "file": "cliff_kit.glb",
+   "nodes": [
+    "cliff_h_lod0",
+    "cliff_h_lod1",
+    "cliff_h_lod2"
+   ],
+   "tris": [
+    21645,
+    5800,
+    1149
+   ],
+   "bbox": {
+    "min": [
+     -12.115,
+     -4.5,
+     -3.924
+    ],
+    "max": [
+     11.913,
+     5.226,
+     6.317
+    ]
+   },
+   "scale": [
+    1,
+    5
+   ],
+   "use": "low bedded face with a deep wave-cut notch just above the waterline (crisper than cliff_g)",
+   "type": "undercut",
+   "face_width": 24.03,
+   "top_height": 5.23,
+   "base_y": 0.0,
+   "bottom_y": -4.5,
+   "face_dir": "+Z",
+   "source_scan": "coastal_cliff_04"
+  },
   "stack_a": {
    "kit": "stack",
    "file": "stacks.glb",
@@ -310,9 +358,9 @@
     "stack_a_lod2"
    ],
    "tris": [
-    19500,
-    4900,
-    980
+    19499,
+    4899,
+    979
    ],
    "bbox": {
     "min": [
@@ -843,6 +891,86 @@
     0.92
    ],
    "bury": 0.35
+  },
+  "shelf_a": {
+   "kit": "shelf",
+   "file": "shelves.glb",
+   "nodes": [
+    "shelf_a_lod0",
+    "shelf_a_lod1",
+    "shelf_a_lod2"
+   ],
+   "tris": [
+    14999,
+    3800,
+    949
+   ],
+   "bbox": {
+    "min": [
+     -14.745,
+     -1.584,
+     -7.594
+    ],
+    "max": [
+     14.848,
+     2.324,
+     9.961
+    ]
+   },
+   "scale": [
+    0.6,
+    1.5
+   ],
+   "use": "broad low wave-cut platform: jointed flat top with tide pools and potholes, surge channels, blocky seaward edge with fallen blocks (rocky shore under cliffs, beach ends)",
+   "type": "shelf",
+   "height_above_ground": 2.32,
+   "depth_below_ground": 1.58,
+   "footprint": [
+    29.59,
+    17.55
+   ],
+   "waterline_y": 0.45,
+   "face_dir": "+Z"
+  },
+  "shelf_b": {
+   "kit": "shelf",
+   "file": "shelves.glb",
+   "nodes": [
+    "shelf_b_lod0",
+    "shelf_b_lod1",
+    "shelf_b_lod2"
+   ],
+   "tris": [
+    14999,
+    3799,
+    950
+   ],
+   "bbox": {
+    "min": [
+     -11.116,
+     -1.641,
+     -6.299
+    ],
+    "max": [
+     9.838,
+     3.22,
+     9.299
+    ]
+   },
+   "scale": [
+    0.6,
+    1.5
+   ],
+   "use": "stepped wave-cut ledge: two jointed terraces rising inland, bedded risers, blocky seaward edge with a notch and fallen blocks (cove headland, rocky points)",
+   "type": "shelf",
+   "height_above_ground": 3.22,
+   "depth_below_ground": 1.64,
+   "footprint": [
+    20.95,
+    15.6
+   ],
+   "waterline_y": 0.5,
+   "face_dir": "+Z"
   }
  }
 }

@@ -225,11 +225,13 @@ export class Engine {
 
   start() {
     let last = performance.now();
-    let tick = 0;
-    this.renderer.setAnimationLoop(() => {
-      tick++;
-      if (this.divisor > 1 && tick % this.divisor !== 0) return;
-      const now = performance.now();
+    this.renderer.setAnimationLoop((time?: number) => {
+      const t0 = performance.now();
+      // the cap goes by the display's frame times (the rAF timestamp: whole refreshes, however late the callback
+      // runs), not by counting refreshes: a frame whose own work outlasts two refreshes then still lands in the next
+      // slot (counting the ticks after it would wait out the whole count again: 25 ms instead of 15)
+      const now = time ?? t0;
+      if (this.divisor > 1 && now - last < (this.divisor - 0.5) * (1000 / this.refreshHz)) return;
       if (this.hold || this.manual) {
         last = now;
         return;
@@ -244,7 +246,7 @@ export class Engine {
       this.lastDraws = this.renderer.info.render.drawCalls;
       this.lastTris = this.renderer.info.render.triangles;
       this.frame++;
-      const cpu = performance.now() - now;
+      const cpu = performance.now() - t0;
       this.push(this.wall, interval);
       this.push(this.cpu, cpu);
       if (params.gpuTiming) this.resolveGpu();

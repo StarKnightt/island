@@ -51,6 +51,10 @@ g = bpy.context.active_object
 g.data.materials.append(R.solid_material('ground', (0.25, 0.23, 0.2)))
 if os.environ.get('NOGROUND') == '1':
     g.hide_render = True
+if os.environ.get('QV_WATER'):
+    # flat dark water plane at the given height (shelves: judge how the piece reads at the waterline)
+    bpy.ops.mesh.primitive_plane_add(size=400, location=(0, 0, float(os.environ['QV_WATER'])))
+    bpy.context.active_object.data.materials.append(R.solid_material('waterc', (0.05, 0.12, 0.15)))
 scene.render.resolution_x = 1280
 scene.render.resolution_y = 720
 c = (mn + mx) / 2
@@ -62,6 +66,7 @@ for nm, (dx, dy, dz) in views.items():
     # fit the bounding sphere in the vertical field of view (35 mm lens, 16:9: half angle ~16 deg)
     d = max(size * 1.25 + 4, rad / math.sin(math.radians(15.5)))
     d /= math.sqrt(dx * dx + dy * dy + dz * dz)
+    d *= float(os.environ.get('QV_ZOOM', '1'))
     R.add_camera(scene, (c[0] + dx * d, c[1] + dy * d, c[2] + dz * d), tgt, lens=35, name=nm)
     scene.render.filepath = f'{out_prefix}_{nm}.png'
     bpy.ops.render.render(write_still=True)

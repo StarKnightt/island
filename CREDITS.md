@@ -54,8 +54,8 @@ Optimized by `tools/optimize-glb.ts` (meshopt geometry, KTX2 textures, simplific
 
 | Model | Author(s) | Source | Used for |
 |---|---|---|---|
-| Namaqualand Boulder 05 | Jenelle van Heerden (modeling), Dario Barresi (photography) | [namaqualand_boulder_05](https://polyhaven.com/a/namaqualand_boulder_05) | sea-cliff, coast and falls boulders, tinted to basalt |
-| Rock Moss Set 01 | Kless Gyzen | [rock_moss_set_01](https://polyhaven.com/a/rock_moss_set_01) | rocks on slopes, by the pool and on the jungle floor |
+| Namaqualand Boulder 05 | Jenelle van Heerden (modeling), Dario Barresi (photography) | [namaqualand_boulder_05](https://polyhaven.com/a/namaqualand_boulder_05) | round 1 boulders (shipped in `assets/props/`, replaced in round 2 by `assets/rocks/boulders.glb`, see below) |
+| Rock Moss Set 01 | Kless Gyzen | [rock_moss_set_01](https://polyhaven.com/a/rock_moss_set_01) | round 1 rocks (shipped in `assets/props/`, replaced in round 2 by `assets/rocks/boulders.glb`) |
 | Wooden Crate 01 | James Ray Cock | [wooden_crate_01](https://polyhaven.com/a/wooden_crate_01) | village and jetty clutter |
 | Wooden Crate 02 | James Ray Cock (modeling), Jurita Burger (graphic design) | [wooden_crate_02](https://polyhaven.com/a/wooden_crate_02) | village and jetty clutter |
 | Wooden Barrels 01 | James Ray Cock | [wooden_barrels_01](https://polyhaven.com/a/wooden_barrels_01) | village and jetty clutter |
@@ -71,6 +71,55 @@ Optimized by `tools/optimize-glb.ts` (meshopt geometry, KTX2 textures, simplific
 | Anthurium Botany 01 | Rob Tuytel (scanning), Rico Cilliers (modeling) | [anthurium_botany_01](https://polyhaven.com/a/anthurium_botany_01) | optimized for jungle ground cover (shipped, not placed yet in round 1) |
 | Lambis Shell | Kuutti Siitonen | [lambis_shell](https://polyhaven.com/a/lambis_shell) | optimized for beach clutter (shipped, not placed yet in round 1) |
 | Bananas | Alexander Shulha | [bananas](https://polyhaven.com/a/bananas) | optimized for village clutter (shipped, not placed yet in round 1) |
+
+## Round 2 asset sets made in Blender (`tools/blender/palms`, `jungle`, `rocks`)
+
+Built headless in Blender 5.1.2 by the round-2 asset helpers, then optimized by `tools/optimize-glb.ts`. All geometry
+not listed here (palm trunks, fronds, leaflets, coconuts, roots, the rainforest trees, lianas, epiphytes, understory
+palms, saplings, litter, the sea-stack bodies, the basalt blocks and rubble) is procedural, own work under the
+repository's licence. Every source below is CC0 1.0 from [polyhaven.com](https://polyhaven.com) (raw downloads are not
+in the repository).
+
+### Palms and beach plants (`public/assets/veg/palms/`)
+
+| Asset | Author(s) | Source | Used for |
+|---|---|---|---|
+| Palm Tree Bark (texture) | Dimitrios Savva (photography), Rico Cilliers (processing) | [palm_tree_bark](https://polyhaven.com/a/palm_tree_bark) | coconut trunk bark tile (recoloured, scratch marks removed, ring grooves) |
+| Palm Bark (texture) | Charlotte Baglioni | [palm_bark](https://polyhaven.com/a/palm_bark) | leaf-sheath fibre of the palm crown collar |
+| Kloofendal 48d Partly Cloudy (Pure Sky) (HDRI) | Greg Zaal (original), Jarod Guest (sky edits) | [kloofendal_48d_partly_cloudy_puresky](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky) | the helpers' preview renders only (not shipped) |
+
+### Rainforest (`public/assets/veg/jungle/`)
+
+| Asset | Author(s) | Source | Used for |
+|---|---|---|---|
+| Japanese Hackberry Bark (texture) | Charlotte Baglioni | [japanese_hackberry_bark](https://polyhaven.com/a/japanese_hackberry_bark) | base of the rainforest bark atlas (graded, with procedural lichen, moss and soil stain) in `canopy_trees.glb` and `midstorey_trees.glb`; surface roots in `floor.glb` |
+| Fern 02 (model) | Rob Tuytel (scan), Rico Cilliers (model) | [fern_02](https://polyhaven.com/a/fern_02) | ground ferns `fern_a`, `fern_b` in `understory.glb` (texture repacked) |
+| Calathea Orbifolia 01 (model) | Rob Tuytel (scan), Rico Cilliers (model) | [calathea_orbifolia_01](https://polyhaven.com/a/calathea_orbifolia_01) | `calathea_a/b/c` in `understory.glb` (scaled, decimated LODs) |
+| Anthurium Botany 01 (model) | Rob Tuytel (scan), Rico Cilliers (model) | [anthurium_botany_01](https://polyhaven.com/a/anthurium_botany_01) | `anthurium_a/b/c` in `understory.glb` (scaled, decimated LODs) |
+| Potted Plant 02 (model) | Rico Cilliers | [potted_plant_02](https://polyhaven.com/a/potted_plant_02) | leaf scan recoloured for the elephant ear `alocasia_a` in `understory.glb` |
+| Dead Tree Trunk 02 (model) | Jenelle van Heerden, Rico Cilliers | [dead_tree_trunk_02](https://polyhaven.com/a/dead_tree_trunk_02) | fallen mossy logs `log_a`, `log_b` in `floor.glb` (decimated, re-baked with moss) |
+
+### Cliffs, stacks, boulders and shelves (`public/assets/rocks/`)
+
+Photoscans cropped, bent, decimated and retopologized, full-resolution detail baked into normal and AO maps, albedo
+de-lit and re-graded to one shared basalt palette.
+
+| Asset | Author(s) | Source | Used for |
+|---|---|---|---|
+| Mountainside (scan) | Dario Barresi (photography), Rico Cilliers (processing) | [mountainside](https://polyhaven.com/a/mountainside) | fluted cliff face `cliff_a` (`cliff_kit.glb`) |
+| Namaqualand Cliff 02 (scan) | Dario Barresi (photography), Rico Cilliers (modeling) | [namaqualand_cliff_02](https://polyhaven.com/a/namaqualand_cliff_02) | blocky jointed cliff face `cliff_b` |
+| Coastal Cliff 01 (scan) | Rob Tuytel (photography, processing), Rico Cilliers (cleanup) | [coastal_cliff_01](https://polyhaven.com/a/coastal_cliff_01) | gully and undercut faces `cliff_e`, `cliff_g` |
+| Coastal Cliff 02 (scan) | Rob Tuytel | [coastal_cliff_02](https://polyhaven.com/a/coastal_cliff_02) | sea-cave face and headland nose `cliff_c`, `cliff_d` |
+| Coastal Cliff 04 (scan) | Rob Tuytel (photography, processing), Rico Cilliers (cleanup) | [coastal_cliff_04](https://polyhaven.com/a/coastal_cliff_04) | low ledge block `cliff_f`, bedded wave-cut face `cliff_h` |
+| Aerial Rocks 02 (texture) | Rob Tuytel | [aerial_rocks_02](https://polyhaven.com/a/aerial_rocks_02) | joint and slab relief, colour of the sea stacks (`stacks.glb`), shore shelves (`shelves.glb`) and basalt blocks (`boulders.glb`) |
+| Dark Rock 02 (texture) | Amal Kumar | [dark_rock_02](https://polyhaven.com/a/dark_rock_02) | fine fractured relief, albedo and roughness of the stacks, shelves and basalt blocks |
+| Dark Rock (texture) | Amal Kumar | [dark_rock](https://polyhaven.com/a/dark_rock) | albedo variation of the stacks, basalt boulders and pebbles, and shelves |
+| Rock 01 (texture) | Rob Tuytel | [rock_01](https://polyhaven.com/a/rock_01) | fine relief and albedo of the granite boulders and beach stones (`boulders.glb`) |
+| Rock Surface (texture) | Amal Kumar | [rock_surface](https://polyhaven.com/a/rock_surface) | medium relief and colour variation of the granite boulders |
+| Namaqualand Boulder 03 (scan, massing only) | Jenelle van Heerden (modeling), Dario Barresi (photography) | [namaqualand_boulder_03](https://polyhaven.com/a/namaqualand_boulder_03) | jointed granite block `granite_b` (re-sculpted) |
+| Namaqualand Boulder 04 (scan, massing only) | Jenelle van Heerden | [namaqualand_boulder_04](https://polyhaven.com/a/namaqualand_boulder_04) | huge granite boulder `granite_d` (re-sculpted) |
+| Namaqualand Boulder 05 (scan, massing only) | Jenelle van Heerden (modeling), Dario Barresi (photography) | [namaqualand_boulder_05](https://polyhaven.com/a/namaqualand_boulder_05) | low granite whaleback `granite_a` (re-sculpted) |
+| Namaqualand Boulder 06 (scan, massing only) | Greg Zaal (photography), Jenelle van Heerden (modeling) | [namaqualand_boulder_06](https://polyhaven.com/a/namaqualand_boulder_06) | granite loaf boulder `granite_c` (re-sculpted) |
 
 ## Sound (CC0 1.0)
 

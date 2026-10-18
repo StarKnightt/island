@@ -19,6 +19,7 @@ import { HALF_WORLD, WORLD_SIZE } from '../world/layout';
 import { heightLookup } from '../world/Terrain';
 import { wetness } from '../world/weatherUniforms';
 import { sunLit } from '../core/lighting';
+import { atmo } from '../sky/Atmosphere';
 
 export const canopyU = { near: uniform(285), band: uniform(60) };
 
@@ -81,7 +82,7 @@ export function buildCanopy(hf: Heightfield, renderer: THREE.WebGPURenderer) {
 
   const crowns = bakeCrowns(hf, renderer);
   const field = (xz: N) => texture(crowns, xz.add(HALF_WORLD).div(WORLD_SIZE));
-  const m = sunLit(new THREE.MeshStandardNodeMaterial());
+  const m = sunLit(new THREE.MeshPhysicalNodeMaterial());
   m.name = 'canopy_shell';
   const heightAt = heightLookup(hf);
   const forestTex = (xz: N) => texture(hf.mask0Tex, xz.add(HALF_WORLD).div(WORLD_SIZE)).level(0).w;
@@ -128,6 +129,9 @@ export function buildCanopy(hf: Heightfield, renderer: THREE.WebGPURenderer) {
   m.normalNode = transformNormalToView(normalize(vNormal.add(vec3(gx.negate(), 0, gz.negate()).mul(0.85))));
   m.roughnessNode = float(0.75);
   m.metalnessNode = float(0);
+  // crowns are leaf volumes that mostly mirror one another: under an overcast little of the bright sky's sheen
+  // (glb.ts skyVisibility, the same for the far trees)
+  m.specularIntensityNode = float(1).sub(atmo.overcast.mul(0.7));
   const mesh = new THREE.Mesh(g, m);
   mesh.name = 'canopy';
   mesh.frustumCulled = false;

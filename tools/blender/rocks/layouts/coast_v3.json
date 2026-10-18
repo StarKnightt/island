@@ -1,0 +1,35 @@
+{
+ "tag": "coast_v3c",
+ "sea": true,
+ "sea_z": 0.0,
+ "extra_blends": [
+  "E:/tmp/island/helpers/rocks/work/stack_lods.blend",
+  "E:/tmp/island/helpers/rocks/work/shelf_lods.blend",
+  "E:/tmp/island/helpers/rocks/work/boulder_lods.blend"
+ ],
+ "items": [
+  {"obj": "cliff_d_lod0", "s": 4.0, "x": -142.7, "y": -22, "z": -1.5, "yaw": 0},
+  {"obj": "cliff_c_lod0", "s": 4.5, "x": -104.27, "y": 0, "z": -2.0, "yaw": 0},
+  {"obj": "cliff_a_lod0", "s": 5.0, "x": -55.81, "y": 4, "z": -2.5, "yaw": 0},
+  {"obj": "cliff_e_lod0", "s": 4.0, "x": -9.8, "y": 8, "z": -2.0, "yaw": 0},
+  {"obj": "cliff_h_lod0", "s": 4.0, "x": 57, "y": -4, "z": -1.0, "yaw": 0},
+  {"obj": "cliff_c_lod0", "s": 4.2, "x": 58, "y": 14, "z": 9.0, "yaw": -4},
+  {"obj": "cliff_b_lod0", "s": 4.2, "x": 123.99, "y": -10, "z": -1.5, "yaw": 0},
+  {"obj": "cliff_f_lod0", "s": 2.5, "x": -86.27, "y": -24, "z": -1.2, "yaw": 8},
+  {"obj": "shelf_a_lod0", "s": 1.2, "x": 120, "y": -34, "z": -0.54, "yaw": -4},
+  {"obj": "shelf_b_lod0", "s": 1.0, "x": -48, "y": -12.5, "z": -0.5, "yaw": 10},
+  {"obj": "basalt_d_lod0", "s": 1.4, "x": -16, "y": -8, "z": -0.6, "yaw": 25},
+  {"obj": "basalt_c_lod0", "s": 1.5, "x": -4, "y": -11, "z": -0.5, "yaw": -40},
+  {"obj": "basalt_b_lod0", "s": 1.8, "x": -24, "y": -13, "z": -0.4, "yaw": 70},
+  {"obj": "basalt_c_lod0", "s": 1.2, "x": 84, "y": -24, "z": -0.5, "yaw": 15},
+  {"obj": "basalt_a_lod0", "s": 2.0, "x": 92, "y": -28, "z": -0.3, "yaw": -20},
+  {"obj": "stack_a_lod0", "s": 1.0, "x": -105, "y": -115, "z": -4.6, "yaw": 0},
+  {"obj": "stack_b_lod0", "s": 1.0, "x": 25, "y": -95, "z": -5.0, "yaw": 0},
+  {"obj": "stack_c_lod0", "s": 0.9, "x": 105, "y": -150, "z": -4.14, "yaw": 0}
+ ],
+ "plateau": {"z": 31.0, "y0": 20.0, "color": [0.075, 0.09, 0.04]},
+ "views": {
+  "offshore": {"cam": [0, -380, 10], "at": [0, 0, 20], "lens": 30, "hdri_rot": -270.8},
+  "tier": {"cam": [76, -112, 4], "at": [60, 0, 16], "lens": 28, "hdri_rot": -270.8}
+ }
+}

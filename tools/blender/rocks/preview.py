@@ -29,6 +29,11 @@ src = {o.name: o for o in scene.objects}
 for o in src.values():
     o.hide_render = True
     o.hide_viewport = True
+# pieces of other kits (their <kit>_lods.blend), so one layout can mix cliffs, stacks, shelves and boulders
+for eb in lay.get('extra_blends', []):
+    with bpy.data.libraries.load(eb, link=False) as (dfrom, dto):
+        dto.objects = [n for n in dfrom.objects if n not in src]
+    src.update({o.name: o for o in dto.objects if o is not None})
 for it in lay['items']:
     s = src[it['obj']]
     o = s.copy()
@@ -64,6 +69,20 @@ if lay.get('plateau'):
     t = bpy.context.active_object
     t.scale = (4000, 3000, 0.5)
     t.data.materials.append(R.solid_material('plateau', tuple(pl['color']), rough=0.95))
+if lay.get('beach'):
+    # sloping sand beach: height z0 at y = y0, rising inland (+y) by 'slope' per metre, continuing under the sea
+    # up to 'y_flat', then a flat backshore (so the slope does not become a wall on the horizon)
+    bc = lay['beach']
+    y0, z0, sl = bc['y0'], bc['z0'], bc.get('slope', 0.06)
+    yf = bc.get('y_flat', y0 + 40)
+    ys_ = [-400.0, yf, 3000.0]
+    zs_ = [z0 + (-400.0 - y0) * sl, z0 + (yf - y0) * sl, z0 + (yf - y0) * sl]
+    vs = [(x, y, z) for (y, z) in zip(ys_, zs_) for x in (-3000.0, 3000.0)]
+    me = bpy.data.meshes.new('beach')
+    me.from_pydata(vs, [], [(0, 1, 3, 2), (2, 3, 5, 4)])
+    b = bpy.data.objects.new('beach', me)
+    scene.collection.objects.link(b)
+    b.data.materials.append(R.solid_material('beach', tuple(bc.get('color', [0.36, 0.31, 0.24])), rough=0.95))
 if lay.get('ground'):
     bpy.ops.mesh.primitive_plane_add(size=6000, location=(0, 0, lay.get('ground_z', 0.0)))
     g = bpy.context.active_object

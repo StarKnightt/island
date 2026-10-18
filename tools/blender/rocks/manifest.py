@@ -9,6 +9,7 @@ manifest can be rebuilt after every delivery. All boxes are glTF metres at scale
 import os
 import sys
 import json
+import struct
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORK = 'E:/tmp/island/helpers/rocks/work'
@@ -17,6 +18,19 @@ OUT = 'c:/Code/island/public/assets/rocks/rocks.json'
 
 def r3(v):
     return [round(float(x), 3) for x in v]
+
+
+def glb_tris(path):
+    """{node name: triangles} of a delivered GLB (the optimizer drops degenerate triangles, so counts can differ
+    slightly from the export step's)."""
+    if not os.path.exists(path):
+        return {}
+    data = open(path, 'rb').read()
+    ln = struct.unpack_from('<I', data, 12)[0]
+    doc = json.loads(data[20:20 + ln])
+    acc = doc['accessors']
+    return {n['name']: sum(acc[p['indices']]['count'] // 3 for p in doc['meshes'][n['mesh']]['primitives'])
+            for n in doc['nodes'] if 'mesh' in n}
 
 
 man = {
@@ -35,6 +49,7 @@ for path in sys.argv[1:]:
         print('skip (not exported yet):', kit)
         continue
     lods = json.load(open(lods_path))
+    shipped = glb_tris(os.path.join(os.path.dirname(OUT), cfg['file']))
     K = cfg.get('manifest', {})
     man['kits'][kit] = dict(file=cfg['file'], material=f"{cfg.get('family', 'rock')}_{kit}",
                             textures=K.get('textures'), notes=K.get('notes'))
@@ -43,7 +58,8 @@ for path in sys.argv[1:]:
         L = lods[name]
         lod_keys = sorted(k for k in L if k.startswith('lod'))
         e = dict(kit=kit, file=cfg['file'],
-                 nodes=[L[k]['node'] for k in lod_keys], tris=[L[k]['tris'] for k in lod_keys],
+                 nodes=[L[k]['node'] for k in lod_keys],
+                 tris=[shipped.get(L[k]['node'], L[k]['tris']) for k in lod_keys],
                  bbox=dict(min=r3(L['bbox_gltf']['min']), max=r3(L['bbox_gltf']['max'])),
                  scale=P.get('scale', K.get('scale')), use=P.get('use'), type=P.get('type', K.get('type')))
         pj = f'{WORK}/{name}.json'
@@ -60,6 +76,8 @@ for path in sys.argv[1:]:
             mn, mx = e['bbox']['min'], e['bbox']['max']
             e.update(height_above_ground=round(mx[1], 2), depth_below_ground=round(-mn[1], 2),
                      footprint=[round(mx[0] - mn[0], 2), round(mx[2] - mn[2], 2)])
+        if kit == 'shelf':
+            e.update(waterline_y=P.get('waterline'), face_dir='+Z')
         for k in ('lod_dist', 'bury', 'notes', 'source_scan'):
             if k in P:
                 e[k] = P[k]

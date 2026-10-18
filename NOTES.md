@@ -163,6 +163,73 @@ public/assets/            game assets (KTX2 textures, meshopt GLBs, Ogg audio)
 * The character has no IK on slopes; swimming is a tread/swim blend without a proper crawl.
 * Canopy shell hand-over can show a slight colour seam at 260-320 m in some lights.
 
+## Round 2: what changed
+
+* **Assets from helper agents** (Blender 5.1 headless, generators in `tools/blender/{palms,jungle,rocks}`, credits in
+  `CREDITS.md`): coconut palms (6 variants x 3 LODs, curved ringed trunks, 20-30 fronds with dead ones), young palms,
+  beach scrub, rainforest canopy trees, mid-storey trees, understory (banana, alocasia, tree fern, rattan, licuala),
+  ground ferns, leaf litter, logs and roots; a photoscan cliff-face kit (8 pieces), sculpted sea stacks, basalt
+  boulders, rock shelves. Plants carry wind weights in COLOR_0 (`veg/glb.ts`); `Vegetation.ts` scatters them in
+  layers (canopy, mid-storey, understory, floor), far canopy trees become opaque crown stand-ins (k-means lumps of
+  their leaf cards, out to 800 m), the canopy shell (`Canopy.ts`, crown field baked to a 2048^2 texture at load)
+  takes over from 285 m.
+* **Coast** (`water/surf.ts`, `Ocean.ts`, `Spray.ts`): shoaling and breaking by depth, bores and lobed swash on the
+  beaches, a wet-sand film, lace foam, refracted shallows, glints, bursts and spray at the cliff feet. `RockKit.ts`
+  chains the cliff kit along the sea cliffs, sets sea stacks on wave-cut platforms, builds the wet mossy gorge round
+  the falls and raycasts its pieces against the falls path (`water/fallsPath.ts`) so no rock pokes through the water.
+* **Falls** (`River.ts`): two aerated sheets shaded by the time each texel of water left the lip, a splash curtain, a
+  mist plume, pool churn and rings. Mist, splash and the thin-water glow are shaded in the gorge's shadow (a march
+  over the heightfield toward the sun).
+* **Sky, light, night**: ray-marched 3D-noise cumulus with cloud shadows; under an overcast a CIE grey dome (zenith
+  three times the horizon) whose brightness follows the clear sky 15 degrees up, haze of the same grey, and the deck
+  fading into the dome before the 40 km cloud map ends; rain shafts; stars (fixed: see below) and the moon; village
+  lamps with long broken reflections on the sea, lit windows and doorways, the fire pit.
+* **Rain**: streaks along their screen motion in a 1/15 s exposure, slanted by the wind; ~1.5 km visibility; wet
+  surfaces darker with specular occlusion under the canopy and on distant crowns; the forest floor sees only part of
+  the sky (terrain AO from the forest mask); squall wind on palms and trees; `__island.timelapse()` and the clip
+  presets `timelapse_day` / `timelapse_rain` film the cycles.
+* **Lighthouse and character**: internal stair, keeper's house, glazed lantern, the gallery spawn inside the
+  handrail; swim buoyancy and pose, contact shadows, turn smoothing, jump anticipation.
+* **Loading**: per-material numbers are uniforms and every instanced mesh is past the uniform-buffer limit
+  (`core/instancing.ts`), so materials share shaders (248 -> 106 pipelines); the loading screen primes a batch of
+  materials per frame with real progress ("Preparing shaders k / 30") and a compositor-driven glint, so it never
+  freezes.
+* **Performance**: plants, cliffs and rocks are lit by the sun only (`core/lighting.ts`; the village lamps light the
+  ground, the sea and the village); the environment map is re-rendered only when the light changes; the frame cap
+  gates on the display's frame times (the rAF timestamp), so a frame that runs long lands in the next slot instead of
+  waiting out a whole count of refreshes; instance buffers are uploaded only when the lists change (see below).
+
+### Decisions and gotchas from round 2
+
+* TSL `hash()` casts its seed to uint: a negative seed clamps to 0, so anything hashed by world position matches over
+  the whole west / north of the island (stars, glints, canopy tints). Offset seeds to stay positive.
+* three r186 re-uploads a `DynamicDrawUsage` attribute in full in every render pass of every frame. With every
+  instanced mesh on the attribute path (`SHARED_INSTANCES`) that was ~17 MB a frame and half the main thread; the
+  instance buffers are static now and uploaded by range when `update()` rebuilds the lists. The rock kit re-culls only
+  when the camera moves or turns.
+* A custom `normalNode` built from `normalWorldGeometry` skips the built-in back-face flip: multiply by
+  `faceDirection` on double-sided materials (the falls sheet faced the cliff and glowed in the sunset behind it).
+* `aoNode` only darkens indirect diffuse in r186: the right place for "the forest floor sees little sky".
+* The GPU timer (timestamp queries) does not cover the main scene pass: with shadows off it reads ~1 ms. It is the
+  shadow and post passes; judge a view by its frame time.
+* In the dev server, edited modules are imported with a `?t=` query: a test that imports a module in the page must
+  use the URL the page loaded (`performance.getEntriesByType('resource')`) or it gets a second copy.
+
+## Known issues and what is still weak (round 2)
+
+* Start-up is still shader-bound: first visit ~20.6 s to `ready()` (every asset in by ~4.1 s, the rest compiling 106
+  pipelines at ~160 ms each), returning visit ~7.2 s. The loading screen keeps moving, but it is not "a few seconds".
+  Next: fewer pipelines (one material per vegetation layer, fewer shadow variants) and a playable start that compiles
+  the far set in the background.
+* The waterfall view runs 53-57 fps (frames of 15 or 20 ms on the 200 Hz screen): it is GPU-bound in the main pass
+  (shadows off gives 64 fps). The jungle at a low sun is borderline (one run 54 fps with a hitch, another 63).
+* The plunge pool reads as a smooth green bowl with hard edges; the terrain walls of the basin show as flat grey
+  planes in flat light; rim stones are few.
+* In rain the forested hills behind the village are mostly haze-grey (physically plausible at 1.5 km visibility, but
+  little olive green shows through).
+* Rock shelves (`assets/rocks/shelves.glb`) and the eighth cliff piece (`cliff_h`) are delivered but not placed.
+* Character: hair, face, the idle, the shirt at night and footprints are as in round 1.
+
 ## Skills
 
 Installed in round 1 (`pnpm dlx skills add ... -g -y`): `cloudai-x/threejs-skills`, `dgreenheck/webgpu-claude-skill`,

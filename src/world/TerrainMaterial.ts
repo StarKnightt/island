@@ -237,7 +237,9 @@ export function createTerrainMaterial(hf: Heightfield) {
   m.metalnessNode = float(0);
   m.specularIntensityNode = float(1).sub(forest.mul(0.75));
   m.normalNode = transformNormalToView(finalN);
-  m.aoNode = mix(float(1), ao, 0.7);
+  // the forest floor sees a little of the sky through the crowns (plus the green light through the leaves), not all
+  // of it: lit like open ground, it is paler than the crowns above it and under an overcast reads as snow
+  m.aoNode = mix(float(1), ao, 0.7).mul(float(1).sub(forest.mul(0.68)));
 
   /** stream the real layers in and swap them under the compiled shader */
   const loadLayers = async () => {

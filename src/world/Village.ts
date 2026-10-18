@@ -308,7 +308,11 @@ export class Village {
       } else m.copy(this.boatBase[i]);
       for (const im of this.boatMeshes) im.setMatrixAt(i, m);
     }
-    for (const im of this.boatMeshes) im.instanceMatrix.needsUpdate = true;
+    for (const im of this.boatMeshes) {
+      im.instanceMatrix.clearUpdateRanges();
+      im.instanceMatrix.addUpdateRange(0, this.boats.length * 16);
+      im.instanceMatrix.needsUpdate = true;
+    }
   }
 
   // ---------------------------------------------------------------- nets, racks, fire

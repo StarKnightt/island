@@ -9,17 +9,18 @@ import {
   abs, attribute, cameraPosition, clamp, dot, exp, float, length, max, min, mix, mx_noise_float, mx_fractal_noise_float,
   normalize, positionWorld, positionView, pow, screenUV, select, smoothstep, transformNormalToView, uniform, uv, vec2,
   vec3, vec4, viewportSharedTexture, sin, fract, hash, instanceIndex, reflect, texture, varying, normalWorldGeometry,
-  type N,
+  faceDirection, type N,
 } from '../core/tsl';
 import type { Heightfield } from '../world/Heightfield';
 import { sceneViewDepth } from '../core/depth';
 import { wetness } from '../world/weatherUniforms';
 import { cloudShadow } from '../sky/Sky';
-import { atmo, skyRadiance } from '../sky/Atmosphere';
+import { atmo, particleSky } from '../sky/Atmosphere';
 import { laceTex } from './surf';
 import { sprayU } from './Spray';
 import { preset } from '../core/quality';
 import { fallsPath } from './fallsPath';
+import { heightLookup } from '../world/Terrain';
 
 export const riverU = { time: uniform(0) };
 
@@ -284,12 +285,26 @@ export class River {
     // light passing through the thin water toward the eye (backlit falls glow), and the glassy tongue's sky sheen
     const V = normalize(cameraPosition.sub(positionWorld));
     const fwd = pow(max(dot(atmo.sunDir.normalize().negate(), V), 0), 4);
-    // (only the thin, frayed water lets the sun through; the thick body is lit from the front like snow)
-    m.emissiveNode = vec3(0.9, 0.95, 0.95).mul(fwd.mul(0.012).mul(pow(float(1).sub(alpha.mul(0.85)), 2))).mul(atmo.lightE).mul(cloudShadow(positionWorld));
-    // relief: the streaks and lumps as bumps across the sheet
+    // (only the thin, frayed water lets the sun through; the thick body is lit from the front like snow; none of it
+    // where the escarpment behind the falls hides a low sun)
+    const inSun = varying(this.gorgeSun(positionWorld, heightLookup(this.hf)));
+    m.emissiveNode = vec3(0.9, 0.95, 0.95).mul(fwd.mul(0.012).mul(pow(float(1).sub(alpha.mul(0.85)), 2))).mul(atmo.lightE).mul(cloudShadow(positionWorld)).mul(inSun);
+    // relief: the streaks and lumps as bumps across the sheet, on the side facing the eye (the custom normal skips
+    // the built-in back-face flip: the sheet's geometric normal faces the cliff, and the sunset behind it would light
+    // the face the camera sees)
     const bump = s1.mul(0.5).add(lumps.mul(0.4)).add(s2.mul(0.2));
-    m.normalNode = transformNormalToView(normalize(vec3(normalWorldGeometry.x.add(bump.mul(this.fallDir.y)), normalWorldGeometry.y, normalWorldGeometry.z.sub(bump.mul(this.fallDir.x)))));
+    const nG = normalWorldGeometry.mul(faceDirection);
+    m.normalNode = transformNormalToView(normalize(vec3(nG.x.add(bump.mul(this.fallDir.y)), nG.y, nG.z.sub(bump.mul(this.fallDir.x)))));
     return m;
+  }
+
+  /** share of the sun reaching a point down in the gorge: a short march over the heightfield toward the sun */
+  private gorgeSun(p: N, heightAt: (xz: N) => N): N {
+    const L = atmo.sunDir.normalize();
+    const Lh = L.xz.div(max(length(L.xz), 1e-3)), rise = L.y.div(max(length(L.xz), 1e-3));
+    let inSun: N = float(1);
+    for (const k of [5, 12, 22, 36, 56]) inSun = inSun.mul(smoothstep(-1.5, 1.5, p.y.add(rise.mul(k)).sub(heightAt(p.xz.add(Lh.mul(k))))));
+    return inSun;
   }
 
   /**
@@ -298,6 +313,7 @@ export class River {
    */
   private buildSplash(W: number) {
     const c = this.impact, fd = this.fallDir;
+    const heightAt = heightLookup(this.hf);
     const ax = -fd.y, az = fd.x;
     const make = (count: number, mist: boolean) => {
       const m = new THREE.SpriteNodeMaterial();
@@ -332,11 +348,14 @@ export class River {
       m.positionNode = p;
       const size = mist ? mix(float(2.5), float(13), pow(age, 0.6)).mul(seed(8.8).mul(0.5).add(0.75)) : mix(float(0.8), float(3.4), pow(age, 0.5)).mul(seed(8.8).mul(0.6).add(0.7));
       m.scaleNode = vec2(size, size);
-      // lit per particle: forward scattering toward the eye when backlit, the sky, the cloud shadows
+      // lit per particle: forward scattering toward the eye when backlit, the sky, the cloud shadows, and the gorge's
+      // own shadow (a short march over the heightfield toward the sun: with a low sun behind the falls the mist down
+      // in the gorge is in shade, not glowing)
       const V = cameraPosition.sub(p).normalize();
       const L = atmo.sunDir.normalize();
       const fwdS = pow(max(L.negate().dot(V), 0), 5).mul(1.8);
-      const lit = varying(vec3(sprayU.sun).mul(fwdS.add(0.3)).mul(cloudShadow(p)).mul(0.9).add(skyRadiance(vec3(0, 1, 0)).mul(2.6)).mul(0.85));
+      const inSun = this.gorgeSun(p, heightAt);
+      const lit = varying(vec3(sprayU.sun).mul(fwdS.add(0.3)).mul(cloudShadow(p)).mul(inSun).mul(0.9).add(particleSky().mul(2.6)).mul(0.85));
       const fade = varying(smoothstep(0.0, mist ? 0.12 : 0.05, age).mul(pow(float(1).sub(age), mist ? 1.2 : 1.6)).mul(smoothstep(1.5, 6, length(p.sub(cameraPosition)))).mul(mist ? 0.3 : 0.55));
       const tex = varying(vec2(seed(9.2), seed(9.7)));
       const r = length(uv().sub(0.5)).mul(2);

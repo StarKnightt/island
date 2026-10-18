@@ -139,6 +139,8 @@ export function setPlantSkyMaps(mask0: THREE.Texture, height: THREE.Texture, hal
  * Share of the sky a point of a plant sees: in the forest, anything under the canopy's crowns (~14-28 m above the
  * ground) sees mostly leaves overhead. Per vertex (the masks are smooth). Used as specular occlusion: an understory
  * leaf mirrors the dark canopy above it, not the bright open sky (which, wet under an overcast, reads as frost).
+ * A crown seen from afar is a volume of leaves that mostly mirror one another, so under an overcast its sheen of the
+ * bright sky drops with distance too (else a wet forested hillside turns grey-white).
  */
 function skyVisibility(): N {
   if (!skyMaps) return float(1);
@@ -147,7 +149,9 @@ function skyVisibility(): N {
     const q = positionWorld.xz.add(m.half).div(m.size);
     const forest = texture(m.mask0, q).level(0).a;
     const above = positionWorld.y.sub(texture(m.height, q).level(0).r);
-    return float(1).sub(forest.mul(float(1).sub(TSLTyped.smoothstep(14, 28, above))).mul(0.8));
+    const open = float(1).sub(forest.mul(float(1).sub(TSLTyped.smoothstep(14, 28, above))).mul(0.8));
+    const far = TSLTyped.smoothstep(30, 120, TSLTyped.length(positionWorld.sub(TSLTyped.cameraPosition)));
+    return open.mul(float(1).sub(far.mul(atmo.overcast).mul(0.7)));
   })());
 }
 
@@ -308,8 +312,10 @@ export function crownProxy(v: GlbVariant, leafMat: string, clusters = 12): THREE
 
 /** the crown stand-ins' material: a leafy green whose clumps come from world-space noise in colour and normal */
 export function crownMaterial(green: [number, number, number], look: PlantLook) {
-  const m = sunLit(new THREE.MeshStandardNodeMaterial());
+  const m = sunLit(new THREE.MeshPhysicalNodeMaterial());
   m.name = 'glb_crown_proxy';
+  // always far: the overcast sheen of a whole crown (see skyVisibility)
+  m.specularIntensityNode = float(1).sub(atmo.overcast.mul(0.7));
   const col = attribute('color', 'vec4');
   const p = positionWorld;
   // (seen from 270 m out: clumps of a metre or so; finer noise would be under a pixel)

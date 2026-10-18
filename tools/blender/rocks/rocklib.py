@@ -1,7 +1,20 @@
 """Shared helpers for the rock pipeline (imported by the other scripts in this folder).
 
-All scripts run headless:
+All Blender scripts run headless:
   E:/blender/blender-5.1.2-windows-x64/blender.exe --background --factory-startup -t 6 --python <script> -- <args>
+Run every Blender / optimize step through the machine lock: bash c:/Code/island/tools/heavy.sh rocks <command...>
+
+Pipeline (each script's docstring has its exact arguments; <kit>.json is cliff_pieces / stacks / boulders / shelves):
+  scan kit (cliffs): inspect_scan.py <scan> (pick crop ranges) -> prep.py cliff_pieces.json <piece> (per piece)
+  procedural kits:   stack_gen.py / boulder_gen.py / shelf_gen.py <kit>.json <piece> (per piece)
+  then, per kit:     atlas_pack.py <kit>.json            one shared atlas, uniform texel density
+                     bake_piece.py <piece> 4096 16       (scan pieces) or bake_proc.py <kit>.json <piece> 4096 16
+                     python compose.py <kit>.json 4096   palette grade -> work/tex (ships a 2048 albedo)
+                     lods_export.py <kit>.json           lod1 / lod2 + glTF export -> work/<kit>_raw.glb
+                     pnpm --dir c:/Code/island exec tsx tools/optimize-glb.ts work/<kit>_raw.glb
+                         public/assets/rocks/<file>.glb --maxtex 2048 --maxaux 2048 --noanim
+                     python manifest.py cliff_pieces.json stacks.json boulders.json shelves.json
+  checks:            quick_view.py (clay views), preview.py work/<kit>_lods.blend layouts/<layout>.json <views>
 """
 import bpy
 import bmesh

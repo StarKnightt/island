@@ -52,7 +52,7 @@ All optional, combine freely: `http://127.0.0.1:5231/?spot=cliffs&tod=sunset&fre
 | `beach` | the spawn: the long east-facing crescent beach, the sunrise over the sea, a palm islet offshore | on the sand looking along the beach to the sea and the islet |
 | `jungle` | inside the rainforest west of the beach | eye level among the trees |
 | `waterfall` | the plunge pool at the foot of the 20 m falls | on the east bank, across the pool to the falls |
-| `village` | the fishing village in the south-west cove | from the waterline by the jetties toward the huts, the communal house and the moored canoes |
+| `village` | the fishing village in the south-west cove | from the end of the main jetty back along its planks, past the moored canoes, to the huts, the fire pit and the palms |
 | `cliffs` | the player stands on the cliff top above the north coast | from a boat off the north coast, along the 50-80 m sea cliffs |
 | `lighthouse` | the lighthouse gallery on the 214 m summit | from the gallery over the whole island and the ocean |
 
@@ -79,6 +79,8 @@ Every call is synchronous unless marked async and returns plain JSON-able values
 | `__island.spot(name)` / `__island.spots()` | move the player to a spot / list the spot names |
 | `__island.setTime(presetOrHours, freeze = true)` / `__island.getTime()` | set the time of day / `{ hour, frozen, sunElevationDeg, exposure }` |
 | `__island.setWeather('clear' \| 'rain' \| 'auto', immediate = true)` / `__island.getWeather()` | set the weather / `{ kind, auto, progress, rain, cover, wet, wind }` |
+| `__island.timelapse({ dayMinutes?, squall? })` | time-lapse for filming the automatic cycles: `dayMinutes` runs the clock with a day that long (`0.4` = a whole day in 24 s; sun, moon, sky, clouds, lamps and exposure follow), `squall: k` runs one squall from a clear sky `k` times faster than life (gathering 70 s, rain 150 s, clearing 80 s at 1x, then clear); `timelapse({})` restores the normal day and real-time weather. Use with `stage({ worldTime: null })` and `manual`/`step` (or just let it run) |
+| `__island.pick(x, y, root?)` | what the camera sees at a screen point (`x`, `y` from the top left, 0..1): the nearest meshes along the ray `[{ name, parent, d, p, instance }]`; `root` limits it to one group (`rockkit`, `vegetation`, `village`, `river`, `lighthouse`). The terrain and the sea are displaced on the GPU and are not found |
 | `__island.setCamera(mode \| { pos, target, fov? })` / `__island.getCamera()` | `'follow'`, `'orbit'`, `'free'` or an explicit pose; returns `{ pos, dir, fov, mode }` |
 | `__island.pauseWorld(seconds \| null)` | freeze the world animation clock at a time, or release it |
 | `__island.hud(show)` / `__island.debugOverlay(show)` / `__island.mute(m)` | HUD, debug overlay, sound |
@@ -116,6 +118,14 @@ fullscreen 1920x1080 viewport`). Set `ISLAND_DISPLAY` to use another monitor: a 
 device name such as `DISPLAY2`, or `secondary`. While a command runs, its window covers that screen; leave it alone
 until the command finishes.
 
+Driving your own browser instead: the easiest way is `pnpm tsx scripts/poses.ts` or `scripts/look.ts` (Development
+captures, below), which place the window as above. If you launch Chrome yourself, put it on DISPLAY1 with
+`--window-position=0,0 --window-size=1920,1080 --force-device-scale-factor=1 --force_high_performance_gpu` and a
+temporary `--user-data-dir`. Then either make the window fullscreen (CDP
+`Browser.setWindowBounds { windowState: 'fullscreen' }`, with Playwright's `viewport: null`) for a real 1920x1080
+viewport, or keep the normal window and emulate a 1920x1080 viewport. A window at x >= 1920 (the old second-screen
+position, for example `--window-position=1930,20`) is now off-screen: Chrome may throttle or misplace it.
+
 ### `pnpm shots`: screenshots
 
 ```bash
@@ -148,15 +158,21 @@ condition). `--q "skip=veg"` etc. passes extra URL parameters for A/B measuremen
 
 ```bash
 pnpm clip --round round-01 --preset all
+pnpm clip --round round-02 --preset timelapse        # timelapse_day + timelapse_rain (about 5 min together)
+pnpm clip --round round-02 --preset timelapse_rain   # any one preset by name
 pnpm clip --round round-01 --name walk_cliffs --spot cliffs --tod sunset --action walk --seconds 5 --yaw -1.42
 ```
 
 `--preset all` records: `walk_beach`, `sprint_beach`, `jump_beach`, `swim_pool` (the plunge pool), `waves_beach`
 (sunset, shot camera), `foliage_jungle` (wind in the trees, shot camera), `rain_village` (walking in the rain).
+`--preset timelapse` records the two cycles the game runs on its own, at 15 fps from the beach shot camera:
+`timelapse_day` (24 s: from 04:30 through dawn, sunrise, noon, sunset, the lamps and the night to the next dawn, a
+whole day in 24 s) and `timelapse_rain` (25 s: a clear 13:00, a squall gathers, rains with wind and haze, and clears,
+12x faster than life). Waves, wind and rain streaks move at real speed in both; only the clock or the weather is fast.
 Single clips take `--name --spot --tod --weather --action --camera follow|shot --yaw --seconds --fps`.
-Frames are stepped at a fixed 1/30 s (smooth and deterministic however slow the capture is).
-Output: `E:\shots\island\<round>\clips\<name>\frame_0000.png ...` and `E:\shots\island\<round>\clips\<name>.mp4`
-(H.264 via ffmpeg).
+Frames are stepped at a fixed 1/fps (smooth and deterministic however slow the capture is).
+Output: `E:\shots\island\<round>\clips\<name>\frame_0000.png ...` (`.jpg` for the time-lapses) and
+`E:\shots\island\<round>\clips\<name>.mp4` (H.264 via ffmpeg).
 
 ### Development captures
 
@@ -169,16 +185,21 @@ persistent Chrome profile).
 
 * Test the production build (`pnpm build`, then `pnpm preview` or just `pnpm shots`): the dev server compiles
   modules on demand and its first load is slower.
-* Load time on this PC (production build): the world data, character and every texture and model are in by ~2.5 s;
-  the first frames then compile every shader pipeline of the whole island (drawn once with culling off, so nothing
-  compiles with a hitch later in play) behind the loading screen. First visit: first frame ~16.5 s, `ready()` ~17 s;
-  returning visit: first frame ~14.7 s, `ready()` ~15.7 s. This is the known weak point of round 1 (see NOTES.md).
-  Later `stage()` calls take ~1-2 s.
+* Load time on this PC (production build): the world data, character and every texture and model are in by ~4 s
+  (`scene ready`); the loading screen then compiles every shader pipeline of the whole island (drawn once with culling
+  off, so nothing compiles with a hitch later in play), a batch of materials per frame: the status reads
+  `Preparing shaders k / 30` and the bar steps forward after each batch, with a glint sweeping it all the time. The
+  real numbers are in NOTES.md and the round report (`pnpm tsx scripts/loadtime.ts`); a returning visit is much faster
+  (Chrome keeps the compiled shaders). Later `stage()` calls take ~1-2 s.
 * `stage()` freezes the time of day; pass `worldTime: null` to keep waves and wind moving (perf and clips do).
 * Rain needs a second or two to build up on surfaces if set with `immediate = false`; `stage()` sets it instantly.
 * The `shot` camera of `cliffs` is offshore (a boat's view); the `cliffs` player spot is on the cliff top, so the
   `follow` view shows the cliffs from above.
-* GPU timing comes from WebGPU timestamp queries; if the browser disables them `gpu.n` is 0.
+* GPU timing comes from WebGPU timestamp queries; if the browser disables them `gpu.n` is 0. The GPU columns do not
+  include the main scene pass (with `?noshadow=1` they read about 1 ms): they are the shadow and post passes. The
+  frame time (and fps) is the measure of a view's real cost.
+* The frame cap renders on every third refresh of the 200 Hz display, timed by the display's frame times, so frame
+  intervals are 15 ms, or 20 ms when a frame runs over; an fps between 60 and 66.7 is a mix of the two.
 * Chrome warns "powerPreference is currently ignored on Windows" (crbug 369219127); the harness forces the RTX with
   `--force_high_performance_gpu` and `adapter()` / the debug overlay report what was used.
 * Window placement is never hardcoded: the monitor layout is read at every launch (about 0.5 s), so the harness keeps

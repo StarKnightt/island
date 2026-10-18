@@ -12,7 +12,7 @@ import {
 import type { Heightfield } from '../world/Heightfield';
 import { HALF_WORLD, WORLD_SIZE, MASK_RES } from '../world/layout';
 import { coastAt, waterlinePhase, surfU, laceTex } from './surf';
-import { atmo, skyRadiance } from '../sky/Atmosphere';
+import { atmo, particleSky } from '../sky/Atmosphere';
 import { cloudShadow } from '../sky/Sky';
 import { sceneViewDepth } from '../core/depth';
 import { wetness } from '../world/weatherUniforms';
@@ -110,7 +110,7 @@ export class Spray {
     const L = atmo.sunDir.normalize();
     const fwd = pow(max(L.negate().dot(V), 0), 6).mul(1.6);
     const sunL = vec3(sprayU.sun).mul(fwd.add(0.32)).mul(cloudShadow(p));
-    const col = varying(sunL.mul(0.9).add(skyRadiance(vec3(0, 1, 0)).mul(2.6)).mul(0.85));
+    const col = varying(sunL.mul(0.9).add(particleSky().mul(2.6)).mul(0.85));
     const dist = length(p.sub(cameraPosition));
     const fade = varying(pow(float(1).sub(u.clamp(0, 1)), 1.4).mul(smoothstep(0.0, 0.08, u)).mul(smoothstep(2, 8, dist)).mul(select(alive, select(mist, float(0.28), float(0.7)), float(0))));
     const tex = varying(vec2(seed(8.2), seed(8.9)));

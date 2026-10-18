@@ -257,7 +257,8 @@ async function boot() {
     const facing = (fwd.x * sd.x + fwd.z * sd.z) / ((Math.hypot(fwd.x, fwd.z) || 1) * (Math.hypot(sd.x, sd.z) || 1));
     const glare = THREE.MathUtils.smoothstep(facing, 0.2, 0.92) * (1 - THREE.MathUtils.smoothstep(sd.y, 0.12, 0.45)) * (sd.y > -0.04 ? 1 : 0) * (1 - weather.cover);
     glareK += (glare - glareK) * (1 - Math.exp(-dt * 2.0));
-    grade.exposure.value = tod.exposure * (1 + weather.flash * 2.5) * (1 + canopyK * 2.0 * tod.night) * (1 - 0.6 * glareK);
+    // (under the canopy the eye also opens up in the gloom of a rain)
+    grade.exposure.value = tod.exposure * (1 + weather.flash * 2.5) * (1 + canopyK * (2.0 * tod.night + 1.4 * tod.overcast)) * (1 - 0.6 * glareK);
     audio.update(dt, camera, { night: tod.night, rain: weather.rain, wind: weather.wind, underwater: camera.position.y < player.waterLevel - 0.05 });
     camera.updateMatrixWorld();
     terrain.update(camera, Q.shadowFar);

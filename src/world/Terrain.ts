@@ -44,8 +44,8 @@ export class Terrain {
     const g = new THREE.InstancedBufferGeometry();
     g.index = plane.index;
     g.setAttribute('position', plane.getAttribute('position'));
+    // (static usage: sent once per update(), by range; a dynamic one goes again in full in every render pass)
     this.nodeAttr = new THREE.InstancedBufferAttribute(new Float32Array(4096 * 4), 4);
-    this.nodeAttr.setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('nodeData', this.nodeAttr);
     g.instanceCount = 0;
     this.geometry = g;

@@ -38,7 +38,7 @@ export const atmo = {
   mist: uniform(0.0),
   /** boundary-layer haze for the aerial perspective, per metre at sea level */
   haze: uniform(3.6e-5),
-  mistColor: uniform(new THREE.Color(0.55, 0.6, 0.65)),
+  mistColor: uniform(new THREE.Color(0.57, 0.6, 0.63)),
   /** 0..1 overcast: flattens the sky toward grey */
   overcast: uniform(0),
   /** night factor for the stars, moon light */
@@ -288,12 +288,26 @@ export function aerialFogNode() {
     const v = normalize(positionWorld.sub(cameraPosition));
     const dir = vec3(v.x, max(v.y, 0.02), v.z).normalize();
     const sky = skyRadiance(dir);
-    // under an overcast the haze is the grey of the overcast sky's horizon (Sky.ts: a third of the dome overhead)
-    const lumZ = skyRadiance(vec3(0, 1, 0)).dot(vec3(0.2126, 0.7152, 0.0722));
-    return mix(sky, vec3(atmo.mistColor).mul(lumZ.mul(0.85)), atmo.overcast);
+    // under an overcast the haze is the grey of the overcast sky's horizon (Sky.ts: a third of the dome overhead,
+    // scaled from the clear sky 15 degrees up in this direction)
+    const lumRef = skyRadiance(normalize(vec3(v.x, 0.27, v.z))).dot(vec3(0.2126, 0.7152, 0.0722));
+    return mix(sky, vec3(atmo.mistColor).mul(lumRef.mul(1.12)), atmo.overcast);
   })();
   return fog(colorN, factor);
 }
+
+/**
+ * The sky's light on a small particle (spray, splash, mist), from above: the clear sky's zenith; under an overcast
+ * the grey of the cloud deck (Sky.ts: the deck overhead renders at about 0.7 of the clear sky's luminance 15 degrees
+ * up, taken on both sides of the sun), not the blue of the clear zenith hidden above it.
+ */
+export const particleSky = Fn(() => {
+  const s = vec2(atmo.sunDir.x, atmo.sunDir.z);
+  const h = s.div(max(length(s), 1e-3));
+  const ref = skyRadiance(normalize(vec3(h.x, 0.27, h.y))).add(skyRadiance(normalize(vec3(h.x.negate(), 0.27, h.y.negate()))));
+  const lumRef = dot(ref, vec3(0.2126 * 0.5, 0.7152 * 0.5, 0.0722 * 0.5));
+  return mix(skyRadiance(vec3(0, 1, 0)), vec3(0.95, 0.97, 1.0).mul(lumRef.mul(0.7)), atmo.overcast);
+});
 
 export const skyNodes = { skyRadiance, transmittanceAt, phaseMie };
 export type { N };

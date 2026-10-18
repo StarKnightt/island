@@ -102,7 +102,7 @@ export class TimeOfDay {
     // screen than noon) with silhouettes readable against the sky
     const L = (E * 0.18) / Math.PI;
     // under a storm overcast the eye does not fully open up: rain stays moody instead of a bright flat day
-    this.exposureTarget = THREE.MathUtils.clamp(0.42 / Math.pow(L, 0.66), 0.15, 20) * (1 - 0.3 * this.overcast);
+    this.exposureTarget = THREE.MathUtils.clamp(0.42 / Math.pow(L, 0.66), 0.15, 20) * (1 - 0.15 * this.overcast);
     void clouds;
   }
 }

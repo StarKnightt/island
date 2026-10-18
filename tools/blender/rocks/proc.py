@@ -3,9 +3,12 @@ scan displacement maps, voxel-remesh union, macro (smoothed) vertex normals, cha
 """
 import math
 import numpy as np
-import bpy
-import bmesh
-import rocklib as R
+try:
+    import bpy
+    import bmesh
+    import rocklib as R
+except ImportError:  # outside Blender only the numpy noise functions are usable
+    bpy = bmesh = R = None
 
 _G = np.array([[1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0], [1, 0, 1], [-1, 0, 1], [1, 0, -1], [-1, 0, -1],
                [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1]], np.float32)
@@ -222,7 +225,44 @@ def chart_unwrap(obj, smooth_it=40, angle=66):
         bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0.0)
         how = 'ANGLE_BASED'
     bpy.ops.object.mode_set(mode='OBJECT')
-    R.log('unwrap', how, 'seams', int(seams.sum()))
+    worst, cover = uv_stretch(obj)
+    if how == 'MINIMUM_STRETCH' and (worst > 30 or cover < 0.1):
+        # SLIM sometimes explodes one island (open meshes), which shrinks every other island to nothing
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.uv.select_all(action='SELECT')
+        bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0.0)
+        bpy.ops.object.mode_set(mode='OBJECT')
+        R.log('unwrap', how, 'exploded (worst area ratio', round(worst, 1), 'coverage', round(cover, 4), ')')
+        how = 'ANGLE_BASED'
+        worst, cover = uv_stretch(obj)
+    R.log('unwrap', how, 'seams', int(seams.sum()), 'worst area ratio', round(worst, 2), 'coverage', round(cover, 3))
+
+
+def uv_stretch(obj):
+    """(worst UV / 3D area ratio relative to the median, total UV area) of the active UV map."""
+    me = obj.data
+    me.calc_loop_triangles()
+    co = np.empty(len(me.vertices) * 3, np.float64)
+    me.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    vt = np.empty(len(me.loop_triangles) * 3, np.int32)
+    me.loop_triangles.foreach_get('vertices', vt)
+    lt = np.empty(len(me.loop_triangles) * 3, np.int32)
+    me.loop_triangles.foreach_get('loops', lt)
+    uv = np.empty(len(me.loops) * 2, np.float64)
+    me.uv_layers.active.data.foreach_get('uv', uv)
+    tri = co[vt.reshape(-1, 3)]
+    a3 = np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1) * 0.5
+    t = uv.reshape(-1, 2)[lt.reshape(-1, 3)]
+    e1, e2 = t[:, 1] - t[:, 0], t[:, 2] - t[:, 0]
+    a2 = np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]) * 0.5
+    ok = a3 > 1e-6
+    if not ok.any():
+        return 0.0, float(a2.sum())
+    r = a2[ok] / a3[ok]
+    med = max(float(np.median(r)), 1e-20)
+    return float(r.max() / med), float(a2.sum())
 
 
 def add_zero_skirt(obj):

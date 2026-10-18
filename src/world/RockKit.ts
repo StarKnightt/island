@@ -454,6 +454,10 @@ export class RockKit {
   private v = new THREE.Vector3();
   private sc = new THREE.Vector3();
   private yAxis = new THREE.Vector3(0, 1, 0);
+  private lastCam = new THREE.Vector3(Infinity, 0, 0);
+  private lastDir = new THREE.Vector3();
+  private dir = new THREE.Vector3();
+  private unprime = false;
 
   constructor(readonly places: RockPlace[], private colliders: Colliders) {
     this.group.name = 'rockkit';
@@ -647,11 +651,18 @@ export class RockKit {
   }
 
   update(camera: THREE.PerspectiveCamera) {
-    this.pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-    this.frustum.setFromProjectionMatrix(this.pv, THREE.WebGPUCoordinateSystem);
     const cam = camera.position;
     const priming = this.prime > 0;
     if (priming) this.prime--;
+    // the lists change only when the camera moves or turns (and once after the priming frames): re-cull and upload
+    // them then, not every frame
+    camera.getWorldDirection(this.dir);
+    if (!priming && !this.unprime && cam.distanceTo(this.lastCam) < 0.5 && this.dir.angleTo(this.lastDir) < 0.01) return;
+    this.unprime = priming;
+    this.lastCam.copy(cam);
+    this.lastDir.copy(this.dir);
+    this.pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.pv, THREE.WebGPUCoordinateSystem);
     for (const set of this.sets.values()) {
       const counts = set.meshes.map(() => 0);
       for (const p of set.places) {
@@ -676,7 +687,12 @@ export class RockKit {
           }
           mesh.count = n;
           mesh.visible = n > 0;
-          if (n > 0) mesh.instanceMatrix.needsUpdate = true;
+          if (n > 0) {
+            const im = mesh.instanceMatrix;
+            im.clearUpdateRanges();
+            im.addUpdateRange(0, n * 16);
+            im.needsUpdate = true;
+          }
         }
       });
     }

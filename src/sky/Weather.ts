@@ -208,8 +208,9 @@ export class Weather {
     const fade = smoothstep(0.7, 2.5, dist).mul(smoothstep(21, 12, dist));
     const keep = smoothstep(seed.z.sub(0.02), seed.z, rainU.intensity);
     const a = fade.mul(keep).mul(0.34).mul(smoothstep(0.0, 0.15, rainU.intensity));
-    // a drop refracts the sky and the light around it: about as bright as a pale surface under that light
-    const lit = float(atmo.lightE).mul(0.85 / Math.PI).mul(float(1).add(rainU.flash.mul(3)));
+    // a drop is a little lens showing the sky above and the darker ground below: about as bright as the sky's average
+    // over a mid-grey ground, so a streak shows against trees and rock and fades out against a bright misty sea
+    const lit = float(atmo.lightE).mul(0.6 / Math.PI).mul(float(1).add(rainU.flash.mul(3)));
     m.colorNode = vec4(vec3(0.92, 0.95, 1.0).mul(lit), a);
     const across = abs(uv().x.sub(0.5)), along = uv().y;
     m.opacityNode = a.mul(smoothstep(0.5, 0.1, across)).mul(smoothstep(0.0, 0.25, along)).mul(smoothstep(1.0, 0.7, along));

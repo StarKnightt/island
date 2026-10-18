@@ -204,10 +204,10 @@ export class Vegetation {
       const lod = sp.lods[l];
       // (see core/instancing.ts: a smaller instanced mesh gets a vertex shader of its own)
       const cap = Math.max(SHARED_INSTANCES, Math.min(sp.count, this.capacityFor(lod.maxDist, sp.count)));
+      // (static usage: the lists are uploaded, by range, only when update() rebuilds them; a dynamic buffer is sent
+      // again in full in every render pass of every frame, ~15 MB a frame across the island's instanced meshes)
       const matrix = new THREE.InstancedBufferAttribute(new Float32Array(cap * 16), 16);
-      matrix.setUsage(THREE.DynamicDrawUsage);
       const data = new THREE.InstancedBufferAttribute(new Float32Array(cap * 4), 4);
-      data.setUsage(THREE.DynamicDrawUsage);
       const row: Species['meshes'][number] = [];
       for (const part of lod.parts) {
         const g = new THREE.BufferGeometry();
@@ -336,13 +336,14 @@ export class Vegetation {
     const scrubVar = ['a', 'b', 'd'].map((k) => get(scrub, `scrub_${k}`));
     for (const v of scrubVar) for (let k = 1; k < v.lods.length; k++) v.lods[k] = v.lods[k].filter((p) => p.mat !== 'scrub_wood');
     const scrubs = scrubVar.map((v) => this.glbSpecies(v, [40 * K, 130 * K, 420], [true, false, false], lowLook));
-    // far canopy trees: the crown as lumpy opaque ellipsoids over the lod2 bark (see crownProxy)
+    // far canopy trees: the crown as lumpy opaque ellipsoids over the lod2 bark (see crownProxy), out to 800 m; past
+    // that a crown is a few pixels across and the canopy shell's baked crowns carry the forest to the horizon
     const greens: Record<string, [number, number, number]> = { a: [0.04, 0.066, 0.018], b: [0.028, 0.05, 0.014], c: [0.045, 0.072, 0.02], d: [0.034, 0.058, 0.016] };
     const trees = ['a', 'b', 'c', 'd'].map((k) => {
       const v = get(canopy, `rainforest_${k}`);
       const bark = v.lods[2].filter((p) => p.mat === 'canopy_bark');
-      v.lods[3] = [...bark, { geometry: crownProxy(v, 'canopy_leaf', 12), mat: 'crown_proxy', src: bark[0].src, override: crownMaterial(greens[k], treeLook) }];
-      return this.glbSpecies(v, [50 * K, 150 * K, 270 * K, 1500], [true, false, false, false], treeLook);
+      v.lods[3] = [...bark, { geometry: crownProxy(v, 'canopy_leaf', 8), mat: 'crown_proxy', src: bark[0].src, override: crownMaterial(greens[k], treeLook) }];
+      return this.glbSpecies(v, [50 * K, 150 * K, 270 * K, 800], [true, false, false, false], treeLook);
     });
     const mids = ['a', 'b'].map((k) => this.glbSpecies(get(mid, `midstorey_${k}`), [30 * K, 90 * K, 190 * K], [true, false, false], midLook));
     const unders = ['banana_a', 'alocasia_a', 'treefern_a', 'rattan_a', 'licuala_a']

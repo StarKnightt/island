@@ -192,11 +192,13 @@ export function skyColorNode(withSun: boolean) {
     const above = vec3(dir.x, max(dir.y, 0.0), dir.z).normalize();
     const col = skyRadiance(above).toVar();
     // overcast: the clear sky gives way to a grey dome brightest overhead, its horizon a third as bright (the CIE
-    // overcast sky; a clear sky's bright hazy horizon would glow as a white band under the rain)
+    // overcast sky; a clear sky's bright hazy horizon would glow as a white band under the rain). Its brightness is
+    // the clear sky's at 15 degrees up in this direction (the blue zenith is the darkest part of a clear sky), so the
+    // cloud is lighter toward the hidden sun.
     const zen = skyRadiance(vec3(0, 1, 0));
-    const lumZ = dot(zen, vec3(0.2126, 0.7152, 0.0722));
+    const lumRef = dot(skyRadiance(normalize(vec3(dir.x, 0.27, dir.z))), vec3(0.2126, 0.7152, 0.0722));
     const cie = float(1).add(above.y.mul(2)).div(3);
-    col.assign(mix(col, vec3(0.92, 0.96, 1.02).mul(lumZ.mul(1.5).mul(cie)), atmo.overcast));
+    col.assign(mix(col, vec3(0.95, 0.97, 1.0).mul(lumRef.mul(2.0).mul(cie)), atmo.overcast));
     // night sky glow (moonlight scattered by the air, airglow, starlight) so the darkest sky is deep blue, not black,
     // and the image-based light keeps shadowed ground readable under the moon
     col.addAssign(vec3(0.0013, 0.0024, 0.0058).mul(atmo.night));
@@ -239,8 +241,10 @@ export function skyColorNode(withSun: boolean) {
     const phase = hg(0.62).mul(0.55).add(hg(-0.12).mul(0.45));
     const lightRad = vec3(clouds.lightColor);
     const sigma = mix(float(0.03), float(0.05), clouds.thickness);
-    // cloud base lit from below by the sea and the land (a little), from above by the sky dome
-    const ambTop = zen.mul(2.1).add(vec3(0.0012, 0.0016, 0.0026).mul(atmo.night));
+    // cloud base lit from below by the sea and the land (a little), from above by the sky dome (under an overcast the
+    // dome above the deck is more cloud: grey light, not the blue of a clear zenith)
+    const zenSky = mix(zen, vec3(dot(zen, vec3(0.2126, 0.7152, 0.0722))).mul(vec3(0.95, 0.98, 1.04)), atmo.overcast.mul(0.8));
+    const ambTop = zenSky.mul(2.1).add(vec3(0.0012, 0.0016, 0.0026).mul(atmo.night));
     const ambBot = ambTop.mul(0.32).add(vec3(0.01, 0.02, 0.025).mul(lightRad.dot(vec3(0.33)).mul(0.25)));
     If(dir.y.greaterThan(0.004).and(camY.lessThan(base)).and(t0.lessThan(70000)), () => {
       Loop(STEPS, ({ i }: { i: N }) => {
@@ -267,11 +271,13 @@ export function skyColorNode(withSun: boolean) {
           Break();
         });
       });
-      // the clouds sit in the haze: far ones pale toward the sky behind them
+      // the clouds sit in the haze: far ones pale toward the sky behind them. An overcast deck pales all the way into
+      // the grey dome before the cloud map ends (~18 km out): else it stops in a hard edge a few degrees above the
+      // horizon with a bright strip of bare dome below it
       const tm = t0.add(t1).mul(0.5);
-      const haze = float(1).sub(exp(tm.mul(-1 / 21000)));
+      const haze = float(1).sub(exp(tm.mul(-1 / 21000))).mul(0.9).max(smoothstep(8000, 18000, tm).mul(smoothstep(0.3, 0.9, atmo.overcast))).max(smoothstep(30000, 70000, t0));
       const dark = float(1).sub(clouds.thickness.mul(0.55)).mul(float(1).sub(atmo.overcast.mul(0.25)));
-      const seen = mix(Lc.mul(dark), col.mul(float(1).sub(T)), haze.mul(0.9));
+      const seen = mix(Lc.mul(dark), col.mul(float(1).sub(T)), haze);
       col.assign(col.mul(T).add(seen));
     });
     if (withSun) {
@@ -311,7 +317,7 @@ export function skyColorNode(withSun: boolean) {
     // below the horizon (the environment map's lower half): light bounced off the ground (sand, leaves, sea) under
     // the sun and the sky, so undersides and trunks get a neutral bounce instead of a colour of their own; it fades
     // at a low sun so shade stays cool (sky-lit) against the warm light
-    const horizon = mix(skyRadiance(normalize(vec3(dir.x, 0.02, dir.z))), vec3(0.92, 0.96, 1.02).mul(lumZ.mul(0.52)), atmo.overcast);
+    const horizon = mix(skyRadiance(normalize(vec3(dir.x, 0.02, dir.z))), vec3(0.95, 0.97, 1.0).mul(lumRef.mul(0.68)), atmo.overcast);
     const sunIrr = transmittanceAt(float(R_GROUND).add(atmo.camHeight), max(sun.y, 0.0)).mul(SUN_E).mul(max(sun.y, 0)).mul(float(1).sub(atmo.overcast.mul(0.88)));
     const skyIrr = mix(zen, horizon, 0.5).mul(Math.PI);
     const ground = vec3(0.13, 0.12, 0.095).mul(sunIrr.add(skyIrr)).div(Math.PI);
