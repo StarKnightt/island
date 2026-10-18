@@ -55,6 +55,7 @@ async function boot() {
   assetProgress.onChange = () => {
     if (assetBar && assetProgress.pending > 0) loading.progress(0.28 + 0.47 * (assetProgress.done / assetProgress.pending));
   };
+  const webgpu = engine.backendName === 'WebGPU';
   const ctx: Ctx = { engine, tod: null as unknown as TimeOfDay, spotNames: SPOTS.map((s) => s.name), quality: { preset, ...Q } };
 
   // ---- island data
@@ -293,7 +294,8 @@ async function boot() {
     const wdir = wetness.windDir.value as THREE.Vector2;
     sky.setDrift(wdir.x, wdir.y, t, tod.hour);
     sky.update(dt, scene);
-    if (!skip.has('oceansim')) ocean.update(renderer, camera, t, dt);
+    // (the FFT runs in compute shaders: on the WebGL 2 fallback the sea keeps its first, still state)
+    if (!skip.has('oceansim') && webgpu) ocean.update(renderer, camera, t, dt);
     spray.update(dt, camera);
     (sprayU.sun.value as THREE.Color).copy(sunLight.color).multiplyScalar(sunLight.intensity);
   });
