@@ -6,7 +6,7 @@
  */
 import { chromium } from 'playwright-core';
 import { rmSync } from 'node:fs';
-import { argv, ensureServer, chromeArgs, targetDisplay, fitsExactly, placeWindow, stubPointerLock } from './lib/browser';
+import { argv, ensureServer, launchOptions, targetDisplay, placeWindow, stubPointerLock } from './lib/browser';
 
 const a = argv();
 const q = a.get('q', 'spot=beach');
@@ -16,11 +16,11 @@ const server = await ensureServer(a.has('dev') ? 'dev' : 'preview');
 try {
   for (const run of ['first visit', 'returning visit']) {
     const display = targetDisplay();
-    const real = fitsExactly(display, 1920, 1080);
-    const ctx = await chromium.launchPersistentContext(dir, { channel: 'chrome', headless: false, args: chromeArgs({ display }), viewport: real ? null : { width: 1920, height: 1080 } });
+    const { headless, real, view, args } = launchOptions(display);
+    const ctx = await chromium.launchPersistentContext(dir, { channel: 'chrome', headless, args, ...view });
     await stubPointerLock(ctx);
     const page = ctx.pages()[0] ?? (await ctx.newPage());
-    const mode = await placeWindow(page, display, 1920, 1080, real);
+    const mode = headless ? 'headless' : await placeWindow(page, display, 1920, 1080, real);
     if (run === 'first visit') console.log(`[browser] ${display.name} ${display.width}x${display.height}: ${mode} 1920x1080 viewport`);
     const t0 = Date.now();
     await page.goto(`${server.url}?test=1&hud=0&mute=1&${q}`, { waitUntil: 'domcontentloaded' });

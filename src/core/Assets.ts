@@ -22,8 +22,12 @@ function track<T>(p: Promise<T>): Promise<T> {
 }
 
 export function initAssets(renderer: THREE.WebGPURenderer) {
-  ktx2 = new KTX2Loader().setTranscoderPath(`${BASE}basis/`).setWorkerLimit(2);
+  // ~60 textures and ~100 MB of meshopt geometry arrive at once: transcode and decode them on several workers, so the
+  // main thread stays free to build shaders meanwhile
+  const cores = navigator.hardwareConcurrency || 4;
+  ktx2 = new KTX2Loader().setTranscoderPath(`${BASE}basis/`).setWorkerLimit(Math.max(2, Math.min(6, Math.floor(cores / 2))));
   ktx2.detectSupport(renderer);
+  MeshoptDecoder.useWorkers?.(Math.max(1, Math.min(4, Math.floor(cores / 3))));
   gltf = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
 }
 
@@ -31,8 +35,37 @@ export function loadKTX2(url: string): Promise<THREE.CompressedTexture> {
   return track(ktx2!.loadAsync(`${BASE}${url}`) as Promise<THREE.CompressedTexture>);
 }
 
+/** maps that hold data, not colour: sampled raw, never sRGB-decoded */
+const DATA_MAPS = ['normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'bumpMap', 'displacementMap', 'clearcoatNormalMap', 'clearcoatRoughnessMap', 'specularIntensityMap', 'thicknessMap', 'transmissionMap'] as const;
+
+/** one parse per file: a second user (the pool's rocks and the island's boulders) shares its meshes and textures */
+const gltfCache = new Map<string, Promise<GLTF>>();
+
 export function loadGLTF(url: string): Promise<GLTF> {
-  return track(gltf!.loadAsync(`${BASE}${url}`));
+  let p = gltfCache.get(url);
+  if (!p) gltfCache.set(url, (p = parseGLTF(url)));
+  return p;
+}
+
+function parseGLTF(url: string): Promise<GLTF> {
+  return track(gltf!.loadAsync(`${BASE}${url}`).then((g) => {
+    // the KTX2 encoder flags every texture of our GLBs sRGB (normal and ORM maps too), and KTX2Loader picks the sRGB
+    // GPU format from that flag: normals came out tilted and roughness / AO gamma-darkened. Data maps are linear.
+    g.scene.traverse((o) => {
+      const mats = (o as THREE.Mesh).material;
+      if (!mats) return;
+      for (const m of Array.isArray(mats) ? mats : [mats]) {
+        for (const k of DATA_MAPS) {
+          const t = (m as unknown as Record<string, THREE.Texture | null | undefined>)[k];
+          if (t && t.colorSpace !== THREE.NoColorSpace) {
+            t.colorSpace = THREE.NoColorSpace;
+            t.needsUpdate = true;
+          }
+        }
+      }
+    });
+    return g;
+  }));
 }
 
 /** stack same-sized compressed textures into one array texture (mip by mip) */

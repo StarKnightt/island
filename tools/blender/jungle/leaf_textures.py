@@ -126,9 +126,9 @@ def make_leaf(spec, variant, seed):
     as_ = np.abs(s)
     lobe_mid = None
     if kind == 'pinna':  # comb of pinnules: deep incisions from the margin toward the costa
-        nl = rng.integers(22, 28)
+        nl = rng.integers(30, 37)
         ph = (t * nl + 0.5 * (s > 0) - 0.9 * as_) % 1.0
-        prof = 0.1 + 0.9 * np.abs(np.sin(np.pi * ph)) ** 0.4
+        prof = 0.08 + 0.92 * np.abs(np.sin(np.pi * ph)) ** 0.7
         alpha = alpha * np.clip((w * prof - as_) * hw_px + 0.5, 0, 1)
         lobe_mid = np.clip(1.0 - np.abs(ph - 0.5) * 2 * 6, 0, 1) * (as_ > 0.08)
     if kind == 'palmlet':

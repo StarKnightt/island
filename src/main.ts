@@ -30,6 +30,7 @@ import { River } from './water/River';
 import { Village } from './world/Village';
 import { Lighthouse } from './world/Lighthouse';
 import { RockKit, planRocks } from './world/RockKit';
+import { Birds } from './world/Birds';
 import { Weather } from './sky/Weather';
 import { AudioSystem } from './audio/Audio';
 import { mark, timeline } from './core/timeline';
@@ -44,8 +45,16 @@ async function boot() {
   loading.status('Starting the renderer');
   const engine = await Engine.create(document.getElementById('app')!);
   const { scene, camera, renderer } = engine;
+  // the display refresh (for the frame cap), measured while the main thread mostly waits on the island data; the
+  // engine keeps re-measuring it from its own frame times later
+  const refreshMeasured = engine.measureRefresh();
   loading.gpu(`${gpuName || engine.adapterInfo.description || engine.adapterInfo.vendor || ''} · ${engine.backendName} · ${preset}`);
   initAssets(renderer);
+  // the bar moves with every model and texture that arrives (a slow connection spends most of the wait here)
+  let assetBar = true;
+  assetProgress.onChange = () => {
+    if (assetBar && assetProgress.pending > 0) loading.progress(0.28 + 0.47 * (assetProgress.done / assetProgress.pending));
+  };
   const ctx: Ctx = { engine, tod: null as unknown as TimeOfDay, spotNames: SPOTS.map((s) => s.name), quality: { preset, ...Q } };
 
   // ---- island data
@@ -54,7 +63,7 @@ async function boot() {
   let got = 0;
   await hf.load('./world/', (n) => {
     got += n;
-    loading.progress(0.05 + 0.4 * Math.min(1, got / Heightfield.BYTES));
+    loading.progress(0.03 + 0.25 * Math.min(1, got / Heightfield.BYTES));
   });
   const colliders = new Colliders();
   // the rock kit's layout reshapes the sea rocks and moves the waterline, so it comes before anything reads them
@@ -76,6 +85,7 @@ async function boot() {
   addSunOcclusion((p) => cloudShadow(p));
   const csm = new SunShadowNode(sunLight, { cascades: Q.cascades, maxFar: Q.shadowFar, mode: 'practical', lightMargin: 400 });
   csm.fade = true;
+  csm.mapSizes = [Q.shadowMap, ...Array.from({ length: Math.max(0, Q.cascades - 2) }, () => Q.shadowMid), Q.shadowFarMap].slice(0, Q.cascades);
   sunLight.shadow.shadowNode = csm;
   scene.add(sunLight, sunLight.target);
   setSunLight(sunLight);
@@ -110,6 +120,8 @@ async function boot() {
   if (!skip.has('village')) scene.add(village.group);
   const lighthouse = new Lighthouse(hf, colliders);
   if (!skip.has('lighthouse')) scene.add(lighthouse.group);
+  const birds = new Birds();
+  if (!skip.has('birds')) scene.add(birds.mesh);
 
   // ---- weather and sound
   const weather = new Weather(hf);
@@ -180,7 +192,6 @@ async function boot() {
   const spot = SPOTS.find((s) => s.name === (params.spot ?? 'beach')) ?? SPOTS[0];
   await playerLoad;
   mark('character');
-  loading.progress(0.6);
   player.place(spot.player[0], spot.player[1], spot.yaw, spot.player[2] ?? 1e9);
   rig.snapBehind(spot.yaw);
 
@@ -232,7 +243,8 @@ async function boot() {
     }
     // normal offset in proportion to each cascade's texel size: a few centimetres near the camera, so shadows stay
     // attached to feet and trunks, half a metre in the far cascade where the texels are ~30 cm
-    if (cascades) cascades.forEach((l, i) => (l.shadow.normalBias = [0.035, 0.14, 0.5][Math.min(i, 2)]));
+    // (scaled up for a cascade drawn on a smaller map than the near one)
+    if (cascades) cascades.forEach((l, i) => (l.shadow.normalBias = [0.035, 0.14, 0.5][Math.min(i, 2)] * (Q.shadowMap / (csm.mapSizes[i] || Q.shadowMap))));
     weather.update(dt);
     tod.overcast = weather.cover * 0.9;
     player.rainWet = weather.wet * 0.85;
@@ -268,14 +280,15 @@ async function boot() {
     river.update(t);
     village.update(t, (i) => ocean.sim.probe(i), tod.night);
     lighthouse.update(dt, tod.night);
+    birds.update(t, tod.night);
     hud.update(dt, player.pos.x, player.pos.z, tod.hour, weather.kind);
     dbg.update(dt);
     vegU.sunColor.value.copy(sunLight.color).multiplyScalar(sunLight.intensity);
-    // the farthest shadow cascade (texels of tens of cm, moving cm per frame) renders every other frame
-    const farCascade = (csm as unknown as { lights?: THREE.DirectionalLight[] }).lights?.[Q.cascades - 1];
-    if (farCascade && Q.cascades > 1) {
-      farCascade.shadow.autoUpdate = false;
-      if (engine.frame % 2 === 0) farCascade.shadow.needsUpdate = true;
+    // (with two cascades the far one renders every other frame; with three, the turn-taking above already covers it:
+    // a second rule here used to redraw the far cascade on every frame)
+    if (Q.cascades === 2 && cascades?.[1]) {
+      cascades[1].shadow.autoUpdate = false;
+      if (engine.frame % 2 === 0) cascades[1].shadow.needsUpdate = true;
     }
     const wdir = wetness.windDir.value as THREE.Vector2;
     sky.setDrift(wdir.x, wdir.y, t, tod.hour);
@@ -298,60 +311,67 @@ async function boot() {
     done();
   });
 
-  loading.status('Growing the jungle');
-  await Promise.all([plantsReady, kitReady]);
-  await veg.addLedges(kit.ledges).catch((e) => console.warn('ledge plants', e));
-  loading.status('Compiling shaders');
-  loading.progress(0.85);
-  await engine.measureRefresh();
+  // the sky's LUTs and the environment once, with synchronous pipelines (the transmittance LUT renders only once, so
+  // its draw must not be skipped while compiling); everything after compiles on the driver's threads
   sky.update(0, scene, true);
   if (sky.envRT) river.setEnvironment(sky.envRT.texture);
   terrain.update(camera, Q.shadowFar);
   veg.update(camera, 60, true);
-  // No compileAsync: in three r186 the pipelines it builds do not match the ones the post pipeline's MRT pass uses
-  // on the first frame (their uniform grouping differs), so it doubled the start-up. The first frame compiles the
-  // shaders once, behind the loading screen, which stays up until that frame has been presented.
-  mark('scene ready');
-  // the priming frames draw everything once, out of view or not (frustum culling off), so every pipeline compiles
-  // behind the loading screen instead of stalling the first time the falls, the village or the lighthouse come into
-  // view. A batch at a time: every mesh starts on the layer of its batch (by material) and the camera and the sun's
-  // shadow cameras see one more layer each frame, so a frame compiles only the pipelines its batch adds; no frame
-  // stalls for long, and the bar moves with the real progress between them.
-  const unculled: THREE.Object3D[] = [];
-  const parts: { o: THREE.Object3D; mask: number }[] = [];
-  const byMaterial = new Map<string, THREE.Object3D[]>();
-  // (not compileAsync: in three r186 its pipelines do not match the ones the post chain's scene pass uses, even with
-  // that pass's render target and MRT bound, so every one compiled twice and the start-up doubled)
-  scene.traverse((o) => {
-    if (!(o as THREE.Mesh).isMesh && !(o as THREE.Sprite).isSprite) return;
-    if (o.frustumCulled) {
-      o.frustumCulled = false;
-      unculled.push(o);
-    }
-    parts.push({ o, mask: o.layers.mask });
-    const mat = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
-    const key = Array.isArray(mat) ? mat.map((x) => x.uuid).join() : mat?.uuid ?? o.uuid;
-    (byMaterial.get(key) ?? byMaterial.set(key, []).get(key)!).push(o);
-  });
-  const groups = [...byMaterial.values()];
-  const batches = Math.max(1, Math.min(30, groups.length));
-  groups.forEach((g, i) => {
-    for (const o of g) o.layers.set(1 + Math.floor((i * batches) / groups.length));
-  });
+  engine.asyncPipelines = true;
+
+  // ---- shaders. Priming frames draw everything once, out of view or not (frustum culling off), so every pipeline
+  // the island needs is created behind the loading screen instead of the first time the falls, the village or the
+  // lighthouse come into view. A batch of materials per frame (every mesh goes on the layer of its batch, and the
+  // camera and the sun's shadow cameras see one more layer each frame): the frame builds that batch's shaders and
+  // hands its pipelines to the driver, which compiles them in parallel on its worker threads while the next batches,
+  // the plants and the rock kit go on (a mesh whose pipeline is still compiling is just not drawn yet).
+  // (not compileAsync: in three r186 its pipelines do not match the ones the post chain's MRT scene pass uses, so
+  // every one compiled twice; these frames go through the real passes)
   const viewers = () => [camera, sunLight.shadow.camera, ...((csm as unknown as { lights?: THREE.DirectionalLight[] }).lights ?? []).map((l) => l.shadow.camera)];
-  const viewMasks = viewers().map((c) => c.layers.mask);
-  const seeUpTo = (b: number) => {
-    for (const c of viewers()) c.layers.mask = 2 ** (b + 2) - 1;
+  const frame = async () => {
+    const f = engine.frame;
+    while (engine.frame <= f) await new Promise((r) => setTimeout(r, 4));
   };
-  seeUpTo(0);
-  veg.prime = weather.prime = lighthouse.prime = kit.prime = batches + 3;
-  rocksReady.then(() => (veg.prime = 3));
+  const prime = async (label: string, from?: number, to?: number) => {
+    const unculled: THREE.Object3D[] = [];
+    const parts: { o: THREE.Object3D; mask: number }[] = [];
+    const byMaterial = new Map<string, THREE.Object3D[]>();
+    scene.traverse((o) => {
+      if (!(o as THREE.Mesh).isMesh && !(o as THREE.Sprite).isSprite) return;
+      if (o.frustumCulled) {
+        o.frustumCulled = false;
+        unculled.push(o);
+      }
+      parts.push({ o, mask: o.layers.mask });
+      const mat = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+      const key = Array.isArray(mat) ? mat.map((x) => x.uuid).join() : mat?.uuid ?? o.uuid;
+      (byMaterial.get(key) ?? byMaterial.set(key, []).get(key)!).push(o);
+    });
+    const groups = [...byMaterial.values()];
+    const batches = Math.max(1, Math.min(8, groups.length));
+    groups.forEach((g, i) => {
+      for (const o of g) o.layers.set(1 + Math.floor((i * batches) / groups.length));
+    });
+    const viewMasks = viewers().map((c) => c.layers.mask);
+    veg.prime = weather.prime = lighthouse.prime = kit.prime = batches + 2;
+    for (let b = 0; b < batches; b++) {
+      for (const c of viewers()) c.layers.mask = 2 ** (b + 2) - 1;
+      await frame();
+      loading.status(`${label} ${b + 1} / ${batches}`);
+      if (from !== undefined && to !== undefined) loading.progress(from + ((to - from) * (b + 1)) / batches);
+    }
+    await frame();
+    for (const { o, mask } of parts) o.layers.mask = mask;
+    viewers().forEach((c, i) => (c.layers.mask = viewMasks[i] ?? 1));
+    for (const o of unculled) o.frustumCulled = true;
+  };
+  let booting = true;
   engine.start();
   Object.assign(ctx, {
     hf, terrain, sky, csm, ocean, spray, player, playerObj: player, cameraRig: rig, input, colliders, veg, kit, village, lighthouse, weather, audio, hud, dbg,
     rts: { transmittance: transmittanceRT, skyView: skyViewRT, cloud: cloudRT },
     dayMinutes: params.dayMinutes,
-    isBusy: () => streaming > 0 || assetProgress.pending > assetProgress.done,
+    isBusy: () => booting || streaming > 0 || assetProgress.pending > assetProgress.done || engine.pipelinesPending > 0,
   });
   // authored establishing cameras per spot (the harness's camera: 'shot')
   const H = (x: number, z: number) => Math.max(hf.height(x, z), 0);
@@ -360,12 +380,14 @@ async function boot() {
     beach: { pos: [584, H(584, 64) + 2.4, 64], target: [652, 2.2, 18], fov: 55 },
     jungle: { pos: [358, H(358, 32) + 1.8, 32], target: [376, H(376, 4) + 4.5, 4], fov: 60 },
     waterfall: { pos: [186, H(186, -42) + 1.7, -42], target: [147, hf.meta.falls.bottom + (hf.meta.falls.top - hf.meta.falls.bottom) * 0.47, -55], fov: 58 },
-    // from the end of the main jetty back along its planks, past the moored canoes, to the huts and the palms
-    village: { pos: [-447.5, 3.35, 390], target: [-466, 3.2, 300], fov: 58 },
+    // from halfway out along the main jetty back to the shore: planks and moored canoes in front, the communal
+    // house, the huts and the palms filling the middle, the hill behind
+    village: { pos: [-446.5, 3.4, 366], target: [-468, 4.5, 306], fov: 55 },
     // from a boat off the north coast, along the 50-80 m sea cliffs
     cliffs: { pos: [-90, 5, -660], target: [-330, 35, -600], fov: 55 },
-    // standing on the gallery inside the railing, looking out over the island to the beach and the sea
-    lighthouse: { pos: [LIGHTHOUSE.p[0] + Math.cos(0.9) * 2.45, gy + 1.62, LIGHTHOUSE.p[1] + Math.sin(0.9) * 2.45], target: [40, 30, 120], fov: 62 },
+    // leaning on the gallery rail (the rail itself below the frame), looking east over the island: the waterfall's
+    // valley and the jungle in the middle, the beach and its reef right of centre, the ocean beyond
+    lighthouse: { pos: [LIGHTHOUSE.p[0] + Math.cos(0.66) * 3.0, gy + 1.75, LIGHTHOUSE.p[1] + Math.sin(0.66) * 3.0], target: [173, 66, 69], fov: 52 },
   };
   ctx.forceRefresh = () => {
     veg.update(camera, 60, true);
@@ -383,37 +405,35 @@ async function boot() {
   };
   installHarness(ctx);
   ctx.timeline = timeline;
-  // the first frames compile every pipeline, a batch per frame: the loading screen stays up until they are presented
-  const frame = async () => {
-    const f = engine.frame;
-    while (engine.frame <= f) await new Promise((r) => setTimeout(r, 4));
-  };
-  const slow: string[] = [];
-  for (let b = 0; b < batches; b++) {
-    seeUpTo(b);
-    const t = performance.now();
+  // the island so far compiles while the plants and the rock kit are still streaming in
+  // (the bar keeps following the downloads meanwhile)
+  await prime('Preparing shaders');
+  mark('island primed');
+  loading.status('Growing the jungle');
+  await Promise.all([plantsReady, kitReady]);
+  await veg.addLedges(kit.ledges).catch((e) => console.warn('ledge plants', e));
+  veg.update(camera, 60, true);
+  mark('scene ready');
+  assetBar = false;
+  await prime('Preparing plant shaders', 0.75, 0.8);
+  rocksReady.then(() => (veg.prime = Math.max(veg.prime, 3)));
+  // the driver's threads finish the pipelines while ordinary frames run
+  const t0 = performance.now();
+  while (engine.pipelinesPending > 0 && performance.now() - t0 < 120000) {
+    const total = engine.pipelinesCompiled + engine.pipelinesPending;
+    loading.status(`Compiling shaders ${engine.pipelinesCompiled} / ${total}`);
+    loading.progress(0.8 + (0.18 * engine.pipelinesCompiled) / Math.max(1, total));
     await frame();
-    const ms = performance.now() - t;
-    if (params.test && ms > 300) {
-      const names = new Set<string>();
-      groups.forEach((g, i) => {
-        if (1 + Math.floor((i * batches) / groups.length) !== b + 1) return;
-        for (const o of g) names.add(((o as THREE.Mesh).material as THREE.Material)?.name || o.name);
-      });
-      slow.push(`${(ms / 1000).toFixed(1)}s ${b === 0 ? '(first frame: post, sky, sea) ' : ''}${[...names].slice(0, 6).join(' ')}`);
-    }
-    loading.status(`Preparing shaders ${b + 1} / ${batches}`);
-    loading.progress(0.86 + (0.12 * (b + 1)) / batches);
   }
-  if (slow.length) console.info(`[island] slow shader batches: ${slow.join(' | ')}`);
-  for (const { o, mask } of parts) o.layers.mask = mask;
-  viewers().forEach((c, i) => (c.layers.mask = viewMasks[i] ?? 1));
+  console.info(`[island] ${engine.pipelinesCompiled} pipelines compiled in parallel, ${((performance.now() - t0) / 1000).toFixed(1)} s after the last prime`);
+  await refreshMeasured;
   await frame();
   await frame();
-  for (const o of unculled) o.frustumCulled = true;
   loading.progress(1);
   mark('first frame');
-  setTimeout(() => loading.done(), 250);
+  // (ready() waits for the screen to be gone: round 2's first capture caught it fading)
+  await loading.done();
+  booting = false;
 }
 
 boot().catch((e) => {

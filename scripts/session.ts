@@ -1,6 +1,6 @@
 /**
  * Development session: one browser, one page load, then a steps module drives it.
- *   pnpm tsx scripts/session.ts --steps E:/tmp/island/steps.mjs [--q "spot=lighthouse&tod=noon"] [--preview]
+ *   pnpm tsx scripts/session.ts --steps E:/tmp/island/steps.mjs [--q "spot=lighthouse&tod=noon"] [--preview] [--uncapped] [--fresh]
  * The steps module exports `default async (s) => { ... }` with
  *   s.page            the Playwright page
  *   s.ev(src)         evaluate a source string in the page (window.__island is `api`, its ctx is `api.ctx`)
@@ -12,7 +12,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { argv, ensureServer, launch } from './lib/browser';
+import { argv, ensureServer, launch, DEV_PROFILE } from './lib/browser';
 
 const a = argv();
 const stepsFile = a.get('steps', '');
@@ -21,7 +21,8 @@ const outDir = 'E:\\shots\\island\\dev';
 mkdirSync(outDir, { recursive: true });
 
 const server = await ensureServer(a.has('preview') ? 'preview' : 'dev');
-const L = await launch();
+// (a persistent profile: Chrome keeps the compiled shaders, so a capture loads in seconds; --fresh: a new one)
+const L = await launch({ uncapped: a.has('uncapped'), profile: a.has('fresh') ? undefined : DEV_PROFILE });
 const t0 = Date.now();
 try {
   await L.page.goto(`${server.url}?test=1&hud=0&mute=1&freeze=1&${q}`, { waitUntil: 'domcontentloaded' });

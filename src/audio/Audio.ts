@@ -166,11 +166,15 @@ export class AudioSystem {
     set('birds', day * (0.35 + 0.65 * forest) * (1 - w.rain * 0.8) * (1 - THREE.MathUtils.smoothstep(height, 150, 230) * 0.7));
     set('jungle', day * forest * (1 - w.rain * 0.6));
     set('night', w.night * (0.4 + 0.6 * Math.max(forest, hf.grass(p.x, p.z))) * (1 - w.rain * 0.5));
-    set('rain', THREE.MathUtils.smoothstep(w.rain, 0.02, 0.5));
-    set('rain_heavy', THREE.MathUtils.smoothstep(w.rain, 0.5, 1.0));
+    // rain sounds of what it falls on: under the canopy the leaves take the open hiss and give a dense patter and
+    // drips (the heavy layer) even in a light shower; over the sea and the sand it hisses
+    const shower = THREE.MathUtils.smoothstep(w.rain, 0.02, 0.5), downpour = THREE.MathUtils.smoothstep(w.rain, 0.5, 1.0);
+    set('rain', shower * (1 - forest * 0.45) * (1 + nearSea * 0.12));
+    set('rain_heavy', Math.max(downpour * (1 - forest * 0.2), shower * forest * 0.75));
     set('waterfall', THREE.MathUtils.clamp(1 - dFalls / 260, 0, 1) ** 0.6);
     set('stream', THREE.MathUtils.clamp(1 - river.d / 45, 0, 1) * (dFalls > 40 ? 1 : 0.4));
-    set('village', THREE.MathUtils.clamp(1 - dVillage / 160, 0, 1) * (0.5 + w.wind * 0.5));
+    // (the village sleeps at night: voices fade, the boats and the wind stay)
+    set('village', THREE.MathUtils.clamp(1 - dVillage / 160, 0, 1) * (0.5 + w.wind * 0.5) * (1 - w.night * 0.75));
     set('chickens', day * THREE.MathUtils.clamp(1 - dVillage / 120, 0, 1) * (1 - w.rain));
     set('creak', THREE.MathUtils.clamp(1 - dVillage / 140, 0, 1));
     set('gulls', day * nearSea * (1 - w.rain) * 0.8 + day * THREE.MathUtils.clamp(1 - dVillage / 200, 0, 1) * 0.5);

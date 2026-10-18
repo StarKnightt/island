@@ -6,10 +6,10 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-  abs, attribute, cameraPosition, clamp, dot, exp, float, length, max, min, mix, mx_noise_float, mx_fractal_noise_float,
-  normalize, positionWorld, positionView, pow, screenUV, select, smoothstep, transformNormalToView, uniform, uv, vec2,
-  vec3, vec4, viewportSharedTexture, sin, fract, hash, instanceIndex, reflect, texture, varying, normalWorldGeometry,
-  faceDirection, type N,
+  abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, cos, dot, exp, float, floor,
+  getScreenPosition, length, max, min, mix, mx_noise_float, normalize, positionWorld, positionView, pow, screenUV, select,
+  smoothstep, sqrt, transformNormalToView, uniform, uv, vec2, vec3, vec4, viewportSharedTexture, sin, fract, hash,
+  instanceIndex, reflect, texture, varying, normalWorldGeometry, faceDirection, type N,
 } from '../core/tsl';
 import type { Heightfield } from '../world/Heightfield';
 import { sceneViewDepth } from '../core/depth';
@@ -19,10 +19,33 @@ import { atmo, particleSky } from '../sky/Atmosphere';
 import { laceTex } from './surf';
 import { sprayU } from './Spray';
 import { preset } from '../core/quality';
+import { sunLit } from '../core/lighting';
 import { fallsPath } from './fallsPath';
 import { heightLookup } from '../world/Terrain';
+import { HALF_WORLD, WORLD_SIZE } from '../world/layout';
 
 export const riverU = { time: uniform(0) };
+
+/**
+ * Rain on standing water: rings spreading from drops that land at random in ~0.4 m cells (two layers), as a surface
+ * slope (xz). Seeds stay positive (TSL's hash clamps negative ones to 0).
+ */
+function rainRings(q: N, t: N): N {
+  let s: N = vec2(0);
+  for (const [scale, off, speed] of [[2.4, 0.0, 1.35], [3.1, 0.53, 1.8]]) {
+    const g = q.mul(scale).add(off + 4096);
+    const cell = floor(g);
+    const h1 = hash(cell.x.add(cell.y.mul(131.7)));
+    const h2 = hash(cell.x.mul(17.3).add(cell.y.mul(3.1)).add(911));
+    const c = fract(g).sub(0.5).sub(vec2(h1, h2).sub(0.5).mul(0.5));
+    const r = length(c);
+    const age = fract(t.mul(speed).add(h1.mul(9.7)));
+    const front = r.sub(age.mul(0.42));
+    const k = sin(front.mul(46)).mul(smoothstep(0.09, 0.0, abs(front))).mul(float(1).sub(age).pow(2));
+    s = s.add(c.div(max(r, 1e-3)).mul(k));
+  }
+  return s;
+}
 
 export class River {
   readonly group = new THREE.Group();
@@ -43,8 +66,8 @@ export class River {
   private waterMats: { m: THREE.MeshStandardNodeMaterial; env: number }[] = [];
 
   /**
-   * The sky reflection on fresh water: banks, cliffs and canopy hide most of the sky over the river and the pool,
-   * so they take the shared environment at a fraction of its strength.
+   * The sky reflection on the river: banks and canopy hide most of the sky over it, so it takes the shared
+   * environment at a fraction of its strength. (The pool works out its own reflection: see poolMaterial.)
    */
   setEnvironment(tex: THREE.Texture) {
     for (const { m, env } of this.waterMats) {
@@ -54,94 +77,194 @@ export class River {
     }
   }
 
-  private waterMaterial(kind: 'river' | 'pool') {
-    const m = new THREE.MeshStandardNodeMaterial();
-    m.name = `water_${kind}`;
-    this.waterMats.push({ m, env: kind === 'pool' ? 0.06 : 0.3 });
-    m.transparent = true;
-    m.depthWrite = true;
+  /** the water's thickness along the view ray and the refracted scene behind it, from the opaque pass's copies */
+  private refraction(N0: N) {
     const p = positionWorld;
-    const t = riverU.time;
-    // flow: uv.x runs downstream in metres; speed from the attribute (m/s)
-    const flowSpeed = kind === 'river' ? attribute('flow', 'float') : float(0.25);
-    const along = kind === 'river' ? uv().x : length(p.xz.sub(vec2(this.poolCenter.x, this.poolCenter.z)));
-    const across = kind === 'river' ? uv().y : float(0);
-    const s1 = vec3(along.mul(0.55).sub(t.mul(flowSpeed).mul(0.55)), across.mul(0.8), t.mul(0.15));
-    const n1 = mx_noise_float(s1);
-    const n2 = mx_noise_float(vec3(along.mul(1.6).sub(t.mul(flowSpeed).mul(1.7)), across.mul(2.2).add(3.1), t.mul(0.3)));
-    const n3 = mx_noise_float(vec3(p.x.mul(3.1), p.z.mul(3.1), t.mul(1.2)));
-    const rough = kind === 'river' ? clamp(flowSpeed.mul(0.45), 0.15, 1.4) : float(0.25);
-    let slope: N = vec2(n1.mul(0.5).add(n2.mul(0.35)), n2.mul(0.5).sub(n1.mul(0.3))).mul(rough.mul(0.18)).add(vec2(n3.mul(0.03)));
-    // the plunge: distance from the line where the falls land (stretched across their width)
-    const fd = vec2(this.fallDir.x, this.fallDir.y);
-    const rel = p.xz.sub(vec2(this.impact.x, this.impact.z));
-    const ra = dot(rel, fd), rc = dot(rel, vec2(fd.y.negate(), fd.x));
-    const rImp = length(vec2(ra, max(abs(rc).sub(this.impactW * 0.4), 0)));
-    if (kind === 'pool') {
-      // rings running out from the impact, and a short steep chop in the boil
-      const dirR = normalize(rel.add(vec2(0.001, 0)));
-      const ring = sin(rImp.mul(2.3).sub(t.mul(5.5))).mul(0.6).add(sin(rImp.mul(4.1).sub(t.mul(8.3)).add(1.3)).mul(0.4));
-      slope = slope.add(dirR.mul(ring.mul(exp(rImp.mul(-0.13))).mul(smoothstep(0.5, 3.0, rImp)).mul(0.3)));
-      const boil = float(1).sub(smoothstep(1.0, 8.0, rImp));
-      slope = slope.add(vec2(mx_noise_float(vec3(p.xz.mul(1.7), t.mul(2.2))), mx_noise_float(vec3(p.xz.mul(1.7).add(5.3), t.mul(2.2)))).mul(boil.mul(0.35)));
-    }
-    // rain rings
-    slope = slope.add(vec2(mx_noise_float(vec3(p.xz.mul(4.0), t.mul(4.0))), mx_noise_float(vec3(p.xz.mul(4.0).add(9), t.mul(4.0)))).mul(wetness.intensity.mul(0.12)));
-    const N0 = normalize(vec3(slope.x, 1, slope.y));
-    const V = normalize(cameraPosition.sub(p));
-    const NdotV = clamp(dot(N0, V), 0, 1);
     const viewZ = positionView.z.negate();
     const uvR0 = screenUV.add(N0.xz.mul(0.03).div(max(viewZ.mul(0.05), 1)));
     const sceneZ0 = sceneViewDepth(uvR0);
     const uvR = select(sceneZ0.lessThan(viewZ), screenUV, uvR0);
     const thick = max(sceneViewDepth(uvR).sub(viewZ), 0).mul(length(cameraPosition.sub(p)).div(max(viewZ, 0.01)));
-    const behind = viewportSharedTexture(uvR).rgb;
-    // the plunge pool is deep and tea-green with leaf tannins; the shallow river runs clearer
-    const sigma = (kind === 'pool' ? vec3(0.62, 0.3, 0.42) : vec3(0.3, 0.12, 0.13)).mul(float(1).add(wetness.rain.mul(1.5)));
+    return { thick, behind: viewportSharedTexture(uvR).rgb };
+  }
+
+  private riverMaterial() {
+    const m = sunLit(new THREE.MeshStandardNodeMaterial());
+    m.name = 'water_river';
+    this.waterMats.push({ m, env: 0.22 });
+    m.transparent = true;
+    m.depthWrite = true;
+    const p = positionWorld;
+    const t = riverU.time;
+    // flow: uv.x runs downstream in metres; speed from the attribute (m/s)
+    const flowSpeed = attribute('flow', 'float');
+    const along = uv().x, across = uv().y;
+    const n1 = mx_noise_float(vec3(along.mul(0.55).sub(t.mul(flowSpeed).mul(0.55)), across.mul(0.8), t.mul(0.15)));
+    const n2 = mx_noise_float(vec3(along.mul(1.6).sub(t.mul(flowSpeed).mul(1.7)), across.mul(2.2).add(3.1), t.mul(0.3)));
+    // fine chop and the riffles' foam from the lace texture, scrolled with the flow and drawn out along it
+    const fl = texture(laceTex, vec2(along.sub(t.mul(flowSpeed)).div(5.2), across.div(1.7)));
+    const fl2 = texture(laceTex, vec2(along.sub(t.mul(flowSpeed).mul(1.3)).div(11), across.div(4.2)).add(0.41));
+    const rough = clamp(flowSpeed.mul(0.45), 0.15, 1.4);
+    let slope: N = vec2(n1.mul(0.5).add(n2.mul(0.35)), n2.mul(0.5).sub(n1.mul(0.3))).mul(rough.mul(0.18)).add(vec2(fl.g.sub(0.5), fl.b.sub(0.5)).mul(0.06));
+    slope = slope.add(rainRings(p.xz, t).mul(wetness.intensity.mul(0.35)));
+    const N0 = normalize(vec3(slope.x, 1, slope.y));
+    const V = normalize(cameraPosition.sub(p));
+    const NdotV = clamp(dot(N0, V), 0, 1);
+    const { thick, behind } = this.refraction(N0);
+    // the shallow river runs clear, a little green
+    const sigma = vec3(0.3, 0.12, 0.13).mul(float(1).add(wetness.rain.mul(1.5)));
     const trans = exp(sigma.negate().mul(min(thick.mul(1.6), 30)));
-    // foam: riffles where the flow is fast, the churn under the falls
-    const fast = kind === 'river' ? smoothstep(0.9, 2.2, flowSpeed) : float(0);
-    const fn = mx_fractal_noise_float(vec3(along.mul(0.9).sub(t.mul(flowSpeed)), across.mul(1.3), t.mul(0.2)), 3, 2, 0.5).mul(0.5).add(0.5);
-    let foam: N = fast.mul(smoothstep(0.5, 0.75, fn));
-    if (kind === 'pool') {
-      // white water boiling where the falls land, breaking into a lace of foam that the current carries out over
-      // the pool, thinning as it goes
-      const drift = fd.mul(t.mul(0.45));
-      const l1 = texture(laceTex, p.xz.sub(drift).div(6.5));
-      const l2 = texture(laceTex, p.xz.sub(drift.mul(1.4)).div(2.4).add(0.37));
-      const pat = l1.r.mul(0.6).add(l2.a.mul(0.4));
-      const cover = float(1).sub(smoothstep(0.5, 13, rImp)).pow(1.3).mul(mix(float(0.75), float(1.2), l1.b));
-      foam = max(foam, smoothstep(0, 0.16, pat.sub(float(1.04).sub(cover.mul(1.15)))));
-      foam = max(foam, smoothstep(3.2, 0.6, rImp));
-    }
-    // the edge against the banks: only the river's riffles leave a line; elsewhere the water thins to nothing
-    if (kind === 'river') foam = max(foam, smoothstep(0.12, 0.0, thick).mul(fast).mul(0.4));
+    // foam: riffles where the flow is fast, but not on the glassy tongue that speeds smooth and dark into the drop
+    const tongue = smoothstep(this.alongLip - 10, this.alongLip - 3, along).mul(smoothstep(this.alongLip + 2, this.alongLip + 0.5, along));
+    const fast = smoothstep(0.9, 2.2, flowSpeed).mul(float(1).sub(tongue));
+    const fn = fl.r.mul(0.55).add(fl2.a.mul(0.45));
+    let foam: N = fast.mul(smoothstep(0.52, 0.8, fn));
+    // the edge against the banks: only the riffles leave a line; elsewhere the water thins to nothing
+    foam = max(foam, smoothstep(0.12, 0.0, thick).mul(fast).mul(0.4));
     const F = float(0.02).add(float(0.98).mul(pow(float(1).sub(NdotV), 5)));
-    // (clear water scatters little: a dark tea-green body, lighter only over the shallow edges)
-    const body = kind === 'pool' ? mix(vec3(0.0035, 0.011, 0.008), vec3(0.012, 0.03, 0.02), smoothstep(3, 0.4, thick)) : mix(vec3(0.01, 0.03, 0.025), vec3(0.02, 0.05, 0.035), smoothstep(4, 0.5, thick));
+    // (clear water scatters little: a dark green body, lighter only over the shallow edges)
+    const body = mix(vec3(0.01, 0.03, 0.025), vec3(0.02, 0.05, 0.035), smoothstep(4, 0.5, thick));
     const cloud = cloudShadow(p);
     m.colorNode = vec4(mix(body, vec3(0.85, 0.88, 0.86), foam), 1);
     m.roughnessNode = mix(float(0.04), float(0.75), foam);
     m.metalnessNode = float(0);
     m.normalNode = transformNormalToView(N0);
-    // what low reflections really show here is the gorge wall and the jungle, not the sky: a dark lit surround
+    // what low reflections really show here is the bank and the jungle, not the sky: a dark lit surround
     const R = reflect(V.negate(), N0);
-    const surroundW = kind === 'pool' ? float(1).sub(smoothstep(0.2, 0.65, R.y)) : float(1).sub(smoothstep(0.04, 0.35, R.y));
+    const surroundW = float(1).sub(smoothstep(0.04, 0.35, R.y));
     const surround = vec3(0.05, 0.065, 0.045).mul(atmo.lightE.mul(1 / Math.PI)).mul(mix(float(0.7), float(1), cloud));
     m.emissiveNode = behind.mul(trans).mul(float(1).sub(F)).mul(float(1).sub(foam)).mul(mix(float(0.8), float(1), cloud))
       .add(surround.mul(F).mul(surroundW).mul(float(1).sub(foam)));
+    // at every bank the water thins to nothing over the last few centimetres instead of ending in a line
+    m.opacityNode = smoothstep(0.0, 0.18, thick).max(foam.mul(0.6));
+    return m;
+  }
+
+  /**
+   * The plunge pool: milky jade water (it scatters as well as absorbs, so the deep middle is a lit jade, not a black
+   * hole) over an uneven bed; agitated round the impact, glassy toward the outflow. The calm water mirrors the gorge:
+   * the reflected ray meets a cylinder standing round the pool (its walls, banks and the forest on them) and reads the
+   * opaque scene where that point is on screen; where it is off screen or hidden behind something nearer, a dark lit
+   * surround stands in. The falls, drawn after the scene copy, are mirrored on their own. Foam boils under the falls
+   * and drifts in a widening plume toward the outflow.
+   */
+  private poolMaterial() {
+    const m = sunLit(new THREE.MeshStandardNodeMaterial());
+    m.name = 'water_pool';
+    m.transparent = true;
+    m.depthWrite = true;
+    const p = positionWorld, q = p.xz;
+    const t = riverU.time;
+    const C = vec2(this.poolCenter.x, this.poolCenter.z);
+    const fd = vec2(this.fallDir.x, this.fallDir.y), ac = vec2(-this.fallDir.y, this.fallDir.x);
+    const rel = q.sub(vec2(this.impact.x, this.impact.z));
+    const ra = dot(rel, fd), rc = dot(rel, ac);
+    const rImp = length(vec2(ra, max(abs(rc).sub(this.impactW * 0.4), 0)));
+    // ---- the surface: chop round the impact dying out over ~15 m, small ripples everywhere, rain rings
+    const agit = exp(rImp.mul(-0.16));
+    const calm = float(0.35).add(wetness.wind.mul(0.8));
+    let slope: N = vec2(0);
+    for (const [kx, kz, w, a] of [[1.9, 0.7, 2.1, 0.011], [-1.1, 2.3, 2.6, 0.008], [3.3, -2.6, 3.9, 0.005], [-4.7, -1.3, 4.6, 0.004]]) {
+      slope = slope.add(vec2(kx, kz).mul(cos(q.x.mul(kx).add(q.y.mul(kz)).add(t.mul(w))).mul(a)));
+    }
+    const g1 = texture(laceTex, q.div(3.7).add(t.mul(0.021)));
+    slope = slope.add(vec2(g1.g.sub(0.5), g1.b.sub(0.5)).mul(0.07)).mul(calm.add(agit.mul(2.5)));
+    // rings running out from the impact, and a short steep chop in the boil
+    const dirR = normalize(rel.add(vec2(0.001, 0)));
+    const ring = sin(rImp.mul(2.3).sub(t.mul(5.5))).mul(0.6).add(sin(rImp.mul(4.1).sub(t.mul(8.3)).add(1.3)).mul(0.4));
+    slope = slope.add(dirR.mul(ring.mul(exp(rImp.mul(-0.13))).mul(smoothstep(0.5, 3.0, rImp)).mul(0.26)));
+    const boil = float(1).sub(smoothstep(1.0, 8.0, rImp));
+    const b1 = texture(laceTex, q.div(2.1).add(vec2(t.mul(0.37), t.mul(-0.29))));
+    const b2 = texture(laceTex, q.div(1.3).sub(vec2(t.mul(0.51), t.mul(0.43))).add(0.6));
+    slope = slope.add(vec2(b1.g.add(b2.b).sub(1), b1.b.add(b2.g).sub(1)).mul(boil.mul(0.6)));
+    slope = slope.add(rainRings(q, t).mul(wetness.intensity.mul(0.35)));
+    const N0 = normalize(vec3(slope.x, 1, slope.y));
+    const V = normalize(cameraPosition.sub(p));
+    const NdotV = clamp(dot(N0, V), 0, 1);
+    const F = float(0.02).add(float(0.98).mul(pow(float(1).sub(NdotV), 5)));
+    // ---- the body: an uneven bed (boulders, gravel, sunken leaves) seen through milky water that turns jade with depth
+    const { thick, behind } = this.refraction(N0);
+    const bedN = texture(laceTex, q.div(8.5).add(0.21)).b;
+    const dEff = thick.mul(mix(float(0.65), float(1.4), bedN)).mul(1.5);
+    // (rain washes silt in: turbid tan-brown)
+    const turbid = wetness.rain.mul(0.85);
+    const sigma = mix(vec3(0.95, 0.5, 0.58), vec3(1.25, 1.15, 1.3), turbid);
+    const T = exp(sigma.negate().mul(min(dEff, 30)));
+    const bed = behind.mul(mix(float(0.72), float(1.12), bedN)).mul(vec3(0.92, 1.0, 0.94));
+    const jade = mix(vec3(0.03, 0.078, 0.066), vec3(0.075, 0.06, 0.036), turbid);
+    // ---- foam: a solid boil under the falls breaking into lace that drifts and spreads toward the outflow
+    const down = max(ra, 0);
+    const spread = down.mul(0.42).add(this.impactW * 0.45 + 1.5);
+    const plume = exp(down.mul(-0.11)).mul(smoothstep(spread, spread.mul(0.25), abs(rc)));
+    const cover = max(plume.mul(0.95), float(1).sub(smoothstep(0.5, 9, rImp)).pow(1.4));
+    const drift = fd.mul(t.mul(0.5));
+    const l1 = texture(laceTex, q.sub(drift).div(6.5));
+    const l2 = texture(laceTex, q.sub(drift.mul(1.5)).div(2.4).add(0.37));
+    const pat = l1.r.mul(0.6).add(l2.a.mul(0.4));
+    let foam: N = smoothstep(0, 0.16, pat.sub(float(1.04).sub(cover.mul(mix(float(0.85), float(1.25), l1.b)).mul(1.12))));
+    // the boil itself, as wide as the falling water, churning with bubbles
+    const rCore = length(vec2(ra, max(abs(rc).sub(this.impactW * 0.3), 0)));
+    const churn = texture(laceTex, q.div(1.6).add(vec2(t.mul(0.9), t.mul(-0.7)))).g;
+    foam = max(foam, smoothstep(2.6, 0.5, rCore).mul(churn.mul(0.55).add(0.6))).clamp(0, 1);
+    // ---- what the calm water mirrors
+    const R = reflect(V.negate(), N0);
+    const d0 = q.sub(C);
+    const Rp = max(float(this.poolR), length(d0).add(0.5));
+    const a = max(dot(R.xz, R.xz), 1e-4), b = dot(d0, R.xz), c = dot(d0, d0).sub(Rp.mul(Rp));
+    const tc = sqrt(max(b.mul(b).sub(a.mul(c)), 0)).sub(b).div(a);
+    const H = p.add(R.mul(tc));
+    const vH = cameraViewMatrix.mul(vec4(H, 1)).xyz;
+    const uvH = getScreenPosition(vH, cameraProjectionMatrix);
+    const onScreen = smoothstep(0, 0.06, uvH.x).mul(smoothstep(1, 0.94, uvH.x)).mul(smoothstep(0, 0.06, uvH.y)).mul(smoothstep(1, 0.94, uvH.y));
+    const dH = vH.z.negate();
+    // (something nearer than the wall stands at that point on screen: the player, a boulder on the bank)
+    const clear = smoothstep(dH.sub(5), dH.sub(2), sceneViewDepth(uvH));
+    const wMirror = select(dH.greaterThan(0.5), onScreen.mul(clear), float(0));
+    const cloud = cloudShadow(p);
+    const lightE = atmo.lightE.mul(1 / Math.PI);
+    const surround = vec3(0.045, 0.06, 0.04).mul(lightE).mul(mix(float(0.7), float(1), cloud));
+    let mirror: N = mix(surround, viewportSharedTexture(uvH).rgb.mul(0.9), wMirror);
+    // the falls in the mirror: where the reflected ray crosses the plane of the falling water
+    const lip = vec2(this.fallsLip.x, this.fallsLip.y);
+    const den = dot(R.xz, fd);
+    const tf = dot(lip.add(fd.mul(3.4)).sub(q), fd).div(select(abs(den).lessThan(1e-3), float(1e-3), den));
+    const Hf = p.add(R.mul(tf));
+    const fallsH = this.fallsTop - this.poolCenter.y;
+    const ff = clamp(float(this.fallsTop).sub(Hf.y).div(fallsH), 0, 1);
+    const halfW = ff.pow(1.4).mul(0.35).add(1).mul(this.fallsW * 0.5);
+    const acrossF = abs(dot(Hf.xz.sub(lip), ac));
+    const streak = texture(laceTex, vec2(dot(Hf.xz.sub(lip), ac).div(3.1), Hf.y.add(t.mul(7)).div(13))).b;
+    const inFalls = smoothstep(halfW, halfW.sub(0.9), acrossF).mul(smoothstep(this.fallsTop + 0.4, this.fallsTop - 0.6, Hf.y))
+      .mul(select(tf.greaterThan(0).and(tf.lessThan(tc)), float(1), float(0)));
+    const fallsRad = vec3(0.78, 0.8, 0.8).mul(lightE).mul(mix(float(0.35), float(0.75), streak)).mul(this.fallsShade);
+    mirror = mix(mirror, fallsRad, inFalls.mul(0.85));
+    // ---- light: the sun on the jade body and the foam comes from the lighting model; the sky (most of it hidden by
+    // the gorge) is added here, as are the bed seen through the water and the mirror
+    const skyE = varying(particleSky()).mul(1.7);
+    const diffuse = mix(jade.mul(float(1).sub(T)), vec3(0.85, 0.88, 0.86), foam);
+    m.colorNode = vec4(diffuse, 1);
+    m.roughnessNode = mix(float(0.05), float(0.75), foam);
+    m.metalnessNode = float(0);
+    m.normalNode = transformNormalToView(N0);
+    const notFoam = float(1).sub(foam);
+    m.emissiveNode = bed.mul(T).mul(float(1).sub(F)).mul(notFoam).mul(mix(float(0.8), float(1), cloud))
+      .add(mirror.mul(F).mul(notFoam))
+      .add(diffuse.mul(skyE));
     // the pool's rim runs under the banks; where the outflow notch cuts it, the surface feathers into the stream; at
     // every bank the water thins to nothing over the last few centimetres instead of ending in a line
     const thin = smoothstep(0.0, 0.18, thick).max(foam.mul(0.6));
-    m.opacityNode = kind === 'pool' ? smoothstep(this.poolR + 1.4, this.poolR - 0.6, along).mul(thin) : thin;
+    m.opacityNode = smoothstep(this.poolR + 1.4, this.poolR - 0.6, length(d0)).mul(thin);
     return m;
   }
+
+  /** metres along the ribbon (its uv.x) at the lip of the falls */
+  private alongLip = 0;
 
   private buildRibbon() {
     const r = this.hf.river;
     const pos: number[] = [], uvs: number[] = [], flow: number[] = [], idx: number[] = [];
     const meta = this.hf.meta;
-    let along = 0;
+    let along = 0, lipD = Infinity;
     for (let i = 0; i < r.length; i++) {
       const a = r[Math.max(0, i - 1)], b = r[Math.min(r.length - 1, i + 1)];
       const dx = b.x - a.x, dz = b.z - a.z, l = Math.hypot(dx, dz) || 1;
@@ -150,6 +273,10 @@ export class River {
       // skip the stretch that the falls and the pool own
       const inFalls = s.s > meta.falls.s - 1.2 && s.s < meta.falls.s + 2;
       if (i > 0) along += Math.hypot(s.x - r[i - 1].x, s.z - r[i - 1].z);
+      if (Math.abs(s.s - meta.falls.s) < lipD) {
+        lipD = Math.abs(s.s - meta.falls.s);
+        this.alongLip = along;
+      }
       const half = s.w / 2 + 1.2;
       const drop = i > 0 ? (r[i - 1].water - s.water) / Math.max(0.5, Math.hypot(s.x - r[i - 1].x, s.z - r[i - 1].z)) : 0;
       const speed = THREE.MathUtils.clamp(0.4 + drop * 25, 0.35, 2.8);
@@ -174,7 +301,7 @@ export class River {
     g.setAttribute('flow', new THREE.Float32BufferAttribute(flow, 1));
     g.setIndex(idx);
     g.computeVertexNormals();
-    const mesh = new THREE.Mesh(g, this.waterMaterial('river'));
+    const mesh = new THREE.Mesh(g, this.riverMaterial());
     mesh.renderOrder = 11;
     mesh.receiveShadow = true;
     mesh.name = 'river';
@@ -187,7 +314,7 @@ export class River {
     const g = new THREE.CircleGeometry(pool.r + 1.5, 72, 0, Math.PI * 2);
     g.rotateX(-Math.PI / 2);
     g.translate(pool.p[0], pool.level, pool.p[1]);
-    const mesh = new THREE.Mesh(g, this.waterMaterial('pool'));
+    const mesh = new THREE.Mesh(g, this.poolMaterial());
     mesh.renderOrder = 11;
     mesh.receiveShadow = true;
     mesh.name = 'pool';
@@ -198,6 +325,11 @@ export class River {
   readonly impact = new THREE.Vector3();
   private fallDir = new THREE.Vector2(1, 0);
   private impactW = 8;
+  /** the lip, the top of the water and its width (the pool mirrors the falls), how much sun reaches their middle */
+  private fallsLip = new THREE.Vector2();
+  private fallsTop = 0;
+  private fallsW = 8;
+  private fallsShade: N = float(1);
 
   /**
    * The falls: two sheets on the ballistic path from the lip (leaving it at ~1.6 m/s, falling ~20 m in 2 s), widening
@@ -213,6 +345,11 @@ export class River {
     this.impact.set(lx + fx * outEnd, bottom, lz + fz * outEnd);
     this.fallDir.set(fx, fz);
     this.impactW = W * 1.4;
+    this.fallsLip.set(lx, lz);
+    this.fallsTop = path.top;
+    this.fallsW = W;
+    const mid = vec3(lx + fx * outEnd * 0.6, (path.top + bottom) / 2, lz + fz * outEnd * 0.6);
+    this.fallsShade = varying(this.gorgeSun(mid, this.occluder()).mul(0.75).add(0.25));
     const sheet = (offset: number, widen: number, name: string, veil: boolean) => {
       const rows = 40, cols = 26;
       const pos: number[] = [], uvs: number[] = [], idx: number[] = [];
@@ -236,6 +373,8 @@ export class River {
       g.computeVertexNormals();
       const mesh = new THREE.Mesh(g, this.fallsMaterial(name, W, tFall, veil));
       mesh.renderOrder = veil ? 12.5 : 12;
+      // (a low sun reaches the falls only through the gaps in the jungle and over the gorge's rim)
+      mesh.receiveShadow = true;
       mesh.name = name;
       this.group.add(mesh);
     };
@@ -245,11 +384,13 @@ export class River {
   }
 
   private fallsMaterial(name: string, W: number, tFall: number, veil: boolean) {
-    const m = new THREE.MeshStandardNodeMaterial();
+    const m = sunLit(new THREE.MeshStandardNodeMaterial());
     m.name = name;
     m.transparent = true;
     m.depthWrite = false;
     m.side = THREE.DoubleSide;
+    // (one surface: drawn once, not as a back pass and a front pass)
+    m.forceSinglePass = true;
     const U = uv();
     const across = U.x.sub(0.5).mul(W);
     // when this water left the lip: the pattern rides with it
@@ -260,7 +401,10 @@ export class River {
     // aeration: glassy over the lip, white within a few metres, breaking up toward the plunge
     const aer = smoothstep(0.02, 0.3, U.y);
     const edge = float(0.5).sub(abs(U.x.sub(0.5)));
-    const fray = smoothstep(0.0, mix(float(0.1), float(0.2), U.y).add(s2.mul(0.05)), edge.add(s1.mul(0.06)));
+    // ragged sides: the edge wanders with the strands and the lumps coming down
+    const fray = smoothstep(0.0, mix(float(0.1), float(0.2), U.y).add(s2.mul(0.05)), edge.add(s1.mul(0.09)).add(lumps.mul(aer).mul(0.05)));
+    // the body is thick in the middle and thins toward the sides, where the rock shows through
+    const core = smoothstep(0.04, 0.24, edge.add(s1.mul(0.05)));
     let alpha: N;
     // thickness of the water here: strands and lumps over a body that pulses as surges come over the lip
     const surge = mx_noise_float(vec3(across.mul(0.18), tau.mul(0.55), 8.8));
@@ -270,12 +414,12 @@ export class River {
       const clump = smoothstep(0.3, 0.75, lumps.mul(0.6).add(s1.mul(0.3)).add(U.y.mul(0.4)));
       alpha = clump.mul(fray).mul(aer).mul(0.9).mul(smoothstep(1.0, 0.86, U.y));
     } else {
-      alpha = clamp(mix(float(0.4), dens.add(0.28), aer), 0, 1).mul(fray).mul(smoothstep(1.0, 0.9, U.y));
+      alpha = clamp(mix(float(0.45), dens.mul(1.2).add(0.22).add(core.mul(0.4)), aer), 0, 1).mul(fray).mul(smoothstep(1.0, 0.9, U.y));
     }
-    // colour: the glassy tongue is green-dark water; the body's thick strands white, the thin water between them
-    // grey (the wet rock shows through), the clumps in front whitest
-    const strands = smoothstep(0.3, 0.95, dens);
-    const white = mix(vec3(0.36, 0.41, 0.4), vec3(0.85, 0.87, 0.87), veil ? float(0.9) : strands);
+    // colour: the glassy tongue is green-dark water; the body's thick strands white with a bright core, the thin water
+    // between them and at the sides grey (the wet rock shows through), the clumps in front whitest
+    const strands = clamp(smoothstep(0.3, 0.95, dens).add(core.mul(0.35)), 0, 1);
+    const white = mix(vec3(0.36, 0.41, 0.4), vec3(0.86, 0.88, 0.88), veil ? float(0.9) : strands);
     const glassy = vec3(0.07, 0.11, 0.09);
     const col = mix(glassy, white, aer.max(0.25));
     m.colorNode = vec4(col, alpha);
@@ -287,7 +431,7 @@ export class River {
     const fwd = pow(max(dot(atmo.sunDir.normalize().negate(), V), 0), 4);
     // (only the thin, frayed water lets the sun through; the thick body is lit from the front like snow; none of it
     // where the escarpment behind the falls hides a low sun)
-    const inSun = varying(this.gorgeSun(positionWorld, heightLookup(this.hf)));
+    const inSun = varying(this.gorgeSun(positionWorld, this.occluder()));
     m.emissiveNode = vec3(0.9, 0.95, 0.95).mul(fwd.mul(0.012).mul(pow(float(1).sub(alpha.mul(0.85)), 2))).mul(atmo.lightE).mul(cloudShadow(positionWorld)).mul(inSun);
     // relief: the streaks and lumps as bumps across the sheet, on the side facing the eye (the custom normal skips
     // the built-in back-face flip: the sheet's geometric normal faces the cliff, and the sunset behind it would light
@@ -296,6 +440,13 @@ export class River {
     const nG = normalWorldGeometry.mul(faceDirection);
     m.normalNode = transformNormalToView(normalize(vec3(nG.x.add(bump.mul(this.fallDir.y)), nG.y, nG.z.sub(bump.mul(this.fallDir.x)))));
     return m;
+  }
+
+  /** what stands between the gorge and a low sun: the ground, and the jungle's canopy ~24 m over it where the forest is */
+  private occluder() {
+    const ground = heightLookup(this.hf);
+    const mask = this.hf.mask0Tex;
+    return (xz: N) => ground(xz).add(texture(mask, xz.add(HALF_WORLD).div(WORLD_SIZE)).level(0).w.mul(24));
   }
 
   /** share of the sun reaching a point down in the gorge: a short march over the heightfield toward the sun */
@@ -313,7 +464,7 @@ export class River {
    */
   private buildSplash(W: number) {
     const c = this.impact, fd = this.fallDir;
-    const heightAt = heightLookup(this.hf);
+    const heightAt = this.occluder();
     const ax = -fd.y, az = fd.x;
     const make = (count: number, mist: boolean) => {
       const m = new THREE.SpriteNodeMaterial();
@@ -322,31 +473,39 @@ export class River {
       const t = riverU.time;
       const id = float(instanceIndex);
       const seed = (k: number) => hash(id.mul(k).add(mist ? 31.7 : 3.3));
-      const life = mist ? float(7).add(seed(2.1).mul(5)) : float(1.1).add(seed(2.1).mul(1.1));
+      // the mist: most of it a low cloud hanging round the plunge, a third a veil drifting out low over the pool
+      const veil = seed(3.9).lessThan(0.36);
+      const life = mist ? select(veil, float(8).add(seed(2.1).mul(4)), float(5).add(seed(2.1).mul(3))) : float(0.9).add(seed(2.1).mul(0.9));
       const age = fract(t.div(life).add(seed(1.3)));
       const tt = age.mul(life);
-      const acrossO = seed(4.7).sub(0.5).mul(W * 1.15);
-      const base = vec3(c.x + ax * 0, c.y + 0.2, c.z).add(vec3(acrossO.mul(ax), 0, acrossO.mul(az)));
+      // across the plunge: thickest in the middle, thinning out past the falls' edges (an even spread reads as a row
+      // of puffs, or a cloud with straight sides)
+      const acrossO = seed(4.7).add(seed(5.3)).sub(1).mul(W * (mist ? 1.05 : 0.85));
+      const base = vec3(c.x, c.y + (mist ? 0.4 : -0.35), c.z).add(vec3(acrossO.mul(ax), 0, acrossO.mul(az)));
       let p: N;
       if (mist) {
-        // rises slowly, spreads, drifts downstream (out over the pool) and with the wind
-        const rise = float(1).sub(exp(tt.mul(-0.35))).mul(float(5).add(seed(5.5).mul(9)));
-        const out = tt.mul(float(0.35).add(seed(6.1).mul(0.6)));
-        const side = seed(6.9).sub(0.5).mul(tt).mul(0.9);
+        // rises a little, spreads, drifts downstream (out over the pool) and with the wind
+        const rise = float(1).sub(exp(tt.mul(-0.5))).mul(select(veil, float(1.2).add(seed(5.5).mul(2.2)), float(2).add(seed(5.5).mul(4.5))));
+        const out = tt.mul(select(veil, float(1.0).add(seed(6.1).mul(0.9)), float(0.15).add(seed(6.1).mul(0.45))));
+        const side = seed(6.9).sub(0.5).mul(tt).mul(select(veil, float(1.3), float(0.7)));
         const wd = wetness.windDir.mul(wetness.wind.mul(1.6).add(0.2)).mul(tt);
         p = base.add(vec3(fd.x, 0, fd.y).mul(out)).add(vec3(ax, 0, az).mul(side)).add(vec3(wd.x, rise, wd.y));
       } else {
         // thrown up and out, heavy drag, falling back
-        const v0 = float(3).add(seed(5.5).mul(5.5));
-        const ang = seed(6.1).mul(1.1).add(0.35);
+        const v0 = float(2.5).add(seed(5.5).mul(4));
+        const ang = seed(6.1).mul(0.8).add(0.6);
         const k = 1.6;
         const reach = float(1).sub(exp(tt.mul(-k))).div(k);
         const up = v0.mul(ang.sin()).mul(reach).sub(tt.mul(tt).mul(9.81 * 0.4));
         const out = v0.mul(ang.cos()).mul(reach).mul(seed(7.3).mul(1.6).sub(0.3));
-        p = base.add(vec3(fd.x, 0, fd.y).mul(out)).add(vec3(0, max(up, 0.1), 0));
+        const side = seed(7.9).sub(0.5).mul(reach).mul(3.2);
+        // (born in the boil, rising out of it: no gap between the spray and the water)
+        p = base.add(vec3(fd.x, 0, fd.y).mul(out)).add(vec3(ax, 0, az).mul(side)).add(vec3(0, max(up, 0), 0));
       }
       m.positionNode = p;
-      const size = mist ? mix(float(2.5), float(13), pow(age, 0.6)).mul(seed(8.8).mul(0.5).add(0.75)) : mix(float(0.8), float(3.4), pow(age, 0.5)).mul(seed(8.8).mul(0.6).add(0.7));
+      const size = mist
+        ? mix(select(veil, float(5), float(3.5)), select(veil, float(10.5), float(8.5)), pow(age, 0.55)).mul(seed(8.8).mul(0.4).add(0.8))
+        : mix(float(1.3), float(4.2), pow(age, 0.5)).mul(seed(8.8).mul(0.5).add(0.75));
       m.scaleNode = vec2(size, size);
       // lit per particle: forward scattering toward the eye when backlit, the sky, the cloud shadows, and the gorge's
       // own shadow (a short march over the heightfield toward the sun: with a low sun behind the falls the mist down
@@ -356,12 +515,14 @@ export class River {
       const fwdS = pow(max(L.negate().dot(V), 0), 5).mul(1.8);
       const inSun = this.gorgeSun(p, heightAt);
       const lit = varying(vec3(sprayU.sun).mul(fwdS.add(0.3)).mul(cloudShadow(p)).mul(inSun).mul(0.9).add(particleSky().mul(2.6)).mul(0.85));
-      const fade = varying(smoothstep(0.0, mist ? 0.12 : 0.05, age).mul(pow(float(1).sub(age), mist ? 1.2 : 1.6)).mul(smoothstep(1.5, 6, length(p.sub(cameraPosition)))).mul(mist ? 0.3 : 0.55));
+      const strength = mist ? select(veil, float(0.17), float(0.32)) : float(0.5);
+      const fade = varying(smoothstep(0.0, mist ? 0.12 : 0.05, age).mul(pow(float(1).sub(age), mist ? 1.2 : 1.6)).mul(smoothstep(1.5, 6, length(p.sub(cameraPosition)))).mul(strength));
       const tex = varying(vec2(seed(9.2), seed(9.7)));
       const r = length(uv().sub(0.5)).mul(2);
       const lump = texture(laceTex, uv().mul(mist ? 0.18 : 0.3).add(tex)).b;
-      const puff = smoothstep(1.0, 0.0, r).pow(1.5).mul(lump.mul(1.4).sub(0.1).clamp(0.2, 1.2));
-      const soft = smoothstep(0.0, 1.4, sceneViewDepth(screenUV).sub(positionView.z.negate()));
+      const puff = smoothstep(1.0, 0.0, r).pow(mist ? 1.5 : 2.1).mul(lump.mul(1.4).sub(0.1).clamp(0.2, 1.2));
+      // soft where it meets rock, and thinning into the water's surface (the pool's depth would cut it in a line)
+      const soft = smoothstep(0.0, 1.4, sceneViewDepth(screenUV).sub(positionView.z.negate())).mul(smoothstep(c.y - 0.1, c.y + (mist ? 1.2 : 0.3), positionWorld.y));
       const a = puff.mul(fade).mul(soft);
       m.colorNode = vec4(lit, a);
       m.opacityNode = a;
@@ -372,8 +533,8 @@ export class River {
       sprite.name = mist ? 'falls_mist' : 'falls_splash';
       this.group.add(sprite);
     };
-    make(preset === 'low' ? 60 : 150, false);
-    make(preset === 'low' ? 60 : 140, true);
+    make(preset === 'low' ? 50 : 110, false);
+    make(preset === 'low' ? 36 : 72, true);
   }
 
   update(t: number) {

@@ -107,24 +107,33 @@ All of them use the installed Chrome (`C:\Program Files\Google\Chrome\Applicatio
 4060 (`--force_high_performance_gpu`), with a temporary profile, pointer lock stubbed out, audio muted (except where
 noted), and close the browser when done.
 
-Window placement: each launch asks Windows for the monitor layout and opens the window on the primary display
-(currently the only one: DISPLAY1, 1920x1080 at (0,0), ~200 Hz). Chrome runs with `--force-device-scale-factor=1`,
+Window placement: each launch asks Windows for the monitor layout and opens the window on the display named in
+`%USERPROFILE%\.island-display` (`primary`, `secondary` or a device name such as `DISPLAY2`). That file is the user's
+machine-wide choice and overrides everything else; without it, `ISLAND_DISPLAY` (the same values, or a 1-based index in
+Windows' order) decides, and the default is the primary (DISPLAY1, 1920x1080 at (0,0), ~200 Hz). The vertical second
+monitor, when it is on, is DISPLAY2 (portrait 1080x1920 at X 1920..3000). Chrome runs with `--force-device-scale-factor=1`,
 so Windows display scaling (DISPLAY1 is at ~120 %) does not shrink the viewport. On a display that is exactly
 1920x1080 the window goes borderless fullscreen, so the page renders a real 1920x1080 viewport at devicePixelRatio 1
 with no emulation. On a display of any
 other size the window fills that display's work area and the 1920x1080 viewport is emulated. Either way every capture
 is a full 1920x1080 frame, and each run prints the display and mode it used (`[browser] DISPLAY1 1920x1080 at (0,0):
-fullscreen 1920x1080 viewport`). Set `ISLAND_DISPLAY` to use another monitor: a 1-based index in Windows' order, a
-device name such as `DISPLAY2`, or `secondary`. While a command runs, its window covers that screen; leave it alone
-until the command finishes.
+fullscreen 1920x1080 viewport`). While a command runs, its window covers that screen; leave it alone until the command
+finishes.
+
+The frame cap follows the refresh rate of the display the window is on: it is measured at start and re-measured from
+the frame times while the game runs, so it also follows a window that moves to another screen (66.7 fps on the
+~200 Hz DISPLAY1, 60 fps on a 60 Hz display). Frame rates measured under the cap therefore depend on the display;
+`pnpm perf` also measures with Chrome's vsync and frame-rate limit off (below), which is the display-independent
+number.
 
 Driving your own browser instead: the easiest way is `pnpm tsx scripts/poses.ts` or `scripts/look.ts` (Development
-captures, below), which place the window as above. If you launch Chrome yourself, put it on DISPLAY1 with
-`--window-position=0,0 --window-size=1920,1080 --force-device-scale-factor=1 --force_high_performance_gpu` and a
-temporary `--user-data-dir`. Then either make the window fullscreen (CDP
-`Browser.setWindowBounds { windowState: 'fullscreen' }`, with Playwright's `viewport: null`) for a real 1920x1080
-viewport, or keep the normal window and emulate a 1920x1080 viewport. A window at x >= 1920 (the old second-screen
-position, for example `--window-position=1930,20`) is now off-screen: Chrome may throttle or misplace it.
+captures, below), which place the window as above. If you launch Chrome yourself, follow `%USERPROFILE%\.island-display`
+the same way and always pass `--force-device-scale-factor=1 --force_high_performance_gpu` and a temporary
+`--user-data-dir`. On DISPLAY1 use `--window-position=0,0 --window-size=1920,1080`, then CDP
+`Browser.setWindowBounds { windowState: 'fullscreen' }` with Playwright's `viewport: null` for a real 1920x1080
+viewport. On DISPLAY2 use `--window-position=1930,20 --window-size=1060,1880` and emulate a 1920x1080 viewport (CDP
+`Emulation.setDeviceMetricsOverride` 1920x1080 at deviceScaleFactor 1). A window at x >= 1920 is off-screen whenever
+only DISPLAY1 is connected.
 
 ### `pnpm shots`: screenshots
 

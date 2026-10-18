@@ -1,7 +1,9 @@
 /**
  * Shared browser launcher for the harness scripts: the installed Chrome, headed, on the high-performance GPU, with its
- * own temporary profile, on one monitor chosen from the layout Windows reports at launch (the primary display unless
- * ISLAND_DISPLAY names another: a 1-based index in Windows' order, a device name such as DISPLAY2, or "secondary").
+ * own temporary profile, on one monitor chosen from the layout Windows reports at launch: the one named in
+ * ~/.island-display (primary, secondary or a device name such as DISPLAY2), else in ISLAND_DISPLAY (the same, or a
+ * 1-based index in Windows' order), else the primary. `headless` (in either) opens no window at all: Chrome's headless
+ * mode on the same GPU, the page a real 1920x1080 viewport.
  * When that display is exactly the requested viewport (1920x1080), the window goes borderless fullscreen on it and the
  * page renders a real 1920x1080 viewport; on any other display size the window fits the work area and the viewport is
  * emulated at 1920x1080. Pointer lock is stubbed so a test window can never capture the real mouse.
@@ -9,6 +11,8 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 import { createServer as createNetServer } from 'node:net';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 export const ROOT = join(import.meta.dirname, '..', '..');
@@ -16,15 +20,16 @@ export const DEV_PORT = 5230;
 export const PREVIEW_PORT = 5231;
 
 export interface Rect { x: number; y: number; width: number; height: number }
-export interface Display extends Rect { name: string; primary: boolean; work: Rect }
+export interface Display extends Rect { name: string; primary: boolean; work: Rect; headless?: boolean }
 export interface Launch {
   browser: Browser;
   context: BrowserContext;
   page: Page;
   console: string[];
   display: Display;
-  /** 'fullscreen': a real viewport the size of the display; 'emulated': a device-metrics viewport in a normal window */
-  viewportMode: 'fullscreen' | 'emulated';
+  /** 'fullscreen': a real viewport the size of the display; 'emulated': a device-metrics viewport in a normal window;
+   *  'headless': no window, the page is the viewport */
+  viewportMode: 'fullscreen' | 'emulated' | 'headless';
 }
 
 let layout: Display[] | null = null;
@@ -52,26 +57,38 @@ export function displays(): Display[] {
   return (layout = [{ name: 'DISPLAY1', primary: true, ...fallback, work: { ...fallback, height: 1040 } }]);
 }
 
+/** the virtual display of a headless run: no window anywhere, a 1920x1080 page on the same GPU */
+const HEADLESS: Display = { name: 'headless', primary: false, x: 0, y: 0, width: 1920, height: 1080, work: { x: 0, y: 0, width: 1920, height: 1080 }, headless: true };
+
 /** the display the test browser opens on (see the header) */
 export function targetDisplay(): Display {
+  const want = (displayOverride() ?? process.env.ISLAND_DISPLAY ?? '').trim().toLowerCase();
+  if (want === 'headless') return HEADLESS;
   const list = displays();
   const primary = list.find((d) => d.primary) ?? list[0];
-  const want = (process.env.ISLAND_DISPLAY ?? '').trim().toLowerCase();
   if (!want || want === 'primary') return primary;
   if (want === 'secondary') return list.find((d) => !d.primary) ?? primary;
   const byName = list.find((d) => d.name.toLowerCase() === want || d.name.toLowerCase() === `display${want}`);
   const byIndex = /^\d+$/.test(want) ? list[Number(want) - 1] : undefined;
   const d = byName ?? byIndex;
-  if (!d) console.warn(`[browser] ISLAND_DISPLAY=${want} not found (have ${list.map((x) => x.name).join(', ')}); using the primary`);
+  if (!d) console.warn(`[browser] display "${want}" not found (have ${list.map((x) => x.name).join(', ')}); using the primary`);
   return d ?? primary;
+}
+
+/** the user's machine-wide choice in ~/.island-display; it beats ISLAND_DISPLAY so one edit moves every test window */
+function displayOverride(): string | undefined {
+  try {
+    return readFileSync(join(homedir(), '.island-display'), 'utf8').trim() || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Chrome flags: placed on the target display, the high-performance GPU, never throttled in the background */
 export function chromeArgs(opts: { uncapped?: boolean; audio?: boolean; display?: Display } = {}) {
   const d = opts.display ?? targetDisplay();
   const args = [
-    `--window-position=${d.work.x},${d.work.y}`,
-    `--window-size=${Math.min(d.work.width, 1920)},${Math.min(d.work.height, 1080)}`,
+    ...(d.headless ? [] : [`--window-position=${d.work.x},${d.work.y}`, `--window-size=${Math.min(d.work.width, 1920)},${Math.min(d.work.height, 1080)}`]),
     // CSS pixels = physical pixels whatever the Windows display scaling (DISPLAY1 runs at ~120 %), so a fullscreen
     // window on a 1920x1080 display is a 1920x1080 viewport at devicePixelRatio 1
     '--force-device-scale-factor=1',
@@ -134,17 +151,45 @@ export async function stubPointerLock(context: BrowserContext) {
   });
 }
 
-export async function launch(opts: { width?: number; height?: number; dsf?: number; uncapped?: boolean; audio?: boolean } = {}): Promise<Launch> {
+/** the persistent profile of development captures (look, poses, session): Chrome keeps its compiled shaders there */
+export const DEV_PROFILE = 'E:\\tmp\\island\\chrome-dev';
+
+/** Playwright launch options for a display: headed and placed, or headless with the page as a 1920x1080 viewport */
+export function launchOptions(display: Display, opts: { width?: number; height?: number; dsf?: number; uncapped?: boolean; audio?: boolean } = {}) {
+  const width = opts.width ?? 1920, height = opts.height ?? 1080;
+  const headless = !!display.headless;
+  // a real viewport cannot carry a device scale factor: any other than 1 means emulation
+  const real = !headless && fitsExactly(display, width, height) && (opts.dsf ?? 1) === 1;
+  const view = real ? { viewport: null } : { viewport: { width, height }, deviceScaleFactor: opts.dsf ?? 1 };
+  return { headless, real, view, args: chromeArgs({ ...opts, display }) };
+}
+
+export async function launch(opts: { width?: number; height?: number; dsf?: number; uncapped?: boolean; audio?: boolean; profile?: string } = {}): Promise<Launch> {
   const width = opts.width ?? 1920, height = opts.height ?? 1080;
   const display = targetDisplay();
-  const args = chromeArgs({ ...opts, display });
-  const browser = await chromium.launch({ channel: 'chrome', headless: false, args });
-  // a real viewport cannot carry a device scale factor: any other than 1 means emulation
-  const real = fitsExactly(display, width, height) && (opts.dsf ?? 1) === 1;
-  const context = await browser.newContext(real ? { viewport: null } : { viewport: { width, height }, deviceScaleFactor: opts.dsf ?? 1 });
+  const { headless, real, view, args } = launchOptions(display, opts);
+  let browser: Browser, context: BrowserContext;
+  let persistent: BrowserContext | null = null;
+  if (opts.profile) {
+    // a persistent profile keeps Chrome's GPU shader cache between runs (a returning visit loads in seconds); a
+    // profile left locked by a crashed run falls back to a temporary one
+    try {
+      mkdirSync(opts.profile, { recursive: true });
+      persistent = await chromium.launchPersistentContext(opts.profile, { channel: 'chrome', headless, args, ...view });
+    } catch (e) {
+      console.warn(`[browser] profile ${opts.profile} unusable (${(e as Error).message.split('\n')[0]}); using a temporary one`);
+    }
+  }
+  if (persistent) {
+    context = persistent;
+    browser = { close: () => persistent!.close() } as unknown as Browser;
+  } else {
+    browser = await chromium.launch({ channel: 'chrome', headless, args });
+    context = await browser.newContext(view);
+  }
   await stubPointerLock(context);
-  const page = await context.newPage();
-  const viewportMode = await placeWindow(page, display, width, height, real);
+  const page = context.pages()[0] ?? (await context.newPage());
+  const viewportMode = headless ? 'headless' : await placeWindow(page, display, width, height, real);
   console.log(`[browser] ${display.name} ${display.width}x${display.height} at (${display.x},${display.y}): ${viewportMode} ${width}x${height} viewport`);
   const consoleLines: string[] = [];
   page.on('console', (m) => {

@@ -1,10 +1,10 @@
 /**
  * Quick development capture: one URL (query string) -> one 1920x1080 PNG in E:\shots\island\dev\.
- *   pnpm tsx scripts/look.ts --q "spot=beach&tod=sunrise" --name beach_sunrise [--wait 2000] [--eval "js" | --evalfile f.js]
+ *   pnpm tsx scripts/look.ts --q "spot=beach&tod=sunrise" --name beach_sunrise [--wait 2000] [--eval "js" | --evalfile f.js] [--uncapped] [--fresh]
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { argv, ensureServer, launch } from './lib/browser';
+import { argv, ensureServer, launch, DEV_PROFILE } from './lib/browser';
 
 const a = argv();
 const q = a.get('q', 'spot=beach&tod=sunrise');
@@ -17,7 +17,8 @@ const outDir = 'E:\\shots\\island\\dev';
 mkdirSync(outDir, { recursive: true });
 
 const server = await ensureServer(kind);
-const L = await launch();
+// (a persistent profile: Chrome keeps the compiled shaders, so a capture loads in seconds; --fresh: a new one)
+const L = await launch({ uncapped: a.has('uncapped'), profile: a.has('fresh') ? undefined : DEV_PROFILE });
 const initFile = a.get('initfile', '');
 if (initFile) await L.context.addInitScript({ content: readFileSync(initFile, 'utf8') });
 try {

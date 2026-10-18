@@ -27,42 +27,73 @@ LOW_Z0, LOW_Z1 = -0.6, 3.2   # lower-trunk texture region (v 0.5..1.0)
 SINK = -0.6
 
 SPECIES = {
-    'a': dict(desc='dipterocarp emergent', seed=101, height=36.0, bole=0.64, dbh=1.2, lean=(0.012, 40),
+    'a': dict(desc='dipterocarp emergent', seed=101, height=36.0, bole=0.55, dbh=1.2, lean=(0.012, 40),
               buttress=dict(n=5, reach=(2.6, 3.9), height=(3.2, 5.2), thick=(0.18, 0.28)),
-              crown=dict(width=19.0, depth=0.36, clumps=12, tiles=('ell_spray_a', 'ell_spray_b', 'ell_spray_dense'),
-                         clump_tile='ell_clump', young=0.5, dead=0.04, limbs=4),
+              crown=dict(width=21.0, depth=0.45, clumps=12, tiles=('ell_spray_a', 'ell_spray_b', 'ell_spray_b'),
+                         clump_tile='ell_clump', young=0.5, dead=0.04, limbs=5, fill=10, mass='ell_mass', lead=0.74),
               lianas=3, loops=1, nests=3, broms=4, climber=None, strangler=False, aerial=4),
     'b': dict(desc='strangler fig', seed=202, height=27.0, bole=0.5, dbh=0.85, lean=(0.02, 200),
               buttress=dict(n=3, reach=(1.2, 1.8), height=(1.2, 2.0), thick=(0.2, 0.3)),
               crown=dict(width=21.0, depth=0.42, clumps=13, tiles=('obo_rosette_a', 'obo_rosette_b', 'obo_rosette_a'),
-                         clump_tile='obo_clump', young=0.25, dead=0.03, limbs=5),
+                         clump_tile='obo_clump', young=0.25, dead=0.03, limbs=5, fill=7, mass='obo_mass'),
               lianas=0, loops=0, nests=2, broms=3, climber=None, strangler=True, aerial=16),
-    'c': dict(desc='kapok (Ceiba-like) emergent, tiered, palmate leaves', seed=303, height=34.0, bole=0.6, dbh=1.3,
-              lean=(0.006, 120), buttress=dict(n=4, reach=(3.0, 4.0), height=(4.0, 6.0), thick=(0.2, 0.3)),
-              crown=dict(width=20.0, depth=0.3, clumps=11, tiles=('palm_spray_a', 'palm_spray_b', 'palm_spray_a'),
-                         clump_tile='palm_clump', young=0.45, dead=0.03, limbs=4, tiered=True),
+    'c': dict(desc='kapok (Ceiba-like) emergent, broad domed crown of palmate leaves', seed=303, height=34.0, bole=0.52,
+              dbh=1.3, lean=(0.006, 120), buttress=dict(n=4, reach=(3.0, 4.0), height=(4.0, 6.0), thick=(0.2, 0.3)),
+              crown=dict(width=21.0, depth=0.48, clumps=11, tiles=('palm_spray_a', 'palm_spray_b', 'palm_spray_a'),
+                         clump_tile='palm_clump', young=0.45, dead=0.03, limbs=5, fill=10, mass='palm_mass', lead=0.7),
               lianas=0, loops=0, nests=1, broms=2, climber='pothos', strangler=False, aerial=0),
     'd': dict(desc='leaning canopy tree with lianas', seed=404, height=23.0, bole=0.55, dbh=0.72, lean=(0.11, 300),
               buttress=dict(n=3, reach=(1.5, 2.2), height=(1.6, 2.6), thick=(0.14, 0.2)),
-              crown=dict(width=14.5, depth=0.45, clumps=9, tiles=('ell_spray_a', 'ell_spray_b', 'ell_spray_dense'),
-                         clump_tile='ell_clump', young=0.65, dead=0.05, limbs=4),
+              crown=dict(width=14.5, depth=0.45, clumps=9, tiles=('ell_spray_a', 'ell_spray_b', 'ell_spray_a'),
+                         clump_tile='ell_clump', young=0.65, dead=0.05, limbs=4, fill=6, mass='ell_mass_b'),
               lianas=4, loops=2, nests=2, broms=3, climber='figmat', strangler=False, aerial=0),
     # mid-storey trees (8-15 m, thin trunks, small crowns of big leaves) -> midstorey_trees.glb
     'e': dict(desc='Schefflera-like mid-storey tree, palmate leaves', seed=505, height=12.0, bole=0.42, dbh=0.3,
               lean=(0.035, 70), buttress=dict(n=2, reach=(0.35, 0.6), height=(0.4, 0.8), thick=(0.07, 0.11)),
               crown=dict(width=7.5, depth=0.5, clumps=7, tiles=('palm_spray_a', 'palm_spray_b', 'palm_spray_b'),
-                         clump_tile='palm_clump', young=0.5, dead=0.04, limbs=3),
+                         clump_tile='palm_clump', young=0.5, dead=0.04, limbs=3, fill=3, mass='palm_mass'),
               lianas=0, loops=0, nests=0, broms=1, climber=None, strangler=False, aerial=0,
               prefix='midstorey', budget=(11000, 2800, 600), key='a'),
     'f': dict(desc='leaning broadleaf mid-storey tree, big obovate leaves', seed=606, height=9.5, bole=0.38, dbh=0.26,
               lean=(0.09, 160), buttress=dict(n=2, reach=(0.3, 0.55), height=(0.35, 0.7), thick=(0.06, 0.1)),
               crown=dict(width=7.0, depth=0.62, clumps=9, tiles=('obo_rosette_b', 'obo_rosette_a', 'obo_rosette_b'),
-                         clump_tile='obo_clump', young=0.45, dead=0.05, limbs=4),
+                         clump_tile='obo_clump', young=0.45, dead=0.05, limbs=4, fill=3, mass='obo_mass'),
               lianas=0, loops=0, nests=1, broms=0, climber=None, strangler=False, aerial=0,
               prefix='midstorey', budget=(11000, 2800, 600), key='b'),
 }
 CANOPY_KEYS = ['a', 'b', 'c', 'd']
 MID_KEYS = ['e', 'f']
+
+
+def icosphere(sub):
+    t = (1 + 5 ** 0.5) / 2
+    V = [np.array(v, float) / math.sqrt(1 + t * t) for v in
+         [(-1, t, 0), (1, t, 0), (-1, -t, 0), (1, -t, 0), (0, -1, t), (0, 1, t), (0, -1, -t), (0, 1, -t),
+          (t, 0, -1), (t, 0, 1), (-t, 0, -1), (-t, 0, 1)]]
+    F = [(0, 11, 5), (0, 5, 1), (0, 1, 7), (0, 7, 10), (0, 10, 11), (1, 5, 9), (5, 11, 4), (11, 10, 2), (10, 7, 6),
+         (7, 1, 8), (3, 9, 4), (3, 4, 2), (3, 2, 6), (3, 6, 8), (3, 8, 9), (4, 9, 5), (2, 4, 11), (6, 2, 10),
+         (8, 6, 7), (9, 8, 1)]
+    for _ in range(sub):
+        mid = {}
+
+        def m(a, b):
+            k = (min(a, b), max(a, b))
+            if k not in mid:
+                V.append(J.norm(V[a] + V[b]))
+                mid[k] = len(V) - 1
+            return mid[k]
+        F2 = []
+        for a, b, c in F:
+            ab, bc, ca = m(a, b), m(b, c), m(c, a)
+            F2 += [(a, ab, ca), (b, bc, ab), (c, ca, bc), (ab, bc, ca)]
+        F = F2
+    return np.array(V), F
+
+
+# crown hull shells per LOD: icosphere(1) 80 tris, icosahedron 20, octahedron 8
+HULL_GEO = [icosphere(1), icosphere(0),
+            (np.array([(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)], float),
+             [(0, 2, 4), (2, 1, 4), (1, 3, 4), (3, 0, 4), (2, 0, 5), (1, 2, 5), (3, 1, 5), (0, 3, 5)])]
 
 
 def smooth(e0, e1, x):
@@ -222,7 +253,7 @@ class Tree:
         top = self.centre(self.Hb)
         H, Hb = self.H, self.Hb
         lead_dir = J.norm(np.array([self.lean_dir[0] * self.lean * 2.5, self.lean_dir[1] * self.lean * 2.5, 1.0]))
-        lead_len = (H - Hb) * 0.52
+        lead_len = (H - Hb) * cr.get('lead', 0.52)
         lead_end = top + lead_dir * lead_len + np.array([rng.normal(0, 0.4), rng.normal(0, 0.4), 0])
         self.crown_c = np.array([lead_end[0], lead_end[1], Hb + (H - Hb) * 0.5])
         limbs = []
@@ -283,7 +314,7 @@ class Tree:
         for l in tips:
             big = 1.15 if l is leader else (1.0 if l['level'] == 0 else 0.85)
             rk = R * rng.uniform(0.3, 0.4) * big
-            rv = rk * (rng.uniform(0.62, 0.8) if not tiered else rng.uniform(0.42, 0.55))
+            rv = rk * (rng.uniform(0.72, 0.9) if not tiered else rng.uniform(0.42, 0.55))
             c = l['end'] + np.array([0, 0, rv * 0.25])
             hd = c[:2] - self.crown_c[:2]
             hn = np.linalg.norm(hd)
@@ -333,7 +364,124 @@ class Tree:
                 P[i] += n * rng.normal(0, 0.05 * L / 6) + up * rng.normal(0, 0.035 * L / 6)
             l['ctrl'] = P
             l['L'] = L
+        self.add_fill()
         self.make_subclumps()
+
+    def add_fill(self):
+        """Dome fill: extra clumps on the upper crown envelope wherever the limb-tip clumps leave a hole, each on a
+        short branch from the nearest limb, so the crown reads as one massive lumpy dome from the side and from
+        above instead of an umbrella of separate pads."""
+        cr = self.sp['crown']
+        nfill = cr.get('fill', 0)
+        if not nfill:
+            return
+        rng = np.random.default_rng(self.sp['seed'] + 5)
+        R, H, Hb = self.R, self.H, self.Hb
+        cc = self.crown_c
+        er = np.array([R * 0.84, R * 0.84, (H - Hb) * 0.5])
+        polys = [(l, J.catmull(l['ctrl'], 3)) for l in self.limbs]
+        added = 0
+        for _ in range(nfill * 60):
+            if added >= nfill:
+                break
+            az = rng.uniform(0, 2 * math.pi)
+            el = math.asin(rng.uniform(-0.2, 1.0))
+            d = np.array([math.cos(az) * math.cos(el), math.sin(az) * math.cos(el), math.sin(el)])
+            p = cc + d * er * rng.uniform(0.3, 0.92)
+            rk = R * rng.uniform(0.25, 0.33)
+            rv = rk * rng.uniform(0.8, 0.95)
+            p[2] = min(p[2], H - rv)
+            if any(np.linalg.norm((p - q['c']) * np.array([1, 1, 1.3])) < 0.66 * (rk + q['r']) for q in self.clumps):
+                continue
+            best = None
+            for l, P in polys:
+                dd = np.linalg.norm(P - p, axis=1)
+                i = int(dd.argmin())
+                if best is None or dd[i] < best[0]:
+                    best = (float(dd[i]), l, P[i])
+            dist, l, sp_ = best
+            if dist > R * 0.6:
+                continue
+            self.clumps.append(dict(c=p, r=rk, rv=rv, phase=float((l['phase'] + rng.normal(0, 0.06)) % 1.0), limb=l,
+                                    fill=True, stem=sp_, g_stem=float(l['g0'] + (l['g1'] - l['g0']) * 0.7),
+                                    young=float(np.clip(cr['young'] + rng.normal(0, 0.15) + 0.15 * (p[2] - Hb) / (H - Hb), 0, 1))))
+            added += 1
+        self.n_fill = added
+
+    def fill_stems(self, mb, lod):
+        """Branches from the limbs to the dome-fill clumps (LOD0 / LOD1)."""
+        for q in self.clumps:
+            if not q.get('fill'):
+                continue
+            st, en = q['stem'], q['c'] - np.array([0, 0, q['rv'] * 0.3])
+            mid = 0.5 * (st + en) + np.array([0, 0, 0.3 * np.linalg.norm(en - st) * 0.2])
+            path = J.catmull(np.array([st, mid, en]), 2 if lod == 0 else 1)
+            g0, ph = q['g_stem'], q['phase']
+            cols = lambda i, f, a, g0=g0, p=ph: np.tile([0.55 + 0.2 * f, g0 + (0.7 - g0) * f, 0.0, p], (len(a), 1))
+            J.tube(mb, path, np.linspace(0.075, 0.035, len(path)), 5 if lod == 0 else 3, cols, mat=0, u_wrap=1,
+                   v_scale=0.5 / BARK_W, seg_v=v_seg_clean)
+
+    def hulls(self, mb, at, lod):
+        """Inner leaf-mass hull in every clump: a low-poly lumpy shell through the clump core and its sub-clumps,
+        shrunk inside the card layer and textured with a seamless dense leaf-mass tile (canopy_mass.py), so the
+        crown core blocks the sky. Each face gets its own UV patch inside the tile; normals bend outward like the
+        cards'; COLOR_0 like a deep card that barely flutters."""
+        mt = self.sp['crown'].get('mass', 'ell_mass')
+        V0, F0 = HULL_GEO[min(lod, 2)]
+        rng = np.random.default_rng(self.sp['seed'] + 13 + lod)
+        nb = [set() for _ in range(len(V0))]
+        for f in F0:
+            for i in range(3):
+                nb[f[i]].update((f[(i + 1) % 3], f[(i + 2) % 3]))
+        nb = [list(n) for n in nb]
+        tile = at.t[mt]
+        r, tphys = tile['rect'], tile['size']
+        t0 = mb.tris()
+        for q in self.clumps:
+            c, rk, rv = q['c'], q['r'], q['rv']
+            ells = [(c, np.array([rk, rk, rv]) * 0.46)]
+            ells += [(s_['c'], np.array([s_['r'], s_['r'], s_['rv']]) * 0.55) for s_ in q['subs']]
+            t = np.zeros(len(V0))
+            for vi, d in enumerate(V0):
+                best = 0.0
+                for ec, er in ells:
+                    o = (c - ec) / er
+                    dd = d / er
+                    a_, b_, c_ = dd @ dd, 2 * (o @ dd), o @ o - 1
+                    disc = b_ * b_ - 4 * a_ * c_
+                    if disc > 0:
+                        best = max(best, (-b_ + math.sqrt(disc)) / (2 * a_))
+                t[vi] = best if best > 0 else 0.4 * rk
+            t = 0.5 * t + 0.5 * np.array([t[n].mean() for n in nb])
+            t *= rng.uniform(0.94, 1.06, len(t))
+            P = c + V0 * t[:, None] + np.array([0, 0, 0.12 * rv])
+            low = V0[:, 2] < 0
+            P[low, 2] = c[2] + 0.12 * rv + (P[low, 2] - c[2] - 0.12 * rv) * 0.75
+            dims = np.array([rk, rk, rv])
+            Nn, C = [], []
+            for p in P:
+                out = J.norm(0.55 * (p - c) / dims + 0.45 * (p - self.crown_c) / self.R)
+                Nn.append(out)
+                hz = np.clip((p[2] - (self.Hb - 1)) / max(self.H - self.Hb + 1, 1), 0, 1)
+                ao = (0.32 + 0.38 * hz ** 0.8 + 0.12 * (out[2] * 0.5 + 0.5)) * 0.85
+                g = 0.7 + 0.06 * min(1.0, np.linalg.norm(p - c) / rk)
+                C.append((min(ao, 1.0), g, 0.06, q['phase']))
+            b = mb.verts(P, np.array(C), np.array(Nn))
+            for f in F0:
+                p0, p1, p2 = P[f[0]], P[f[1]], P[f[2]]
+                e1 = J.norm(p1 - p0)
+                e2 = np.cross(J.norm(np.cross(p1 - p0, p2 - p0)), e1)
+                loc = np.array([[0.0, 0.0], [np.dot(p1 - p0, e1), 0.0], [np.dot(p2 - p0, e1), np.dot(p2 - p0, e2)]]) / tphys
+                th = rng.uniform(0, 2 * math.pi)
+                loc = loc @ np.array([[math.cos(th), math.sin(th)], [-math.sin(th), math.cos(th)]])
+                ext = loc.max(0) - loc.min(0)
+                s = min(1.0, 0.94 / max(float(ext.max()), 1e-6))
+                loc = (loc - loc.min(0)) * s
+                ext = ext * s
+                loc += np.array([rng.uniform(0.03, max(0.03, 0.97 - ext[0])), rng.uniform(0.03, max(0.03, 0.97 - ext[1]))])
+                uvs = [(r[0] + u_ * (r[2] - r[0]), r[1] + v_ * (r[3] - r[1])) for u_, v_ in loc]
+                mb.face((b + f[0], b + f[1], b + f[2]), uvs, 1)
+        return mb.tris() - t0
 
     def make_subclumps(self):
         """Each clump = 4-8 flattened sub-clumps spread through its upper / outer half (lumps within lumps)."""
@@ -639,18 +787,20 @@ class Tree:
         ctile = cr['clump_tile']
         used = 0
         subs = [(q, s_) for q in self.clumps for s_ in q['subs']]
-        if lod < 2:  # tertiary branches into every sub-clump
+        if lod == 0:  # tertiary branches into some sub-clumps (the hull hides the rest)
             t0 = mb.tris()
             for q, s_ in subs:
+                if rng.uniform() > 0.35:
+                    continue
                 st = q['c'] - np.array([0, 0, q['rv'] * 0.35])
                 en = s_['c'] - np.array([0, 0, s_['rv'] * 0.3])
                 mid = 0.5 * (st + en) + np.array([0, 0, 0.25]) + rng.normal(0, 0.15, 3)
                 ph = q['phase']
                 cols = lambda i, f, a, p=ph: np.tile([0.55 + 0.15 * f, 0.68 + 0.08 * f, 0.0, p], (len(a), 1))
                 r0 = 0.045
-                path = J.catmull(np.array([st, mid, en]), 2 if lod == 0 else 1)
+                path = J.catmull(np.array([st, mid, en]), 2)
                 radii = np.linspace(r0, r0 * 0.45, len(path))
-                J.tube(mb, path, radii, 4 if lod == 0 else 3, cols, mat=0, u_wrap=1, v_scale=0.5 / BARK_W, seg_v=v_seg_clean)
+                J.tube(mb, path, radii, 3, cols, mat=0, u_wrap=1, v_scale=0.5 / BARK_W, seg_v=v_seg_clean)
             used = mb.tris() - t0
         if lod == 2:
             groups = [(q, dict(c=q['c'], r=q['r'], rv=q['rv'])) for q in self.clumps]
@@ -659,7 +809,7 @@ class Tree:
         area = np.array([g['r'] * (g['r'] + g['rv']) for _, g in groups])
         share = area / area.sum()
         if lod == 0:
-            per = dict(core=0.4, spray=0.6)
+            per = dict(core=0.55, spray=0.45)
             tri = {'core': 2, 'spray': 4 + 12 / 6}
         elif lod == 1:
             per = dict(core=0.8, spray=0.2)
@@ -677,7 +827,8 @@ class Tree:
                 core = k < ncore
                 for _ in range(8):
                     az = rng.uniform(0, 2 * math.pi)
-                    el = math.asin(rng.uniform(-0.35, 1.0))
+                    # core cards wrap the hull all round (it must not show from below); sprays favour the top
+                    el = math.asin(rng.uniform(-0.85, 1.0) if core and lod < 2 else rng.uniform(-0.45, 1.0))
                     u = np.array([math.cos(az) * math.cos(el), math.sin(az) * math.cos(el), math.sin(el)])
                     outc = J.norm(c - self.crown_c + np.array([0, 0, 1e-3]))
                     if np.dot(u, outc) > -0.4 or rng.uniform() < 0.3:
@@ -686,9 +837,9 @@ class Tree:
                     tile = ctile
                     tsz = at.t[ctile]['size']
                     fit = float(np.clip(1.7 * rk / tsz, 0.38, 1.0))
-                    scale = {0: rng.uniform(0.75, 1.0) * min(fit, 0.8), 1: rng.uniform(0.8, 1.0) * min(fit * 1.2, 1.0),
+                    scale = {0: rng.uniform(0.85, 1.1) * min(fit, 0.85), 1: rng.uniform(0.9, 1.1) * min(fit * 1.25, 1.1),
                              2: rng.uniform(1.3, 1.7)}[lod]
-                    depth = rng.uniform(0.35, 0.85) if lod < 2 else rng.uniform(0.45, 0.85)
+                    depth = rng.uniform(0.62, 1.0) if lod < 2 else rng.uniform(0.7, 1.05)
                     surf = c + u * np.array([rk, rk, rv]) * depth
                     nrm = J.norm(u * 0.85 + rng.normal(0, 0.35, 3))
                     fwd = J.norm(np.cross(nrm, J.perp(nrm)) + rng.normal(0, 0.3, 3))
@@ -699,7 +850,7 @@ class Tree:
                         tile = tiles[2]
                     if rng.uniform() < cr['dead'] * (2.0 if u[2] < 0 else 0.6):
                         tile = 'dead_spray'
-                    scale = rng.uniform(0.85, 1.25) if lod == 0 else rng.uniform(1.4, 1.8)
+                    scale = rng.uniform(1.0, 1.4) if lod == 0 else rng.uniform(1.4, 1.8)
                     (x0, x1, y0, y1), _, _ = at.card_geom(tile)
                     clen = (y1 - y0) * scale
                     surf = c + u * np.array([rk, rk, rv]) * rng.uniform(0.85, 1.18)
@@ -709,7 +860,7 @@ class Tree:
                 g_att = 0.7 + 0.1 * min(1.0, np.linalg.norm(base - q['c']) / max(q['r'], 0.1))
                 ph = float((q['phase'] + rng.normal(0, 0.12)) % 1.0)
                 used += self.card(mb, at, tile, base, fwd, nrm, scale, g_att, ph, q, lod, sub=g, folded=(lod == 0 and not core))
-                if lod == 0 and not core and k % 6 == 0:
+                if lod == 0 and not core and k % 12 == 0:
                     st = c - np.array([0, 0, rv * 0.3]) + rng.normal(0, 0.1, 3)
                     mid = 0.5 * (st + base) + np.array([0, 0, rng.uniform(0.0, 0.2)])
                     cols = lambda i, f, a, gg=g_att, p=q['phase']: np.tile([0.6 + 0.3 * f, 0.74 + (gg - 0.74) * f, 0, p], (len(a), 1))
@@ -1002,19 +1153,22 @@ class Tree:
                 continue
             self.limb_tube(mb, l, lod)
         if lod < 2:
+            self.fill_stems(mb, lod)
             self.strangler(mb, lod)
         if lod == 0:
             self.lianas(mb, lod)
             self.aerial_roots(mb, lod)
             self.climber(mb, at, lod)
             self.epiphytes(mb, at, lod)
+        hull = self.hulls(mb, at, lod)
         wood = mb.tris()
         bud = self.sp.get('budget', (21800, 4950, 980))
         budget = bud[lod] - wood
         leaves = self.foliage(mb, at, lod, budget)
         name = f"{self.sp.get('prefix', 'rainforest')}_{self.sp.get('key', self.key)}_lod{lod}"
         ob = mb.build(name, mats)
-        print(f'{name}: trunk {wood0}, wood+extras {wood}, total {mb.tris()} tris')
+        print(f'{name}: trunk {wood0}, wood+extras+hull {wood} (hull {hull}, {len(self.clumps)} clumps, '
+              f'{getattr(self, "n_fill", 0)} fill), total {mb.tris()} tris')
         return ob, mb.tris()
 
 

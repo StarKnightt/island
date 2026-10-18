@@ -9,7 +9,11 @@ import type { Heightfield } from '../world/Heightfield';
 import type { Colliders } from '../world/Colliders';
 import { loadGLTF } from '../core/Assets';
 import { SPOTS } from '../world/layout';
-import { uniform, float, mix, vec4, texture, uv, pow, clamp } from '../core/tsl';
+import { uniform, float, vec4, uv, pow, clamp } from '../core/tsl';
+import { heroU, hairMaterial, prepareHairGeometry, skinMaterial, smoothSeams } from './heroMaterials';
+import { Footprints, printU } from './Footprints';
+import { PoseLayer } from './PoseLayer';
+import { atmo } from '../sky/Atmosphere';
 
 export type Surface = 'sand' | 'wet_sand' | 'grass' | 'dirt' | 'rock' | 'wood' | 'stone' | 'metal' | 'shallow_water' | 'water' | 'leaves';
 export interface StepEvent { surface: Surface; speed: number; foot: 0 | 1; pos: THREE.Vector3 }
@@ -24,8 +28,6 @@ const MAX_SLOPE = Math.cos((40 * Math.PI) / 180);
 const SWIM_DEPTH = 1.32;
 /** feet below the surface while swimming */
 const SWIM_SINK = 1.18;
-
-export const playerU = { wet: uniform(0) };
 
 interface Clip { action: THREE.AnimationAction; duration: number }
 
@@ -60,49 +62,69 @@ export class Player {
   private bank = 0;
   private crouchT = -1;
   private contact!: ContactShadows;
+  /** footprints in sand (world-space decals under `shadows`), the clock they age by, the foot bones */
+  private prints = new Footprints();
+  private clock = 0;
+  private feet: { foot: THREE.Object3D; toe: THREE.Object3D; side: number }[] = [];
+  private wasMoving = false;
+  /** procedural layer: idle life (arms, breath, weight shift, blinks) and feet on the ground */
+  private pose: PoseLayer | null = null;
+  private plant = 1;
 
   constructor(private hf: Heightfield, private col: Colliders) {
     this.root.name = 'player';
+    this.shadows.add(this.prints.mesh);
   }
 
   async load() {
     const g = await loadGLTF('assets/character/hero.glb');
     this.model = g.scene;
+    const parts: Record<'body' | 'head' | 'hair', THREE.Mesh | null> = { body: null, head: null, hair: null };
     this.model.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
       m.castShadow = true;
       m.receiveShadow = true;
       m.frustumCulled = false;
-      const src = m.material as THREE.MeshStandardMaterial | THREE.MeshStandardMaterial[];
-      const mats = Array.isArray(src) ? src : [src];
-      const out = mats.map((mm) => {
-        const nm = new THREE.MeshStandardNodeMaterial();
-        nm.name = mm.name;
-        nm.normalMap = mm.normalMap;
-        const isHair = /opacity/i.test(mm.name);
-        const isHead = /head/i.test(mm.name);
-        const r = isHair ? 0.55 : isHead ? 0.5 : 0.8;
-        nm.metalness = 0;
-        if (mm.map) {
-          const tex = texture(mm.map, uv());
-          // wet: darker and glossier (after swimming, in the rain)
-          nm.colorNode = vec4(tex.rgb.mul(mix(float(1), float(isHead ? 0.85 : 0.62), playerU.wet)), tex.a);
-          if (isHair) nm.opacityNode = tex.a;
-        }
-        nm.roughnessNode = mix(float(r), float(Math.min(r, 0.28)), playerU.wet);
-        if (isHair) {
-          nm.alphaTest = 0.4;
-          nm.transparent = false;
-          nm.side = THREE.DoubleSide;
-        }
-        return nm;
-      });
-      m.material = Array.isArray(src) ? out : out[0];
+      const name = (m.material as THREE.Material).name;
+      parts[/opacity/i.test(name) ? 'hair' : /head/i.test(name) ? 'head' : 'body'] = m;
     });
+    const { body, head, hair } = parts;
+    // the KTX2 files flag every map sRGB: normal maps decoded as sRGB tilt every normal ~40 degrees, by a frame that
+    // jumps from triangle to triangle (no tangents: the frame comes from screen derivatives), so faces looked faceted
+    for (const m of [body, head]) {
+      const nm = (m?.material as THREE.MeshStandardMaterial | undefined)?.normalMap;
+      if (nm) {
+        nm.colorSpace = THREE.NoColorSpace;
+        nm.needsUpdate = true;
+      }
+    }
+    if (head) smoothSeams(head.geometry, body?.geometry ?? null);
+    if (hair && head) prepareHairGeometry(hair.geometry, head.geometry);
+    for (const [part, m] of [['body', body], ['head', head]] as const) {
+      if (!m) continue;
+      const src = m.material as THREE.MeshStandardMaterial;
+      if (src.map) m.material = skinMaterial(src.map, src.normalMap, part);
+    }
+    if (hair) {
+      const src = hair.material as THREE.MeshStandardMaterial;
+      if (src.map) hair.material = hairMaterial(src.map);
+      // the hair's shadow on the scalp and neck: one-sided cut-out, a little behind its own surface
+      hair.castShadow = true;
+    }
     this.root.add(this.model);
     this.contact = new ContactShadows(this.model);
     this.shadows.add(this.contact.group);
+    const bone = (n: string) => {
+      let hit: THREE.Object3D | null = null;
+      this.model.traverse((o) => { if (!hit && o.name.replace(/[ _]/g, '') === n) hit = o; });
+      return hit as THREE.Object3D | null;
+    };
+    for (const [s, side] of [['L', -1], ['R', 1]] as const) {
+      const foot = bone(`Bip01${s}Foot`), toe = bone(`Bip01${s}Toe0`);
+      if (foot && toe) this.feet.push({ foot, toe, side });
+    }
+    this.pose = new PoseLayer(this.model, this.root);
     this.mixer = new THREE.AnimationMixer(this.model);
     for (const clip of g.animations) {
       const a = this.mixer.clipAction(clip);
@@ -304,7 +326,7 @@ export class Player {
         this.vel.y = 0;
         this.state = 'ground';
         this.landT = impact > 3.5 ? 0.0001 : -1;
-        this.onStep?.({ surface: this.surfaceUnderfoot(g.surf), speed: Math.max(3, impact), foot: 0, pos: this.pos });
+        this.step({ surface: this.surfaceUnderfoot(g.surf), speed: Math.max(3, impact), foot: 0, pos: this.pos }, true);
       }
     }
     this.surface = this.surfaceUnderfoot(g.surf);
@@ -312,12 +334,82 @@ export class Player {
     // wet after swimming, slowly drying
     const inWater = this.state === 'swim' ? 1 : this.waterDepth > 0.3 ? 0.6 : 0;
     this.wetness = inWater > this.wetness ? THREE.MathUtils.lerp(this.wetness, inWater, 1 - Math.exp(-dt * 3)) : Math.max(0, this.wetness - dt / 90);
-    playerU.wet.value = Math.max(this.wetness, this.rainWet);
+    heroU.wet.value = Math.max(this.wetness, this.rainWet);
+    heroU.frame.value = (heroU.frame.value + 1) % 64;
+    // by night the side away from the moon sees only a near-black sky: a little moonlit-sky fill keeps the shirt and
+    // the hair readable (a fraction of the moonlight on open ground)
+    const night = atmo.night.value as number, lightE = atmo.lightE.value as number;
+    (heroU.fill.value as THREE.Color).setRGB(0.55, 0.66, 1.0).multiplyScalar(lightE * 0.3 * night);
+    this.clock += dt;
+    printU.time.value = this.clock;
+    // coming to a stop leaves both feet's prints
+    if (this.state === 'ground' && this.speed > 0.6) this.wasMoving = true;
+    else if (this.wasMoving && this.state === 'ground' && this.speed < 0.1) {
+      this.wasMoving = false;
+      this.stampPrints(this.surface, 0.5, true);
+    }
     this.animate(dt);
     this.syncRoot();
+    if (this.pose) {
+      // the feet follow the ground while standing and walking, not in the air or the water
+      const plantWant = this.state === 'ground' && this.waterDepth < 0.6 && this.crouchT < 0 ? 1 : 0;
+      this.plant += (plantWant - this.plant) * (1 - Math.exp(-dt * (plantWant > this.plant ? 10 : 25)));
+      this.pose.update({
+        dt,
+        idle: this.state === 'ground' ? this.clips.idle?.action.getEffectiveWeight() ?? 0 : 0,
+        plant: this.plant,
+        rootY: this.pos.y,
+        ground: (x, z, y) => {
+          const g = this.groundAt(x, z, y);
+          return { y: g.y, n: g.onSurface ? UP : this.hf.normal(x, z) };
+        },
+      });
+    }
     this.updateContact();
   }
   rainWet = 0;
+
+  /** a footfall: a print in sand under the planted foot (under both on landing), then the sound */
+  private step(e: StepEvent, both = false) {
+    this.stampPrints(e.surface, e.speed, both);
+    this.onStep?.(e);
+  }
+
+  private lastPrint = [new THREE.Vector3(1e9, 0, 0), new THREE.Vector3(1e9, 0, 0)];
+  private stampPrints(surface: Surface, speed: number, both: boolean) {
+    if ((surface !== 'sand' && surface !== 'wet_sand') || this.waterDepth > 0.03 || this.feet.length < 2) return;
+    const a = new THREE.Vector3(), b = new THREE.Vector3();
+    const low = (f: { foot: THREE.Object3D; toe: THREE.Object3D }) => f.foot.getWorldPosition(a).y + f.toe.getWorldPosition(b).y;
+    // the planted foot is the lower one
+    const feet = both ? this.feet : [low(this.feet[0]) <= low(this.feet[1]) ? this.feet[0] : this.feet[1]];
+    const run = THREE.MathUtils.smoothstep(speed, WALK + 0.4, SPRINT);
+    for (const f of feet) {
+      f.foot.getWorldPosition(a);
+      f.toe.getWorldPosition(b);
+      // the sole's middle is about halfway from the ankle to the ball of the foot
+      const x = (a.x + b.x) / 2, z = (a.z + b.z) / 2;
+      let fx = b.x - a.x, fz = b.z - a.z;
+      const l = Math.hypot(fx, fz);
+      if (l > 1e-4) {
+        fx /= l;
+        fz /= l;
+      } else {
+        fx = Math.sin(this.heading);
+        fz = -Math.cos(this.heading);
+      }
+      const last = this.lastPrint[f.side > 0 ? 1 : 0];
+      if (Math.hypot(x - last.x, z - last.z) < 0.12) continue;
+      if (this.hf.sand(x, z) < 0.35) continue;
+      const g = this.groundAt(x, z, this.pos.y + 0.4);
+      if (g.onSurface) continue;
+      last.set(x, g.y, z);
+      // the swash washes prints away in seconds; wet sand keeps them for a while, dry sand for a couple of minutes
+      const wet = g.y < 0.9 ? 1 : 0;
+      const life = g.y < 0.5 ? 7 : wet ? 50 : 110;
+      const depth = (0.011 + 0.011 * run) * (wet ? 0.8 : 1) * (both ? 1.25 : 1);
+      this.prints.stamp(x, g.y, z, this.hf.normal(x, z), fx, fz, f.side, depth, both ? 0.25 : run, wet, life, this.clock);
+    }
+  }
 
   /** the contact shadows under the feet and the body (world-space decals; main adds `shadows` to the scene) */
   readonly shadows = new THREE.Group();
@@ -394,8 +486,8 @@ export class Player {
       const fp = this.phase % 1;
       if (sp > 0.4) {
         const crossed = (t: number) => (this.lastFootPhase < t && fp >= t) || (this.lastFootPhase > fp && (t >= this.lastFootPhase || t < fp));
-        if (crossed(0.02)) this.onStep?.({ surface: this.surface, speed: sp, foot: 0, pos: this.pos });
-        if (crossed(0.52)) this.onStep?.({ surface: this.surface, speed: sp, foot: 1, pos: this.pos });
+        if (crossed(0.02)) this.step({ surface: this.surface, speed: sp, foot: 0, pos: this.pos });
+        if (crossed(0.52)) this.step({ surface: this.surface, speed: sp, foot: 1, pos: this.pos });
       }
       this.lastFootPhase = fp;
     }

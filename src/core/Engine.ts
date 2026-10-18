@@ -1,27 +1,18 @@
 import * as THREE from 'three/webgpu';
 import {
-  unpackRGBToNormal, packNormalToRGB, dot, float, length, mix, mrt, normalView, output, pass, renderOutput, screenUV,
-  smoothstep, uniform, vec3, vec4, velocity, sample,
+  unpackRGBToNormal, packNormalToRGB, float, mix, mrt, normalView, output, pass, renderOutput, screenUV,
+  vec3, vec4, velocity, sample,
 } from './tsl';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { traa } from 'three/addons/tsl/display/TRAANode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { params } from './params';
 import { Q, gpuName, preset } from './quality';
+import { grade, toneAndGrade } from './grade';
+
+export { grade };
 
 export type Updater = (dt: number, t: number) => void;
-
-/** display-space grade applied after tone mapping */
-export const grade = {
-  exposure: uniform(1.0),
-  saturation: uniform(1.06),
-  contrast: uniform(1.06),
-  lift: uniform(new THREE.Vector3(0.0, 0.002, 0.006)),
-  gain: uniform(new THREE.Vector3(1.0, 1.0, 1.0)),
-  vignette: uniform(0.2),
-  aoStrength: uniform(0.75),
-  bloomStrength: uniform(0.04),
-};
 
 interface GpuPool { timestamps: Map<string, number>; frames?: number[] }
 
@@ -46,6 +37,23 @@ export class Engine {
   /** integer number of display refreshes per rendered frame (frame cap), 0 = uncapped */
   refreshHz = 60;
   divisor = 1;
+  private capMode: string | number = 'auto';
+  /** rAF intervals (every display refresh, rendered or not): the refresh is re-measured from them as the game runs,
+   * so the cap follows the window to a display with another rate */
+  private rafIntervals: number[] = [];
+  private lastRaf = 0;
+  private refreshVotes = 0;
+  /**
+   * While on, render pipelines are created with createRenderPipelineAsync: the driver compiles them on its worker
+   * threads in parallel, and a draw whose pipeline is still compiling is skipped (three r186 checks
+   * Pipelines.isReady before every draw) instead of the frame stalling on a serial compile.
+   */
+  asyncPipelines = false;
+  pipelinesPending = 0;
+  pipelinesCompiled = 0;
+  /** draws skipped in the last rendered frame because their pipeline was still compiling */
+  skippedDraws = 0;
+  private skipping = 0;
   /** while true the loop neither updates nor renders */
   hold = false;
   /** manual stepping (harness clips): the loop stops; stepOnce advances a fixed dt and renders */
@@ -79,8 +87,34 @@ export class Engine {
     } catch {
       // no adapter info
     }
+    e.installAsyncPipelines();
     e.resize();
     return e;
+  }
+
+  private installAsyncPipelines() {
+    type Pipes = { getForRender(ro: unknown, promises?: unknown): unknown; updateForRender(ro: unknown): void; isReady(ro: unknown): boolean };
+    const pipes = (this.renderer as unknown as { _pipelines?: Pipes })._pipelines;
+    const webgpu = (this.renderer.backend as unknown as { isWebGPUBackend?: boolean }).isWebGPUBackend;
+    if (!pipes || !webgpu || typeof pipes.getForRender !== 'function' || typeof pipes.isReady !== 'function') return;
+    // three only ever calls push() on the promises array it is given
+    const sink = {
+      push: (p: Promise<unknown>) => {
+        this.pipelinesPending++;
+        const done = () => {
+          this.pipelinesPending--;
+          this.pipelinesCompiled++;
+        };
+        p.then(done, done);
+      },
+    };
+    pipes.updateForRender = (ro) => void pipes.getForRender(ro, this.asyncPipelines ? sink : null);
+    const isReady = pipes.isReady.bind(pipes);
+    pipes.isReady = (ro) => {
+      const ready = isReady(ro);
+      if (!ready) this.skipping++;
+      return ready;
+    };
   }
 
   private constructor(container: HTMLElement, requiredLimits: Record<string, number>) {
@@ -176,15 +210,7 @@ export class Engine {
     // (its input is clamped so the sun disc gives a glare around it, not a blown-out third of the frame)
     // (only what is far above white blooms: the sun, glints, lamps, the moon; not bright sky or sand)
     const exposed = Q.bloom ? lit.add(bloom(vec4(lit.min(vec3(12)), 1), 0.55, 0.2, 2.6).rgb.mul(grade.bloomStrength.mul(16))) : lit;
-    const tm = ({ aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping, neutral: THREE.NeutralToneMapping } as Record<string, THREE.ToneMapping>)[params.toneMap] ?? THREE.ACESFilmicToneMapping;
-    const display = renderOutput(vec4(exposed, 1), tm, THREE.SRGBColorSpace);
-    const lum = dot(display.rgb, vec3(0.2126, 0.7152, 0.0722));
-    let c = mix(vec3(lum), display.rgb, grade.saturation);
-    c = c.sub(0.5).mul(grade.contrast).add(0.5);
-    c = c.mul(grade.gain).add(grade.lift.mul(float(1).sub(c)));
-    const v = length(screenUV.sub(0.5).mul(vec3(1.0, 0.75, 0).xy));
-    c = c.mul(mix(float(1), float(1).sub(grade.vignette), smoothstep(0.3, 0.85, v)));
-    pipeline.outputNode = vec4(c.clamp(0, 1), 1);
+    pipeline.outputNode = toneAndGrade(exposed);
     this.pipeline = pipeline;
   }
 
@@ -211,8 +237,28 @@ export class Engine {
     this.applyCap(params.fps);
   }
 
+  /** every rAF tick: a low percentile of the recent intervals is the refresh (late frames only make intervals longer) */
+  private trackRefresh(now: number) {
+    const d = now - this.lastRaf;
+    this.lastRaf = now;
+    if (d > 2 && d < 50) this.rafIntervals.push(d);
+    if (this.rafIntervals.length < 120) return;
+    const s = this.rafIntervals.sort((a, b) => a - b);
+    const hz = 1000 / s[Math.floor(s.length * 0.2)];
+    this.rafIntervals.length = 0;
+    // two windows in a row must agree before the cap changes (a hitch or a busy GPU can skew one)
+    if (Math.abs(hz - this.refreshHz) / this.refreshHz > 0.08) {
+      if (++this.refreshVotes >= 2) {
+        this.refreshHz = Math.round(hz);
+        this.refreshVotes = 0;
+        this.applyCap(this.capMode);
+      }
+    } else this.refreshVotes = 0;
+  }
+
   /** 'auto': the largest frame time that is an integer number of refreshes with >= 60 fps; a number: that rate; 0: uncapped */
   applyCap(fps: string | number) {
+    this.capMode = fps;
     const hz = this.refreshHz;
     if (fps === 'auto') this.divisor = Math.max(1, Math.floor(hz / 60));
     else if (Number(fps) === 0) this.divisor = 0;
@@ -231,6 +277,7 @@ export class Engine {
       // runs), not by counting refreshes: a frame whose own work outlasts two refreshes then still lands in the next
       // slot (counting the ticks after it would wait out the whole count again: 25 ms instead of 15)
       const now = time ?? t0;
+      this.trackRefresh(now);
       if (this.divisor > 1 && now - last < (this.divisor - 0.5) * (1000 / this.refreshHz)) return;
       if (this.hold || this.manual) {
         last = now;
@@ -245,6 +292,8 @@ export class Engine {
       this.pipeline.render();
       this.lastDraws = this.renderer.info.render.drawCalls;
       this.lastTris = this.renderer.info.render.triangles;
+      this.skippedDraws = this.skipping;
+      this.skipping = 0;
       this.frame++;
       const cpu = performance.now() - t0;
       this.push(this.wall, interval);
@@ -258,6 +307,8 @@ export class Engine {
     this.time = this.frozenTime ?? this.time + dt;
     for (const u of this.updaters) u(dt, this.time);
     this.pipeline.render();
+    this.skippedDraws = this.skipping;
+    this.skipping = 0;
     this.frame++;
   }
 
@@ -319,6 +370,7 @@ export class Engine {
       // every pass of the last frame: shadow cascades, the scene, the post chain
       drawCalls: this.lastDraws,
       triangles: this.lastTris,
+      pipelines: { compiled: this.pipelinesCompiled, pending: this.pipelinesPending, skippedDraws: this.skippedDraws },
     };
   }
 }

@@ -11,6 +11,7 @@ import {
 } from '../core/tsl';
 import { clouds } from './Sky';
 import { atmo } from './Atmosphere';
+import { initTerrainShadow } from './TerrainShadow';
 import { wetness } from '../world/weatherUniforms';
 import { oceanU } from '../water/Ocean';
 import { Rng } from '../core/noise';
@@ -57,6 +58,8 @@ export class Weather {
     this.dur = this.durationFor('clear');
     this.buildRain();
     this.buildSplashes();
+    // the island's shadow at a low light is baked from the same heightfield (the sky re-bakes it as the light moves)
+    initTerrainShadow(hf.heightTex, hf.mask0Tex);
   }
 
   private durationFor(k: WeatherKind) {
@@ -157,7 +160,7 @@ export class Weather {
     clouds.coverage.value = THREE.MathUtils.lerp(0.42, 0.98, c);
     clouds.thickness.value = THREE.MathUtils.lerp(0.2, 1.0, c);
     atmo.overcast.value = THREE.MathUtils.smoothstep(c, 0.3, 1.0) * 0.95;
-    atmo.mieScatter.value = THREE.MathUtils.lerp(6.5e-6, 1.6e-5, c);
+    // (the aerosol, rain droplets included, is set by TimeOfDay from the hour and the cover)
     // a tropical downpour: visibility down to about a kilometre and a half, every layer of distance paler
     atmo.mist.value = this.rain * 2.4e-3;
     clouds.rain.value = this.rain;

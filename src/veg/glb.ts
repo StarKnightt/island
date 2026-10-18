@@ -163,6 +163,8 @@ export interface PlantLook {
   translucent?: number;
   /** multiply the albedo (linear) */
   tint?: [number, number, number];
+  /** how much further a squall bends it than a breeze (palms stream, trees bow) */
+  storm?: number;
 }
 
 /** wind in the plant's own frame, from its COLOR_0 weights (see the header) and the per-instance yaw and phase */
@@ -181,7 +183,7 @@ function windFrom(look: PlantLook) {
   // a slow gust front crossing the island, the plant's own sway, and every part a little out of step
   const gust = sin(t.mul(0.33).add(phase.mul(6.28)).add(positionWorld.x.mul(0.012)).add(positionWorld.z.mul(0.007))).mul(0.5).add(0.5);
   const sway = sin(t.mul(0.9).add(phase.mul(12.0)).add(part.mul(2.2))).mul(0.45).add(gust.mul(0.85));
-  const lean = storm.mul(gust.mul(0.6).add(0.9));
+  const lean = storm.mul(gust.mul(0.6).add(0.9)).mul(TSLTyped.uniform(look.storm ?? 1));
   // (a uniform, not a constant: every species then shares one shader, see plantMaterial)
   const amt = bend.mul(bend).mul(strength.mul(sway).add(lean)).mul(TSLTyped.uniform(look.height * look.sway));
   const ft = t.mul(float(7.1).add(storm.mul(4)));
@@ -190,6 +192,19 @@ function windFrom(look: PlantLook) {
     .mul(flutter).mul(strength).mul(storm.mul(0.09).add(0.085));
   // the bent tip drops a little as it swings out
   return vec3(lw.x.mul(amt).add(fl.mul(0.35)), fl.mul(0.8).sub(amt.mul(bend).mul(0.18)), lw.y.mul(amt).add(fl.mul(0.35)));
+}
+
+/**
+ * Leaves within ~2 m of the camera dissolve, in a dither that the temporal AA resolves into a soft fade: the
+ * third-person camera in the jungle then sees the player through the plant beside it instead of one leaf filling the
+ * frame. 1 = drawn. (In the shadow passes the camera is the sun's, far away: shadows keep every leaf.)
+ */
+function nearFade(): N {
+  const d = TSLTyped.length(positionWorld.sub(TSLTyped.cameraPosition));
+  const keep = TSLTyped.smoothstep(0.7, 2.1, d);
+  const sc = TSLTyped.screenCoordinate.xy.add(TSLTyped.fract(glbU.time.mul(7.31)).mul(61.0));
+  const ign = TSLTyped.fract(float(52.9829189).mul(TSLTyped.fract(dot(sc, vec2(0.06711056, 0.00583715)))));
+  return TSLTyped.step(ign, keep);
 }
 
 /** a node material for a helper plant part: its textures, AO from COLOR_0, wind, wet darkening, backlit leaves, and
@@ -208,7 +223,11 @@ export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) 
   // per-instance hue scatter so neighbours of one variant differ
   const iData = attribute('iData', 'vec4');
   const vary = hash(iData.y.mul(1000)).sub(0.5);
-  let alb: N = base.rgb.mul(vec3(float(1).add(vary.mul(0.14)), float(1).add(vary.mul(0.07)), float(1).sub(vary.mul(0.1))));
+  // and a canopy of one species is never one green: some crowns yellower, some bluer, some darker (two independent
+  // draws, so hue and brightness do not move together)
+  const vary2 = hash(iData.y.mul(731).add(17)).sub(0.5);
+  let alb: N = base.rgb.mul(vec3(float(1).add(vary.mul(0.3)), float(1).add(vary.mul(0.12)), float(1).sub(vary.mul(0.24))));
+  alb = alb.mul(float(1).add(vary2.mul(0.36)));
   alb = alb.mul(U(new THREE.Vector3(...(look.tint ?? [1, 1, 1]))));
   // wet leaves and bark go darker and a little more saturated
   alb = alb.mul(mix(vec3(1), vec3(0.56, 0.6, 0.56), wetness.rain));
@@ -221,6 +240,7 @@ export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) 
   if (orm && src.aoMap) m.aoNode = texture(orm, uv()).r;
   if (leaf) {
     m.alphaTest = 0.5;
+    m.opacityNode = nearFade();
     m.side = THREE.DoubleSide;
     // the leaf cards' normals are bent toward the outside of their clump: used as they are on both faces
     m.normalNode = normalViewGeometry;
@@ -322,7 +342,10 @@ export function crownMaterial(green: [number, number, number], look: PlantLook) 
   const n1 = mx_noise_float(p.mul(0.55));
   const iData = attribute('iData', 'vec4');
   const vary = hash(iData.y.mul(1000)).sub(0.5);
-  const alb = vec3(TSLTyped.uniform(new THREE.Vector3(...green))).mul(float(1).add(vary.mul(0.25))).mul(n1.mul(0.26).add(1)).mul(mix(float(1), float(0.68), wetness.rain));
+  // crown to crown: yellower and bluer greens, lighter and darker (a forest from afar is never one green)
+  const vary2 = hash(iData.y.mul(731).add(17)).sub(0.5);
+  const hue = vec3(float(1).add(vary2.mul(0.34)), float(1).add(vary2.mul(0.1)), float(1).sub(vary2.mul(0.3)));
+  const alb = vec3(TSLTyped.uniform(new THREE.Vector3(...green))).mul(hue).mul(float(1).add(vary.mul(0.5))).mul(n1.mul(0.3).add(1)).mul(mix(float(1), float(0.68), wetness.rain));
   m.colorNode = vec4(alb.mul(col.x), 1);
   // leaf clumps tilt the normal; the gaps between clumps read as shadow
   const bump = mx_noise_vec3(p.mul(1.1)).mul(0.65);

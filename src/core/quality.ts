@@ -9,7 +9,10 @@ export const PRESETS: Preset[] = ['low', 'medium', 'high', 'ultra'];
 
 export interface Knobs {
   renderScale: number;
+  /** shadow-map size of the near cascade, and of the middle and far ones */
   shadowMap: number;
+  shadowMid: number;
+  shadowFarMap: number;
   cascades: number;
   shadowFar: number;
   ao: boolean;
@@ -30,10 +33,10 @@ export interface Knobs {
 }
 
 export const TABLE: Record<Preset, Knobs> = {
-  low: { renderScale: 0.7, shadowMap: 1024, cascades: 2, shadowFar: 140, ao: false, aoScale: 0.5, taa: true, bloom: true, density: 0.45, grassFar: 28, lodScale: 0.6, oceanSegments: 128, cloudSteps: 8, rainParticles: 4000 },
-  medium: { renderScale: 0.85, shadowMap: 2048, cascades: 3, shadowFar: 260, ao: true, aoScale: 0.5, taa: true, bloom: true, density: 0.7, grassFar: 42, lodScale: 0.8, oceanSegments: 192, cloudSteps: 12, rainParticles: 8000 },
-  high: { renderScale: 1, shadowMap: 2048, cascades: 3, shadowFar: 380, ao: true, aoScale: 0.5, taa: true, bloom: true, density: 1, grassFar: 60, lodScale: 1, oceanSegments: 256, cloudSteps: 16, rainParticles: 14000 },
-  ultra: { renderScale: 1, shadowMap: 4096, cascades: 4, shadowFar: 520, ao: true, aoScale: 1, taa: true, bloom: true, density: 1.3, grassFar: 85, lodScale: 1.35, oceanSegments: 320, cloudSteps: 24, rainParticles: 20000 },
+  low: { renderScale: 0.7, shadowMap: 1024, shadowMid: 1024, shadowFarMap: 1024, cascades: 2, shadowFar: 140, ao: false, aoScale: 0.5, taa: true, bloom: true, density: 0.45, grassFar: 28, lodScale: 0.6, oceanSegments: 128, cloudSteps: 8, rainParticles: 4000 },
+  medium: { renderScale: 0.85, shadowMap: 2048, shadowMid: 1024, shadowFarMap: 1024, cascades: 3, shadowFar: 260, ao: true, aoScale: 0.5, taa: true, bloom: true, density: 0.7, grassFar: 42, lodScale: 0.8, oceanSegments: 192, cloudSteps: 12, rainParticles: 8000 },
+  high: { renderScale: 1, shadowMap: 2048, shadowMid: 2048, shadowFarMap: 1024, cascades: 3, shadowFar: 380, ao: true, aoScale: 0.5, taa: true, bloom: true, density: 1, grassFar: 60, lodScale: 1, oceanSegments: 256, cloudSteps: 16, rainParticles: 14000 },
+  ultra: { renderScale: 1, shadowMap: 4096, shadowMid: 4096, shadowFarMap: 2048, cascades: 4, shadowFar: 520, ao: true, aoScale: 1, taa: true, bloom: true, density: 1.3, grassFar: 85, lodScale: 1.35, oceanSegments: 320, cloudSteps: 24, rainParticles: 20000 },
 };
 
 /** the GPU as WebGL names it (ANGLE on Windows: "ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 (0x00002882) Direct3D11 ...") */

@@ -197,7 +197,9 @@ export const SPOTS: Spot[] = [
   { name: 'beach', player: [596, 34], yaw: Math.PI / 2 },
   { name: 'jungle', player: [365, 18], yaw: -2.6 },
   { name: 'waterfall', player: [186, -40], yaw: -1.15 },
-  { name: 'village', player: [-452, 318], yaw: Math.PI },
+  // on the sand east of the docks, looking west along the waterfront: the main jetty and its moored canoes, the
+  // communal house, the huts and the hill behind
+  { name: 'village', player: [-410, 336], yaw: -1.72 },
   // on the cliff top above the north coast, looking west along the cliffs
   { name: 'cliffs', player: [-58, -577], yaw: -1.42 },
   // on the gallery deck inside the railing (2.6 m from the tower axis), walking clockwise round it toward the

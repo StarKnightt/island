@@ -59,7 +59,7 @@ def banana(variant, seed, W=256, H=1024):
     nlo = T.fft_noise(H, W, beta=2.4, seed=seed + 1)
     nst = T.fft_noise(H, W, beta=1.5, seed=seed + 2, aniso=(0.3, 1.0))
     dead = variant == 'dead'
-    col = np.ones((H, W, 3), np.float32) * (T.srgb8(84, 116, 42) if not dead else T.srgb8(128, 94, 56))
+    col = np.ones((H, W, 3), np.float32) * (T.srgb8(84, 116, 42) if not dead else T.srgb8(108, 78, 48))
     col *= (1 + 0.06 * nlo[..., None] + 0.05 * nst[..., None])
     lam = np.clip(as_ / np.maximum(w, 1e-3), 0, 1)
     col *= (1 + 0.12 * (1 - lam) ** 2)[..., None] * (1 - 0.1 * lam ** 3)[..., None]
@@ -78,7 +78,7 @@ def banana(variant, seed, W=256, H=1024):
     col = col * (1 - streak[..., None]) + T.srgb8(70, 52, 30) * streak[..., None]
     if dead:
         mott = T.smoothstep(-0.5, 1.5, T.fft_noise(H, W, beta=1.8, seed=seed + 3))[..., None]
-        col = col * (1 - 0.35 * mott) + T.srgb8(160, 128, 80) * 0.35 * mott
+        col = col * (1 - 0.3 * mott) + T.srgb8(132, 100, 62) * 0.3 * mott
         col = col * (1 - 0.3 * veins[..., None])
     # tears along the veins
     ntear = {'intact': rng.integers(2, 5), 'torn': rng.integers(9, 14), 'shredded': rng.integers(20, 30), 'dead': rng.integers(14, 22)}[variant]
@@ -111,7 +111,7 @@ def banana(variant, seed, W=256, H=1024):
     if dead:
         hgt += 0.6 * T.blur(T.fft_noise(H, W, beta=1.6, seed=seed + 9), 1.0)
     nrm = T.normal_from_height(hgt * np.clip(alpha * 3, 0, 1), 1.4, wrap=False)
-    rough = (0.42 if not dead else 0.8) + 0.06 * nlo + 0.1 * midrib
+    rough = (0.42 if not dead else 0.88) + 0.06 * nlo + 0.1 * midrib
     return col, alpha, nrm, rough
 
 
@@ -221,14 +221,17 @@ def stems(seed=7):
     scar_d = np.sqrt((du / (0.2 * sz)) ** 2 + (dv / (0.3 * sz)) ** 2) * (1 + 0.15 * fib)
     scar = T.smoothstep(1.0, 0.8, scar_d)
     rimg = T.smoothstep(0.75, 0.95, scar_d) * T.smoothstep(1.15, 0.95, scar_d)
-    c = np.ones((H, W, 3), np.float32) * T.srgb8(58, 43, 30)
-    c *= (1 + 0.18 * fib[..., None])
-    c = c * (1 - 0.6 * scar[..., None]) + T.srgb8(92, 74, 52) * (1 + 0.1 * fib[..., None]) * 0.6 * scar[..., None]
-    c = c * (1 - 0.5 * rimg[..., None])
+    # shaggy: near-black matted root fibres with rusty hair streaks, dark old stipe bases
+    hair = T.smoothstep(0.5, 1.6, T.fft_noise(H, W, beta=0.7, seed=seed + 14, aniso=(1.0, 0.12)))
+    c = np.ones((H, W, 3), np.float32) * T.srgb8(36, 27, 20)
+    c *= (1 + 0.25 * fib[..., None])
+    c = c * (1 - 0.55 * hair[..., None]) + T.srgb8(84, 58, 36) * 0.55 * hair[..., None]
+    c = c * (1 - 0.5 * scar[..., None]) + T.srgb8(52, 40, 30) * (1 + 0.1 * fib[..., None]) * 0.5 * scar[..., None]
+    c = c * (1 - 0.6 * rimg[..., None])
     strips_c.append(c)
-    strips_h.append(0.5 * fib + 0.8 * scar - 0.4 * rimg)
-    strips_r.append(0.92 - 0.1 * scar)
-    strips_ao.append(1 - 0.35 * rimg - 0.2 * np.clip(-fib, 0, 1))
+    strips_h.append(0.5 * fib + 0.35 * hair + 0.6 * scar - 0.5 * rimg)
+    strips_r.append(0.94 - 0.06 * scar)
+    strips_ao.append(1 - 0.4 * rimg - 0.25 * np.clip(-fib, 0, 1))
     # 3 palm stem: green-brown cane with leaf-scar rings and fibrous patches
     ring_v = (yy / H * 14) % 1.0
     ring = T.smoothstep(0.08, 0.0, np.abs(ring_v - 0.5) - 0.0) * 0 + np.exp(-((ring_v - 0.5) / 0.03) ** 2)

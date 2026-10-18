@@ -23,6 +23,10 @@ export interface CamWorld {
 
 const tmp = new THREE.Vector3();
 const tmp2 = new THREE.Vector3();
+const tmp3 = new THREE.Vector3();
+const tmp4 = new THREE.Vector3();
+/** offsets (right, up; m) of the extra collision rays round the camera */
+const WHISKERS = [[0.32, 0], [-0.32, 0], [0, 0.22], [0, -0.22]];
 
 export class CameraRig {
   mode: CamMode = 'follow';
@@ -204,7 +208,18 @@ export class CameraRig {
         break;
       }
     }
-    if (this.world.raycast) free = Math.min(free, Math.max(0.6, this.world.raycast(pivot, back, want) - 0.3));
+    if (this.world.raycast) {
+      free = Math.min(free, Math.max(0.6, this.world.raycast(pivot, back, want) - 0.3));
+      // whiskers round the camera's footprint: a post or a boulder edge just beside the line of sight would fill
+      // the frame from the near plane, so the camera comes in before it can (each hit scaled back onto the axis)
+      const up = tmp3.crossVectors(right, back).normalize();
+      for (const [sx, sy] of WHISKERS) {
+        const end = tmp4.copy(back).multiplyScalar(want).addScaledVector(right, sx).addScaledVector(up, sy);
+        const len = end.length();
+        const hit = this.world.raycast(pivot, end.normalize(), len);
+        if (hit < len) free = Math.min(free, Math.max(0.6, (hit / len) * want - 0.25));
+      }
+    }
     // pull in fast, ease back out slowly
     const k = free < this.curDist ? 1 - Math.exp(-dt * 25) : 1 - Math.exp(-dt * 3);
     this.curDist += (free - this.curDist) * k;

@@ -10,7 +10,7 @@
 import * as THREE from 'three/webgpu';
 import {
   float, length, max, min, mix, mx_noise_float, normalMap, normalWorldGeometry, positionWorld, smoothstep, texture,
-  uniform, uv, vec3, vec4, type N,
+  uniform, uv, varying, vec3, vec4, type N,
 } from '../core/tsl';
 import { loadGLTF } from '../core/Assets';
 import { toFloatGeometry } from '../veg/glb';
@@ -21,6 +21,7 @@ import { wetness } from './weatherUniforms';
 import { fallsPath } from '../water/fallsPath';
 import { sunLit } from '../core/lighting';
 import { instancedMesh } from '../core/instancing';
+import { PoolRocks } from './poolRocks';
 
 /**
  * Piece geometry at scale 1 (from rocks.json and the lod1 meshes): plan extent, how far the face's foot stands out
@@ -35,6 +36,7 @@ const SPEC: Record<string, Spec> = {
   cliff_e: { file: 'cliff', x0: -9.27, x1: 9.21, z0: -2.03, front: 3.0, top: 8.88 },
   cliff_f: { file: 'cliff', x0: -7.24, x1: 7.31, z0: -7.59, front: 2.4, top: 2.85 },
   cliff_g: { file: 'cliff', x0: -10.44, x1: 10.39, z0: -5.17, front: 1.2, top: 9.49 },
+  cliff_h: { file: 'cliff', x0: -12.12, x1: 11.91, z0: -3.92, front: 1.6, top: 5.23 },
   stack_a: { file: 'stack', x0: -10.1, x1: 13.0, z0: -8, front: 8.2, top: 32.5, water: 4.6 },
   stack_b: { file: 'stack', x0: -11.2, x1: 10.4, z0: -8, front: 7.9, top: 21.4, water: 5.0 },
   stack_c: { file: 'stack', x0: -8.9, x1: 8.5, z0: -6.5, front: 6.5, top: 43.5, water: 4.6 },
@@ -42,16 +44,20 @@ const SPEC: Record<string, Spec> = {
 const FILES = { cliff: 'assets/rocks/cliff_kit.glb', stack: 'assets/rocks/stacks.glb' };
 
 /** where a piece stands: origin, yaw (local +Z = the way the face looks), uniform scale; zone 0 sea cliffs, 1 the
- *  gorge, 2 sea stacks; `wall` marks the piece right behind the falls */
+ *  gorge, 2 sea stacks, 3 the low faces round the plunge pool; `wall` marks the piece right behind the falls */
 export interface RockPlace { piece: string; x: number; y: number; z: number; yaw: number; s: number; zone: number; wall?: boolean }
 
 /** the falls' sheet and the escarpment's direction there (+ north), kept for the gorge (see RockKit.clearFalls) */
 let sheet: ReturnType<typeof fallsPath> | null = null;
 let gorgeT: THREE.Vector2 | null = null;
+/** the island the plan was made for (the pool's rim rocks are planned from it when the kit loads) */
+let planned: Heightfield | null = null;
 
 export const rockU = {
   falls: uniform(new THREE.Vector3()),
   pool: uniform(new THREE.Vector3()),
+  /** where the falls land (the spray soaks the walls round it) */
+  impact: uniform(new THREE.Vector3()),
 };
 
 function rng(seed: number) {
@@ -198,7 +204,7 @@ function moveWaterline(hf: Heightfield, places: RockPlace[]) {
   const M = MASK_RES, cell = WORLD_SIZE / M;
   const tex = hf.shoreTex.image.data as Float32Array;
   for (const p of places) {
-    if (p.zone === 1) continue;
+    if (p.zone === 1 || p.zone === 3) continue;
     const sp = SPEC[p.piece];
     const R = Math.max(Math.abs(sp.x0), Math.abs(sp.x1), Math.abs(sp.z0), sp.front) * p.s + 40;
     const i0 = Math.max(0, Math.floor((p.x - R + HALF_WORLD) / cell)), i1 = Math.min(M - 1, Math.floor((p.x + R + HALF_WORLD) / cell));
@@ -221,6 +227,7 @@ function moveWaterline(hf: Heightfield, places: RockPlace[]) {
  * loaded, before the terrain, the sea, the spray or the plants read it.
  */
 export function planRocks(hf: Heightfield): RockPlace[] {
+  planned = hf;
   const out: RockPlace[] = [];
   const r = rng(4242);
   const wl = traceWaterline(hf);
@@ -342,6 +349,8 @@ function falls(hf: Heightfield): RockPlace[] {
   const Dx = dx / dl, Dz = dz / dl;
   rockU.falls.value.set(lip[0], hf.meta.falls.top, lip[1]);
   rockU.pool.value.set(pool.p[0], pool.level, pool.p[1]);
+  const fp = fallsPath(hf);
+  rockU.impact.value.set(fp.lx + fp.fx * fp.outEnd, pool.level, fp.lz + fp.fz * fp.outEnd);
   // the escarpment runs about north-south here and faces east
   const Tx = 0.083, Tz = -0.997, Fx = 0.997, Fz = 0.083;
   const out: RockPlace[] = [];
@@ -375,13 +384,50 @@ function falls(hf: Heightfield): RockPlace[] {
     };
     let w = wallAt((top + foot) / 2);
     if (along !== 0) for (const k of [0.3, 0.45, 0.6, 0.75, 0.9]) w = Math.max(w, wallAt(foot + (top - foot) * k));
-    const s = THREE.MathUtils.clamp((top - foot) / sp.top, 1.4, sMax);
+    let s = THREE.MathUtils.clamp((top - foot) / sp.top, 1.4, sMax);
+    // (a piece at its largest scale keeps its skyline at the plateau)
+    let y = Math.max(foot, top - sp.top * s);
     // the face's foot stands ~front*s in front of the origin, its middle a little less
-    const back = sp.front * s * 0.85 - gap;
-    const ox = bx + fx * (w - back), oz = bz + fz * (w - back);
+    const at = (k: number) => {
+      const back = sp.front * k * 0.85 - gap, cx = ((sp.x0 + sp.x1) / 2) * k;
+      return [bx + fx * (w - back) - fz * cx, bz + fz * (w - back) + fx * cx];
+    };
+    // the flanks: the base line goes down to the bank in front of the face (the skirt below it is a plain extrusion:
+    // left standing above the bank it reads as a flat grey wall round the pool); the piece grows to keep its skyline
+    // at the plateau
+    for (let it = 0; it < 3 && along !== 0; it++) {
+      const [X, Z] = at(s);
+      const hs: number[] = [];
+      for (const u of [-0.2, 0, 0.2]) for (const o of [0.6, 1.6, 2.6]) {
+        const lx = ((sp.x0 + sp.x1) / 2) * s + u * (sp.x1 - sp.x0) * Math.min(s, 2.6), lz = sp.front * s + o;
+        hs.push(hf.height(X + fz * lx + fx * lz, Z - fx * lx + fz * lz));
+      }
+      // a low quantile, never under the pool's surface (the water hides the rest)
+      const bank = Math.max(hs.sort((p, q) => p - q)[2], pool.level - 0.3);
+      if (bank > y - 0.3) break;
+      s = THREE.MathUtils.clamp((top - bank + 0.5) / sp.top, 1.4, 3.15);
+      y = Math.min(top - sp.top * s, bank - 0.5);
+    }
+    const [X, Z] = at(s);
+    out.push({ piece, x: X, y, z: Z, yaw: Math.atan2(fx, fz), s, zone: 1, wall: along === 0 });
+  }
+  // the low tier: where the basin's bank climbs steeply to the gorge walls (south-west and north-west of the pool,
+  // clear of the falls), low faces stand out of the water with their feet at its edge, so the bank between the pool
+  // and the walls is broken rock rather than a smooth slope of terrain. Piece, bearing from the pool's middle
+  // (degrees, 0 = +x, 90 = +z), scale, turn off the radial, sink of the base line below the water
+  const rim: [string, number, number, number, number][] = [
+    ['cliff_b', 136, 0.74, 0.08, 0.35],
+    ['cliff_h', 244, 0.62, -0.06, 0.12],
+  ];
+  for (const [piece, deg, s, turn, sink] of rim) {
+    const sp = SPEC[piece];
+    const a = (deg * Math.PI) / 180, dx = Math.cos(a), dz = Math.sin(a);
+    let edge = 6;
+    while (edge < 30 && hf.height(pool.p[0] + dx * edge, pool.p[1] + dz * edge) < pool.level) edge += 0.2;
+    const ro = edge + sp.front * s * 0.55;
+    const yaw = Math.atan2(-dx, -dz) + turn;
     const cx = ((sp.x0 + sp.x1) / 2) * s;
-    // (a piece at its largest scale keeps its skyline at the plateau; the skirt reaches the foot)
-    out.push({ piece, x: ox - fz * cx, y: Math.max(foot, top - sp.top * s), z: oz + fx * cx, yaw: Math.atan2(fx, fz), s, zone: 1, wall: along === 0 });
+    out.push({ piece, x: pool.p[0] + dx * ro - Math.cos(yaw) * cx, y: pool.level - sink * s, z: pool.p[1] + dz * ro + Math.sin(yaw) * cx, yaw, s, zone: 3 });
   }
   sheet = fallsPath(hf);
   gorgeT = new THREE.Vector2(Tx, Tz);
@@ -399,26 +445,29 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
   const ormT = src.roughnessMap ?? src.aoMap;
   const orm = ormT ? texture(ormT, U) : vec4(1, 0.85, 0, 1);
   const up = normalWorldGeometry.y;
+  // (every pattern a few metres or more across is worked out per vertex: the meshes have vertices every 0.3-1.5 m)
   // broad lighter and darker reaches over a face, rust-brown and greenish bands across it
-  const big = mx_noise_float(vec3(p.x.add(p.z).mul(1 / 46), p.y.mul(1 / 31), 1.7));
-  const band = mx_noise_float(vec3(p.y.mul(1 / 7.5), p.x.sub(p.z).mul(1 / 70), 4.3));
+  const big = varying(mx_noise_float(vec3(p.x.add(p.z).mul(1 / 46), p.y.mul(1 / 31), 1.7)));
+  const band = varying(mx_noise_float(vec3(p.y.mul(1 / 7.5), p.x.sub(p.z).mul(1 / 70), 4.3)));
   let alb: N = base.mul(float(1).add(big.mul(0.26)));
   alb = mix(alb, alb.mul(vec3(1.32, 0.98, 0.72)), smoothstep(0.25, 0.7, band).mul(0.55));
   alb = mix(alb, alb.mul(vec3(0.92, 1.08, 0.95)), smoothstep(-0.3, -0.7, band).mul(0.5));
   // runoff stains: narrow across, long down the face
   const along = p.x.mul(0.62).add(p.z.mul(0.78));
-  const stain = smoothstep(0.35, 0.8, mx_noise_float(vec3(along.mul(0.21), p.y.mul(0.012), 7.7)).mul(0.5).add(0.5));
+  const stain = smoothstep(0.35, 0.8, varying(mx_noise_float(vec3(along.mul(0.21), p.y.mul(0.012), 7.7))).mul(0.5).add(0.5));
   alb = alb.mul(float(1).sub(stain.mul(0.5)));
   // the waterfall: everything within reach of its spray is wet; the gorge is mossy
   const dFalls = length(p.xz.sub(rockU.falls.xz));
   const dPool = length(p.xz.sub(rockU.pool.xz));
   const gorge = smoothstep(42, 18, dPool).mul(smoothstep(rockU.pool.y.sub(8), rockU.pool.y.add(2), p.y));
-  const fallsWet = max(smoothstep(13, 4, dFalls), smoothstep(24, 10, dPool).mul(smoothstep(rockU.pool.y.add(9), rockU.pool.y, p.y)).mul(0.8));
+  // (the plunge throws spray over the walls round it, a dozen metres up)
+  const plunge = smoothstep(18, 6, length(p.xz.sub(rockU.impact.xz))).mul(smoothstep(rockU.pool.y.add(14), rockU.pool.y.add(3), p.y));
+  const fallsWet = max(max(smoothstep(13, 4, dFalls), plunge), smoothstep(24, 10, dPool).mul(smoothstep(rockU.pool.y.add(9), rockU.pool.y, p.y)).mul(0.8));
   // the spray zone at the foot of the sea cliffs (higher where they are exposed), dark and glistening
-  const sprayTop = float(4.5).add(mx_noise_float(vec3(p.xz.mul(0.045), 2.1)).mul(2.2));
+  const sprayTop = float(4.5).add(varying(mx_noise_float(vec3(p.xz.mul(0.045), 2.1))).mul(2.2));
   const spray = smoothstep(sprayTop, sprayTop.mul(0.25), p.y);
   // moss and turf on ledges and the cliff cap; in the gorge on everything but the sheer faces
-  const patch = smoothstep(-0.25, 0.35, mx_noise_float(p.mul(0.16)));
+  const patch = smoothstep(-0.25, 0.35, varying(mx_noise_float(p.mul(0.16))));
   const fine = mx_noise_float(p.mul(0.9)).mul(0.5).add(0.5);
   const ledge = smoothstep(0.42, 0.8, up).mul(patch).mul(float(1).sub(spray));
   const gorgeMoss = gorge.mul(smoothstep(-0.25, 0.35, up)).mul(smoothstep(0.1, 0.7, patch.add(fine.mul(0.4))));
@@ -429,9 +478,10 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
   // soft sheen (a sharp one mirrors the bright overcast in every boss and reads as frost)
   const soaked = max(spray, fallsWet).clamp(0, 1);
   const wet = max(soaked, wetness.rain.mul(0.85)).clamp(0, 1);
-  alb = alb.mul(mix(float(1), float(0.48), wet));
+  // (soaked rock under a running film is near black)
+  alb = alb.mul(mix(float(1), float(0.48), wet)).mul(mix(float(1), float(0.72), soaked));
   m.colorNode = vec4(alb, 1);
-  const wetRough = mix(min(orm.g, float(0.48)), min(orm.g, float(0.24)), soaked.div(wet.max(0.001)));
+  const wetRough = mix(min(orm.g, float(0.48)), min(orm.g, float(0.17)), soaked.div(wet.max(0.001)));
   m.roughnessNode = mix(orm.g.mul(float(1).sub(green.mul(0.1))), wetRough, wet.mul(float(1).sub(green.mul(0.5))));
   m.metalnessNode = float(0);
   m.aoNode = orm.r;
@@ -477,9 +527,17 @@ export class RockKit {
     this.colliders.box(wx, wz, hx, (zf - zb) / 2, -p.yaw, p.y - 4, p.y + sp.top * p.s);
   }
 
+  /** boulders, stones and cobbles round the plunge pool */
+  private poolRocks: PoolRocks | null = null;
+
   async load() {
     const byFile = new Map<string, Map<string, { geometry: THREE.BufferGeometry; material: THREE.Material }[][]>>();
     const mats = new Map<THREE.Material, THREE.Material>();
+    const rocks = planned ? new PoolRocks(planned, this.colliders) : null;
+    const rocksLoad = rocks?.load(kitMaterial).then(() => {
+      this.poolRocks = rocks;
+      this.group.add(rocks.group);
+    }, (e) => console.warn('pool rocks', e));
     await Promise.all((Object.keys(FILES) as (keyof typeof FILES)[]).map(async (f) => {
       const gltf = await loadGLTF(FILES[f]);
       gltf.scene.updateMatrixWorld(true);
@@ -530,6 +588,7 @@ export class RockKit {
         return mesh;
       }));
     }
+    await rocksLoad;
   }
 
   /**
@@ -615,8 +674,8 @@ export class RockKit {
         probe.updateMatrixWorld(true);
         nm.getNormalMatrix(probe.matrixWorld);
         const fx = Math.sin(p.yaw), fz = Math.cos(p.yaw), tx = Math.cos(p.yaw), tz = -Math.sin(p.yaw);
-        const gorge = p.zone === 1;
-        const tries = gorge ? 70 : 6;
+        const gorge = p.zone === 1 || p.zone === 3;
+        const tries = p.zone === 1 ? 70 : p.zone === 3 ? 26 : 6;
         for (let k = 0; k < tries; k++) {
           const lx = r.range(sp.x0 * 0.85, sp.x1 * 0.85) * p.s;
           const down = r.next() < (gorge ? 0.4 : 0);
@@ -654,6 +713,7 @@ export class RockKit {
     const cam = camera.position;
     const priming = this.prime > 0;
     if (priming) this.prime--;
+    this.poolRocks?.update(camera, priming);
     // the lists change only when the camera moves or turns (and once after the priming frames): re-cull and upload
     // them then, not every frame
     camera.getWorldDirection(this.dir);
@@ -672,7 +732,9 @@ export class RockKit {
         this.sphere.radius = half * 1.25;
         if (!priming && !this.frustum.intersectsSphere(this.sphere)) continue;
         const d = Math.max(0, this.sphere.center.distanceTo(cam) - half);
-        const l = Math.min(set.meshes.length - 1, d < 26 * p.s ? 0 : d < 105 * p.s ? 1 : 2);
+        // (the small faces round the pool are seen from a few metres: full detail as far as a big face's)
+        const ls = p.zone === 3 ? Math.max(p.s, 1.6) : p.s;
+        const l = Math.min(set.meshes.length - 1, d < 26 * ls ? 0 : d < 105 * ls ? 1 : 2);
         const k = counts[l]++;
         this.q.setFromAxisAngle(this.yAxis, p.yaw);
         this.m4.compose(this.v.set(p.x, p.y, p.z), this.q, this.sc.set(p.s, p.s, p.s));

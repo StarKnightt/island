@@ -17,8 +17,12 @@ export class Loading {
   gpu(s: string) {
     if (this.gpuEl) this.gpuEl.textContent = s;
   }
-  done() {
+  /** fades the screen out; resolves once it is gone (a capture taken before that would show it) */
+  done(): Promise<void> {
     this.root?.classList.add('done');
-    setTimeout(() => this.root?.remove(), 1200);
+    return new Promise((res) => setTimeout(() => {
+      this.root?.remove();
+      res();
+    }, 1200));
   }
 }

@@ -11,7 +11,25 @@ import {
 } from '../core/tsl';
 import { Rng, Noise2 } from '../core/noise';
 import type { Heightfield } from '../world/Heightfield';
-import { HALF_WORLD, VILLAGE } from '../world/layout';
+import { HALF_WORLD, VILLAGE, LIGHTHOUSE, SPOTS } from '../world/layout';
+
+/**
+ * The opening views stay clear: no shrub or understory plant between a spot's player and the sight it faces, nor
+ * where the follow camera stands behind them (the spawn's first frame looks over the player at the sunrise sea, not
+ * into two bushes). Trees and palms may still frame it.
+ */
+function inSightline(x: number, z: number) {
+  for (const s of SPOTS) {
+    if (s.name === 'lighthouse') continue;
+    const fx = Math.sin(s.yaw), fz = -Math.cos(s.yaw);
+    const dx = x - s.player[0], dz = z - s.player[1];
+    const along = dx * fx + dz * fz, side = Math.abs(dx * fz - dz * fx);
+    // (in the jungle only where the camera stands: ahead, the forest closes in as it should)
+    const ahead = s.name === 'jungle' ? 1.5 : 34;
+    if (along > -8 && along < ahead && side < 3.5 + Math.max(0, along) * 0.28) return true;
+  }
+  return false;
+}
 import { sunLit } from '../core/lighting';
 import { SHARED_INSTANCES } from '../core/instancing';
 
@@ -324,8 +342,9 @@ export class Vegetation {
       if (!v) throw new Error(`vegetation: no ${n}`);
       return v;
     };
-    const palmLook: PlantLook = { sway: 0.055, height: 16, translucent: 0.4 };
-    const treeLook: PlantLook = { sway: 0.02, height: 28, translucent: 0.3 };
+    // (in a squall the palms bend and their fronds stream downwind: storm multiplies the lean of a full gale)
+    const palmLook: PlantLook = { sway: 0.055, height: 16, translucent: 0.4, storm: 2.6 };
+    const treeLook: PlantLook = { sway: 0.02, height: 28, translucent: 0.3, storm: 1.4 };
     const midLook: PlantLook = { sway: 0.03, height: 10, translucent: 0.25 };
     const lowLook: PlantLook = { sway: 0.06, height: 2.5, translucent: 0.18 };
     const groundLook: PlantLook = { sway: 0.06, height: 0.8, translucent: 0.15 };
@@ -336,6 +355,10 @@ export class Vegetation {
     const scrubVar = ['a', 'b', 'd'].map((k) => get(scrub, `scrub_${k}`));
     for (const v of scrubVar) for (let k = 1; k < v.lods.length; k++) v.lods[k] = v.lods[k].filter((p) => p.mat !== 'scrub_wood');
     const scrubs = scrubVar.map((v) => this.glbSpecies(v, [40 * K, 130 * K, 420], [true, false, false], lowLook));
+    // the tall lumpy shrub grows in the thickets inland
+    const tallVar = get(scrub, 'scrub_c');
+    for (let k = 1; k < tallVar.lods.length; k++) tallVar.lods[k] = tallVar.lods[k].filter((p) => p.mat !== 'scrub_wood');
+    const tall = this.glbSpecies(tallVar, [40 * K, 130 * K, 420], [true, false, false], lowLook);
     // far canopy trees: the crown as lumpy opaque ellipsoids over the lod2 bark (see crownProxy), out to 800 m; past
     // that a crown is a few pixels across and the canopy shell's baked crowns carry the forest to the horizon
     const greens: Record<string, [number, number, number]> = { a: [0.04, 0.066, 0.018], b: [0.028, 0.05, 0.014], c: [0.045, 0.072, 0.02], d: [0.034, 0.058, 0.016] };
@@ -346,11 +369,11 @@ export class Vegetation {
       return this.glbSpecies(v, [50 * K, 150 * K, 270 * K, 800], [true, false, false, false], treeLook);
     });
     const mids = ['a', 'b'].map((k) => this.glbSpecies(get(mid, `midstorey_${k}`), [30 * K, 90 * K, 190 * K], [true, false, false], midLook));
-    const unders = ['banana_a', 'alocasia_a', 'treefern_a', 'rattan_a', 'licuala_a']
+    const unders = ['banana_a', 'alocasia_a', 'treefern_a', 'rattan_a', 'licuala_a', 'sapling_a', 'sapling_b']
       .map((k) => this.glbSpecies(get(under, k), [26 * K, 70 * K], [false, false], lowLook));
     // the scanned herbs' full meshes are 4500 triangles: their second LOD is plenty on the forest floor
-    for (const k of ['anthurium_a']) { const v = get(under, k); v.lods = [v.lods[1]]; }
-    const grounds = ['fern_a', 'fern_b', 'anthurium_a'].map((k) => this.glbSpecies(get(under, k), [30 * K], [false], groundLook));
+    for (const k of ['anthurium_a', 'calathea_b']) { const v = get(under, k); v.lods = [v.lods[1]]; }
+    const grounds = ['fern_a', 'fern_b', 'anthurium_a', 'calathea_b'].map((k) => this.glbSpecies(get(under, k), [30 * K], [false], groundLook));
     const litter = ['litter_a', 'litter_b', 'litter_c'].map((k) => this.glbSpecies(get(floor, k), [44 * K], [false], groundLook, { tilt: true }));
     const logs = ['log_a', 'log_b', 'roots_a'].map((k) => this.glbSpecies(get(floor, k), [35 * K, 90 * K], [true, false], groundLook, { tilt: true }));
 
@@ -376,7 +399,9 @@ export class Vegetation {
       (taken.get(k) ?? taken.set(k, []).get(k)!).push([x, z, rad]);
     };
     const pool = hf.meta.pool, falls = hf.meta.falls;
-    const clearing = (x: number, z: number, extra = 0) => Math.hypot(x - pool.p[0], z - pool.p[1]) < pool.r + 14 + extra || Math.hypot(x - falls.lip[0], z - falls.lip[1]) < 16 + extra;
+    // the pool's own ring and the falls' path stay open; ferns, aroids and palms grow to the water's edge and the
+    // crowns of the trees behind overhang it (the water mask keeps them out of the pool itself)
+    const clearing = (x: number, z: number, extra = 0) => Math.hypot(x - pool.p[0], z - pool.p[1]) < pool.r + 4 + extra * 0.6 || Math.hypot(x - falls.lip[0], z - falls.lip[1]) < 7 + extra * 0.5;
     const toSea = (x: number, z: number) => {
       const gx = hf.shoreDist(x + 4, z) - hf.shoreDist(x - 4, z), gz = hf.shoreDist(x, z + 4) - hf.shoreDist(x, z - 4);
       return Math.atan2(-gz, -gx);
@@ -412,7 +437,7 @@ export class Vegetation {
       if (r.next() < 0.3) {
         const a = r.next() * 6.28, d = r.range(2.5, 6);
         const yx = px + Math.cos(a) * d, yz = pz + Math.sin(a) * d;
-        if (free(yx, yz, 0.6)) push(r.pick(youngs), yx, yz, r.next() * 6.28, r.range(0.8, 1.25), 0.05);
+        if (free(yx, yz, 0.6) && !inSightline(yx, yz)) push(r.pick(youngs), yx, yz, r.next() * 6.28, r.range(0.8, 1.25), 0.05);
       }
     }
     // scrub on the berm and the dune crest: clumps of two or three mounds, wind-pruned toward the sea
@@ -420,24 +445,58 @@ export class Vegetation {
     for (let z = -700; z < 700; z += SS) for (let x = -950; x < 950; x += SS) {
       const px = x + r.range(-0.5, 0.5) * SS, pz = z + r.range(-0.5, 0.5) * SS;
       const s = hf.shoreDist(px, pz);
-      if (s < 9 || s > 45) continue;
+      if (s < 14 || s > 62) continue;
       const h = hf.height(px, pz);
       if (h < 1.0 || hf.rock(px, pz) > 0.5 || hf.water(px, pz) > 0.1 || hf.dirt(px, pz) > 0.5) continue;
       const kind = hf.coastKind(px, pz);
-      const berm = THREE.MathUtils.smoothstep(s, 9, 16) * (1 - THREE.MathUtils.smoothstep(s, 30, 45));
-      const patch = THREE.MathUtils.smoothstep(noise.fbm(px / 22 + 7, pz / 22, 2), -0.1, 0.4);
-      if (r.next() > berm * patch * (kind < 0.4 ? 0.5 : 0.3) || !free(px, pz, 1.5)) continue;
+      // at the back of the beach, where the sand gives way to the vegetation line, in hedges (clumped tight along the
+      // berm) rather than lone mounds out on the open sand
+      const berm = THREE.MathUtils.smoothstep(s, 14, 26) * (1 - THREE.MathUtils.smoothstep(s, 45, 62)) * (1 - THREE.MathUtils.smoothstep(hf.sand(px, pz), 0.75, 0.98) * 0.85);
+      const patch = THREE.MathUtils.smoothstep(noise.fbm(px / 22 + 7, pz / 22, 2), 0.0, 0.3);
+      if (r.next() > berm * patch * (kind < 0.4 ? 0.85 : 0.45) || !free(px, pz, 1.1) || inSightline(px, pz)) continue;
       // scrub_d is pruned low on its +x side: face that to the sea
       const sp = r.pick(scrubs);
       push(sp, px, pz, sp === scrubs[2] ? -toSea(px, pz) : r.next() * 6.28, r.range(0.75, 1.25), 0.15);
     }
+    // ---- scrubland: the open grass slopes inland (the hills behind the village, the cliff tops, the headland round
+    // the summit) grown over with thickets of shrubs and a few small trees, as untended tropical grassland is, not
+    // lawn; the village's own ground, the trails and the lighthouse platform stay open
+    const BS = 3.6 / Math.sqrt(D);
+    for (let z = -700; z < 700; z += BS) for (let x = -950; x < 950; x += BS) {
+      const px = x + r.range(-0.5, 0.5) * BS, pz = z + r.range(-0.5, 0.5) * BS;
+      const g = hf.grass(px, pz);
+      if (g < 0.3 || hf.forest(px, pz) > 0.55 || hf.shoreDist(px, pz) < 28) continue;
+      const h = hf.height(px, pz);
+      if (h < 2 || hf.rock(px, pz) > 0.45 || hf.water(px, pz) > 0.05 || hf.dirt(px, pz) > 0.35 || hf.sand(px, pz) > 0.5) continue;
+      if (hf.normal(px, pz).y < 0.72 || clearing(px, pz, 4)) continue;
+      if (Math.hypot(px - LIGHTHOUSE.p[0], pz - LIGHTHOUSE.p[1]) < LIGHTHOUSE.platformR + 6) continue;
+      // (the huts' own ground stays open; the hill behind them is thicket)
+      const open = THREE.MathUtils.smoothstep(Math.hypot(px - VILLAGE.center[0], pz - VILLAGE.center[1]), 52, 80);
+      const thicket = THREE.MathUtils.smoothstep(noise.fbm(px / 26 - 11, pz / 26 + 4, 3), -0.5, 0.25);
+      if (r.next() > g * thicket * 0.8 * open || !free(px, pz, 1.3) || inSightline(px, pz)) continue;
+      // on the windswept headland round the summit the shrubs stay low
+      const exposed = THREE.MathUtils.smoothstep(h, 150, 200);
+      const q = r.next();
+      if (q < 0.08 * (1 - exposed) && free(px, pz, 2.4)) {
+        push(r.pick(mids), px, pz, r.next() * 6.28, r.range(0.6, 0.95), 0.2);
+        claim(px, pz, 0.8);
+        continue;
+      }
+      const sp = q < 0.4 ? tall : r.pick(scrubs);
+      push(sp, px, pz, sp === scrubs[2] ? -toSea(px, pz) : r.next() * 6.28, r.range(0.8, 1.35) * (1 - exposed * 0.35), 0.15);
+      claim(px, pz, 0.9);
+    }
 
-    // ---- the rainforest: canopy trees on a jittered grid (emergents rarer), each claiming its trunk's ground
+    // ---- the rainforest: canopy trees (emergents rarer), each claiming its trunk's ground; not on a grid: up to two
+    // candidates per cell anywhere in it, thinned by a clumping noise and kept apart by their trunks, so stands and
+    // groves form and no rows read from the sea or the summit
     const TS = 11 / Math.sqrt(D);
-    for (let z = -700; z < 700; z += TS) for (let x = -950; x < 950; x += TS) {
-      const px = x + r.range(-0.45, 0.45) * TS, pz = z + r.range(-0.45, 0.45) * TS;
+    for (let z = -700; z < 700; z += TS) for (let x = -950; x < 950; x += TS) for (let cand = 0; cand < 2; cand++) {
+      if (cand === 1 && r.next() > 0.4) continue;
+      const px = x + r.range(-0.5, 0.5) * TS, pz = z + r.range(-0.5, 0.5) * TS;
       const f = hf.forest(px, pz);
-      if (f < 0.35 || r.next() > f * 1.15 || clearing(px, pz, 6)) continue;
+      const clump = THREE.MathUtils.smoothstep(noise.fbm(px / 48 - 3, pz / 48 + 9, 3), -0.45, 0.45);
+      if (f < 0.35 || r.next() > f * 1.15 * (0.42 + 0.5 * clump) || clearing(px, pz, 6) || !free(px, pz, 2.2)) continue;
       if (hf.normal(px, pz).y < 0.72) continue;
       const h = hf.height(px, pz);
       if (h < 2.5) continue;
@@ -477,10 +536,11 @@ export class Vegetation {
       if (hf.normal(px, pz).y < 0.68 || hf.dirt(px, pz) > 0.45 || hf.water(px, pz) > 0.1 || hf.height(px, pz) < 1.5) continue;
       const edge = 1 - THREE.MathUtils.smoothstep(f, 0.35, 0.8);
       const k = r.next();
-      if (k > 0.82 * Math.max(f, g * 0.5) || !free(px, pz, 0.5)) continue;
-      // bananas and aroids in the gaps and at the edges, tree ferns, rattan and fan palms in the shade
+      if (k > 0.82 * Math.max(f, g * 0.5) || !free(px, pz, 0.5) || inSightline(px, pz)) continue;
+      // bananas and aroids in the gaps and at the edges, tree ferns, rattan and fan palms in the shade, and the
+      // saplings of the canopy trees everywhere (the knee-to-head-height layer that closes the sightlines)
       const q = r.next();
-      const sp = q < 0.16 + edge * 0.14 ? unders[0] : q < 0.36 + edge * 0.08 ? unders[1] : q < 0.62 ? unders[2] : q < 0.78 ? unders[3] : unders[4];
+      const sp = q < 0.13 + edge * 0.12 ? unders[0] : q < 0.29 + edge * 0.08 ? unders[1] : q < 0.45 ? unders[2] : q < 0.56 ? unders[3] : q < 0.7 ? unders[4] : q < 0.85 ? unders[5] : unders[6];
       push(sp, px, pz, r.next() * 6.28, r.range(0.75, 1.3), 0.08);
     }
     // ground: ferns and herbs, and the leaf litter that covers the forest floor
@@ -491,7 +551,7 @@ export class Vegetation {
       if (f < 0.3 || clearing(px, pz, -10) || hf.water(px, pz) > 0.05 || hf.height(px, pz) < 1.5) continue;
       if (hf.normal(px, pz).y < 0.66) continue;
       const k = r.next();
-      if (k < 0.32 * f) push(r.pick(grounds), px, pz, r.next() * 6.28, r.range(0.7, 1.35), 0.03);
+      if (k < 0.44 * f && !inSightline(px, pz)) push(r.pick(grounds), px, pz, r.next() * 6.28, r.range(0.7, 1.35), 0.03);
     }
     const LS = 2.9 / Math.sqrt(D);
     for (let z = -700; z < 700; z += LS) for (let x = -950; x < 950; x += LS) {
@@ -503,7 +563,7 @@ export class Vegetation {
       if (r.next() < 0.02 && free(px, pz, 2)) push(r.pick(logs), px, pz, r.next() * 6.28, r.range(0.8, 1.2), 0.1);
     }
     let total = 0;
-    for (const sp of [...palms, ...youngs, ...scrubs, ...trees, ...mids, ...unders, ...grounds, ...litter, ...logs]) {
+    for (const sp of [...palms, ...youngs, ...scrubs, tall, ...trees, ...mids, ...unders, ...grounds, ...litter, ...logs]) {
       this.setInstances(sp, lists.get(sp) ?? []);
       total += sp.count;
     }
