@@ -50,6 +50,8 @@ export const params = {
   noPost: flag('nopost'),
   noAO: flag('noao'),
   noTAA: flag('notaa'),
+  /** diagnostics: TRAA's subpixel correction back on (three's default; it lets the per-frame dither through in motion) */
+  taaSubpixel: flag('taasub'),
   gpuTiming: flag('gputime') || flag('debug') || flag('test'),
   /** tone mapping for look comparisons: aces (default) | agx | neutral */
   toneMap: str('tm') ?? 'aces',

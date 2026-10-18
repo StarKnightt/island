@@ -207,6 +207,10 @@ export class Engine {
     let aa = hdr;
     if (useTAA) {
       const t = traa(hdr, depthTex, scenePass.getTextureNode('velocity'), camera);
+      // the clouds, the hair and the near leaves are dithered per frame and left to the temporal AA to average; the
+      // subpixel correction lifts the current frame's weight from 5 % to as much as 30 % as soon as the camera moves
+      // at all, which lets that dither through: the clouds and edges fizz the moment the player starts walking
+      t.useSubpixelCorrection = params.taaSubpixel;
       aa = t;
     }
     const hdrClamped = aa.rgb.min(vec3(64));
