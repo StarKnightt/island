@@ -538,14 +538,16 @@ export class Vegetation {
       const rock = hf.rock(px, pz);
       const n = hf.normal(px, pz, undefined, 2);
       const clump = noise.fbm(px / 30, pz / 30, 2) * 0.5 + 0.5;
-      // rocky shore: kind is in mask1.a (0 beach .. 1 cliff)
-      const coastRocky = s > -14 && s < 16 && rock > 0.3 && h < 6;
-      // rocks rest on steep ground, not on sheer walls
-      const steep = n.y > 0.32 && n.y < 0.72 && h > 2;
-      const fallsDist = Math.hypot(px - hf.meta.falls.lip[0], pz - hf.meta.falls.lip[1]);
+      // rocky shore: kind is in mask1.a (0 beach .. 1 cliff); the sea cliffs have the rock kit's own blocks
+      const coastRocky = s > -14 && s < 16 && rock > 0.3 && h < 6 && hf.coastKind(px, pz) < 0.8;
+      // rocks rest on steep ground, not on sheer walls (nor on the gorge walls round the falls, which are the kit's)
+      const steep = n.y > 0.32 && n.y < 0.72 && h > 2 && Math.hypot(px - hf.meta.falls.lip[0], pz - hf.meta.falls.lip[1]) > 34;
       const poolDist = Math.hypot(px - hf.meta.pool.p[0], pz - hf.meta.pool.p[1]);
-      const nearFalls = (fallsDist < 22 || (poolDist > hf.meta.pool.r - 2 && poolDist < hf.meta.pool.r + 9)) && h > 30;
+      // boulders ring the pool's banks (not in its water, not where the waterfall shot's camera stands)
+      const nearFalls = poolDist > hf.meta.pool.r + 0.5 && poolDist < hf.meta.pool.r + 8 && h > 30 && Math.hypot(px - 186, pz + 42) > 9;
       let p = 0;
+      // (the waterfall shot's camera stands on the east bank)
+      if (Math.hypot(px - 186, pz + 42) < 9) continue;
       if (coastRocky) p = 0.5 * clump;
       else if (steep) p = 0.16 * clump;
       else if (nearFalls) p = 0.45;
@@ -553,7 +555,7 @@ export class Vegetation {
       if (p <= 0 || r.next() > p) continue;
       const useBig = big.length && (steep || coastRocky) && r.next() < 0.22;
       const m = useBig ? r.pick(big) : r.pick(small.length ? small : big);
-      const sc = useBig ? r.range(0.35, 1.0) : coastRocky ? r.range(0.9, 3.2) : steep ? r.range(1.2, 3.8) : nearFalls ? r.range(0.6, 2.2) : r.range(0.4, 1.1);
+      const sc = useBig ? r.range(0.35, 1.0) : coastRocky ? r.range(0.9, 3.2) : steep ? r.range(1.2, 3.8) : nearFalls ? r.range(0.5, 1.6) : r.range(0.4, 1.1);
       push(m, px, pz, sc, useBig ? 0.35 : 0.28);
     }
     for (const sp of spOf.values()) this.setInstances(sp, lists.get(sp) ?? []);
@@ -588,13 +590,14 @@ export class Vegetation {
     for (let z = -720; z < 720; z += CS) for (let x = -960; x < 960; x += CS) {
       const px = x + r.range(-0.5, 0.5) * CS, pz = z + r.range(-0.5, 0.5) * CS;
       const kind = hf.coastKind(px, pz);
-      if (kind < 0.55) continue;
+      // the sea cliffs have the rock kit's faces and fallen blocks (RockKit); these heap on the rock shelves
+      if (kind < 0.55 || kind > 0.8) continue;
       const s = hf.shoreDist(px, pz);
       if (s < -10 || s > 70) continue;
       const h = hf.height(px, pz);
       const n = hf.normal(px, pz, undefined, 2);
-      // rocks rest on steep slopes and heap up at the foot; a sheer wall holds none
-      const face = n.y > 0.32 && n.y < 0.72 && h > 2;
+      // rocks rest on gentle rock slopes and heap up at the foot; never stuck to a steep face
+      const face = n.y > 0.6 && n.y < 0.8 && h > 2 && h < 14;
       const foot = !face && s > -10 && s < 6 && h < 2.5 && h > -6;
       if (!face && !foot) continue;
       const clump = noise.fbm(px / 25, pz / 25, 2) * 0.5 + 0.5;
@@ -611,6 +614,33 @@ export class Vegetation {
     }
     for (const { sp } of sps) this.setInstances(sp, lists.get(sp) ?? []);
     console.log('[island] cliff rocks', sps.map((s) => s.sp.count).join(' '));
+  }
+
+  /**
+   * Plants on the rock: sword ferns over moss lumps, dripping-wall mats and vine curtains hanging on the gorge walls
+   * round the falls, moss cushions on its ledges, long curtains down the upper sea cliffs (points from RockKit).
+   */
+  async addLedges(points: { x: number; y: number; z: number; yaw: number; s: number; kind: string }[]) {
+    const ledge = await loadVariants('assets/veg/jungle/ledge.glb');
+    const K = Q.lodScale;
+    const look: PlantLook = { sway: 0.07, height: 3, translucent: 0.25 };
+    const sps = new Map<string, Species>();
+    for (const [name, v] of ledge) {
+      // the long curtains hang on the sea cliffs too: seen from far out at sea
+      const far = name.startsWith('vinecurtain') ? 700 : 140 * K;
+      sps.set(name, this.glbSpecies(v, [36 * K, far], [true, false], look, { maxScale: 3.6 }));
+    }
+    const r = new Rng(77);
+    const lists = new Map<Species, number[]>();
+    for (const p of points) {
+      const sp = sps.get(p.kind);
+      if (!sp) continue;
+      let l = lists.get(sp);
+      if (!l) lists.set(sp, (l = []));
+      l.push(p.x, p.y, p.z, p.yaw, p.s, r.next());
+    }
+    for (const [sp, l] of lists) this.setInstances(sp, l);
+    console.log('[island] ledge plants', [...lists.entries()].map(([sp, l]) => `${sp.name}:${l.length / 6}`).join(' '));
   }
 
   /** palm trunk colliders etc. are added at scatter time; this returns counts for the harness */

@@ -69,8 +69,8 @@
  "granite_grade": {
   "y_mean": 0.16,
   "y_std": 0.3,
-  "w_mean": 0.2,
-  "w_std": 0.09,
+  "w_mean": 0.34,
+  "w_std": 0.11,
   "rust_push": 0.32,
   "g_mean": 0.0,
   "g_std": 0.02,
@@ -89,60 +89,63 @@
    "name": "granite_a",
    "kind": "granite",
    "type": "boulder",
-   "use": "rounded granite boulder (Seychelles type), small wedge",
+   "use": "low granite whaleback, half-buried (sandy shore, embedded outcrop in grass)",
    "seed": 11,
    "size": [
-    2.4,
-    1.8,
-    1.7
+    3.4,
+    1.9,
+    1.35
    ],
-   "form": "box",
-   "pillow": 3.0,
-   "chips": 2,
-   "bury": 0.2,
-   "lumps": 0.015,
-   "steps": 0,
-   "step_t": 0.03,
+   "bury": 0.22,
+   "lumps": 0.012,
+   "steps": 1,
+   "step_t": 0.02,
    "fine": {
     "tex": "rock_01",
     "tile": 1.4,
-    "amp": 0.01
+    "amp": 0.011
    },
    "fine2": {
     "tex": "rock_surface",
-    "tile": 3.0,
-    "amp": 0.015
+    "tile": 3.2,
+    "amp": 0.018
    },
    "lod0_tris": 6000,
-   "lod_tris": [
-    null,
-    1500
-   ],
    "scale": [
     0.6,
-    2.0
+    2.2
    ],
    "material_set": "granite",
-   "axis_tilt": 24,
-   "round_r": 0.3
+   "scan": {
+    "id": "namaqualand_boulder_05",
+    "rot": [
+     0,
+     0,
+     0
+    ],
+    "vox_div": 80,
+    "smooth": 12
+   },
+   "streak_relief": 0.004,
+   "streak_amt": 0.8,
+   "grade": {
+    "w_mean": 0.42,
+    "y_mean": 0.15
+   }
   },
   {
    "name": "granite_b",
    "kind": "granite",
    "type": "boulder",
-   "use": "rounded granite boulder, tilted block with exfoliation steps",
+   "use": "rounded jointed granite block with exfoliation steps",
    "seed": 21,
    "size": [
-    3.8,
-    2.8,
-    2.9
+    4.4,
+    3.4,
+    2.1
    ],
-   "form": "wedge",
-   "axis_tilt": 12,
-   "pillow": 3.0,
-   "chips": 3,
    "bury": 0.22,
-   "lumps": 0.015,
+   "lumps": 0.014,
    "steps": 1,
    "step_t": 0.02,
    "fine": {
@@ -161,25 +164,21 @@
     1.8
    ],
    "material_set": "granite",
-   "wedge_deg": 22,
-   "round_r": 0.25,
-   "runnels": {
-    "spacing": 0.4,
-    "depth": 0.05,
-    "len": [
-     0.45,
-     0.9
+   "scan": {
+    "id": "namaqualand_boulder_03",
+    "rot": [
+     0,
+     0,
+     0
     ],
-    "reach": 0.85,
-    "sectors": [
-     [
-      90,
-      60
-     ]
-    ],
-    "seed": 22
+    "vox_div": 60,
+    "smooth": 26
    },
-   "streak_relief": 0.003
+   "streak_relief": 0.004,
+   "streak_amt": 0.85,
+   "grade": {
+    "w_mean": 0.3
+   }
   },
   {
    "name": "granite_c",
@@ -223,7 +222,10 @@
     "smooth": 14
    },
    "streak_relief": 0.004,
-   "streak_amt": 0.85
+   "streak_amt": 0.85,
+   "grade": {
+    "w_mean": 0.38
+   }
   },
   {
    "name": "granite_d",
@@ -267,7 +269,10 @@
     "smooth": 12
    },
    "streak_relief": 0.004,
-   "streak_amt": 0.85
+   "streak_amt": 0.85,
+   "grade": {
+    "w_mean": 0.3
+   }
   },
   {
    "name": "basalt_a",
@@ -334,7 +339,8 @@
     0.05,
     0.14
    ],
-   "step_nz": 1.5
+   "step_nz": 1.5,
+   "uv_density": 1.4
   },
   {
    "name": "basalt_b",
@@ -347,9 +353,9 @@
     1.5,
     1.2
    ],
-   "chips": 5,
+   "chips": 7,
    "facets": 8,
-   "tilt": 25,
+   "tilt": 30,
    "bury": 0.25,
    "round_k": 0.012,
    "steps": 1,
@@ -395,12 +401,16 @@
     "raydist": 0.25,
     "ao_dist": 0.45
    },
-   "jitter": 22,
+   "jitter": 25,
    "facet_depth": [
     0.05,
     0.14
    ],
-   "step_nz": 1.5
+   "step_nz": 1.5,
+   "chip_depth": [
+    0.15,
+    0.35
+   ]
   },
   {
    "name": "basalt_c",
@@ -543,7 +553,8 @@
    },
    "grade": {
     "y_mean": 0.075
-   }
+   },
+   "uv_density": 3.0
   },
   {
    "name": "pebbles_b",
@@ -603,7 +614,8 @@
     "extrude": 0.02,
     "raydist": 0.05,
     "ao_dist": 0.12
-   }
+   },
+   "uv_density": 3.0
   },
   {
    "name": "pebbles_c",
@@ -653,7 +665,8 @@
     "extrude": 0.03,
     "raydist": 0.08,
     "ao_dist": 0.2
-   }
+   },
+   "uv_density": 3.0
   }
  ]
 }

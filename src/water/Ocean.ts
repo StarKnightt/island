@@ -256,7 +256,7 @@ export class Ocean {
       const lagoon = smoothstep(14, 4, max(ground.negate(), 0));
       const deep = mix(vec3(0.0026, 0.0145, 0.032), vec3(0.008, 0.075, 0.085), lagoon);
       const inscat = deep.mul(float(1).sub(exp(path.mul(mix(float(-0.12), float(-0.3), lagoon)))));
-      const body = mix(inscat, vec3(0.3, 0.42, 0.4), aer.mul(0.7));
+      const body = mix(inscat, vec3(0.22, 0.33, 0.32), aer.mul(0.55));
 
       // ---- glint: world-anchored facet cells about two pixels wide (two sizes blended), re-drawn ~5 times a second
       const fp = camDist.mul(0.0009).div(sqrt(max(V.y, 0.05)));

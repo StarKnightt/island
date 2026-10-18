@@ -51,11 +51,12 @@ def edit_all():
 edit_all()
 bpy.ops.uv.average_islands_scale()
 bpy.ops.object.mode_set(mode='OBJECT')
-for o in objs:
+for P, o in zip(cfg['pieces'], objs):
     me = o.data
     uv = np.empty(len(me.loops) * 2, np.float32)
     me.uv_layers.active.data.foreach_get('uv', uv)
-    uv = uv.reshape(-1, 2)
+    # optional per-piece texel density boost (small pieces seen at arm's length: pebbles)
+    uv = uv.reshape(-1, 2) * float(P.get('uv_density', 1.0))
     sk = np.zeros(len(me.polygons), np.int32)
     me.attributes['skirt'].data.foreach_get('value', sk)
     ls = np.empty(len(me.polygons), np.int32)

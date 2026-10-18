@@ -28,6 +28,7 @@ import { DebugOverlay } from './ui/DebugOverlay';
 import { River } from './water/River';
 import { Village } from './world/Village';
 import { Lighthouse } from './world/Lighthouse';
+import { RockKit, planRocks } from './world/RockKit';
 import { Weather } from './sky/Weather';
 import { AudioSystem } from './audio/Audio';
 import { mark, timeline } from './core/timeline';
@@ -55,6 +56,8 @@ async function boot() {
     loading.progress(0.05 + 0.4 * Math.min(1, got / Heightfield.BYTES));
   });
   const colliders = new Colliders();
+  // the rock kit's layout reshapes the sea rocks and moves the waterline, so it comes before anything reads them
+  const rockPlan = planRocks(hf);
   mark('heightfield');
 
   // ---- light and sky
@@ -169,6 +172,10 @@ async function boot() {
     veg.addRocks(out);
     mark('rocks');
   })().catch((e) => console.warn('rocks', e));
+  // cliff faces, sea stacks and the gorge of the falls
+  const kit = new RockKit(rockPlan, colliders);
+  if (!skip.has('rockkit')) scene.add(kit.group);
+  const kitReady = kit.load().then(() => mark('rock kit'), (e) => console.warn('rock kit', e));
 
   // ---- player and camera
   loading.status('Waking the traveller');
@@ -270,6 +277,7 @@ async function boot() {
     camera.updateMatrixWorld();
     terrain.update(camera, Q.shadowFar);
     veg.update(camera, 60);
+    kit.update(camera);
     vegU.time.value = t;
     river.update(t);
     village.update(t, (i) => ocean.sim.probe(i));
@@ -305,7 +313,8 @@ async function boot() {
   });
 
   loading.status('Growing the jungle');
-  await plantsReady;
+  await Promise.all([plantsReady, kitReady]);
+  await veg.addLedges(kit.ledges).catch((e) => console.warn('ledge plants', e));
   loading.status('Compiling shaders');
   loading.progress(0.85);
   await engine.measureRefresh();
@@ -326,11 +335,11 @@ async function boot() {
       unculled.push(o);
     }
   });
-  veg.prime = weather.prime = lighthouse.prime = 3;
+  veg.prime = weather.prime = lighthouse.prime = kit.prime = 3;
   rocksReady.then(() => (veg.prime = 3));
   engine.start();
   Object.assign(ctx, {
-    hf, terrain, sky, csm, ocean, spray, player, playerObj: player, cameraRig: rig, input, colliders, veg, village, lighthouse, weather, audio, hud, dbg,
+    hf, terrain, sky, csm, ocean, spray, player, playerObj: player, cameraRig: rig, input, colliders, veg, kit, village, lighthouse, weather, audio, hud, dbg,
     rts: { transmittance: transmittanceRT, skyView: skyViewRT, cloud: cloudRT },
     isBusy: () => streaming > 0 || assetProgress.pending > assetProgress.done,
   });

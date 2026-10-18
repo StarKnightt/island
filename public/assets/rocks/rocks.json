@@ -22,6 +22,16 @@
     "orm": "2048 KTX2 (R AO, G roughness, B 0)"
    },
    "notes": "free-standing closed single-sided meshes, origin at the centre of the base footprint, y = 0 is the base (geometry continues ~1-1.7 m below it); sink each stack by its waterline_y (4.6-5 m at scale 1, times the scale) so the wave-cut notch sits at the sea surface; the notch is deepest on the +Z side (face it toward the open sea / swell); stack_b has a sea arch through its foot (about 4.5 m wide, open from the waterline to ~8 m); tops are rough and ledged for shrubs"
+  },
+  "boulder": {
+   "file": "boulders.glb",
+   "material": "rock_boulder",
+   "textures": {
+    "albedo": "2048 sRGB KTX2",
+    "normal": "2048 OpenGL KTX2",
+    "orm": "2048 KTX2 (R AO, G roughness, B 0)"
+   },
+   "notes": "closed single-sided meshes; origin at the centre of the footprint at the ground line: the part below y = 0 (the 'bury' fraction of the height) is meant to be inside the terrain / sand / water; granite_* use a lighter grey to rust-tan granite palette, basalt_* and pebbles_a / pebbles_b the cliff-kit basalt palette, pebbles_c the granite palette"
   }
  },
  "pieces": {
@@ -410,6 +420,429 @@
    ],
    "waterline_y": 4.6,
    "deep_notch_side": "+Z"
+  },
+  "granite_a": {
+   "kit": "boulder",
+   "file": "boulders.glb",
+   "nodes": [
+    "granite_a_lod0",
+    "granite_a_lod1",
+    "granite_a_lod2"
+   ],
+   "tris": [
+    6000,
+    1500,
+    400
+   ],
+   "bbox": {
+    "min": [
+     -1.394,
+     -0.289,
+     -0.955
+    ],
+    "max": [
+     1.94,
+     1.02,
+     0.848
+    ]
+   },
+   "scale": [
+    0.6,
+    2.2
+   ],
+   "use": "low granite whaleback, half-buried (sandy shore, embedded outcrop in grass)",
+   "type": "boulder",
+   "height_above_ground": 1.02,
+   "depth_below_ground": 0.29,
+   "footprint": [
+    3.33,
+    1.8
+   ],
+   "bury": 0.22,
+   "source_scan": "namaqualand_boulder_05 (large-scale shape only)"
+  },
+  "granite_b": {
+   "kit": "boulder",
+   "file": "boulders.glb",
+   "nodes": [
+    "granite_b_lod0",
+    "granite_b_lod1",
+    "granite_b_lod2"
+   ],
+   "tris": [
+    6000,
+    1500,
+    400
+   ],
+   "bbox": {
+    "min": [
+     -1.69,
+     -0.443,
+     -2.188
+    ],
+    "max": [
+     1.563,
+     1.542,
+     2.047
+    ]
+   },
+   "scale": [
+    0.6,
+    1.8
+   ],
+   "use": "rounded jointed granite block with exfoliation steps",
+   "type": "boulder",
+   "height_above_ground": 1.54,
+   "depth_below_ground": 0.44,
+   "footprint": [
+    3.25,
+    4.24
+   ],
+   "bury": 0.22,
+   "source_scan": "namaqualand_boulder_03 (large-scale shape only)"
+  },
+  "granite_c": {
+   "kit": "boulder",
+   "file": "boulders.glb",
+   "nodes": [
+    "granite_c_lod0",
+    "granite_c_lod1",
+    "granite_c_lod2"
+   ],
+   "tris": [
+    6000,
+    1500,
+    400
+   ],
+   "bbox": {
+    "min": [
+     -1.505,
+     -0.7,
+     -2.671
+    ],
+    "max": [
+     1.297,
+     2.07,
+     2.449
+    ]
+   },
+   "scale": [
+    0.6,
+    1.6
+   ],
+   "use": "large granite loaf boulder with water-stain runnels",
+   "type": "boulder",
+   "height_above_ground": 2.07,
+   "depth_below_ground": 0.7,
+   "footprint": [
+    2.8,
+    5.12
+   ],
+   "bury": 0.25,
+   "source_scan": "namaqualand_boulder_06 (large-scale shape only)"
+  },
+  "granite_d": {
+   "kit": "boulder",
+   "file": "boulders.glb",
+   "nodes": [
+    "granite_d_lod0",
+    "granite_d_lod1",
+    "granite_d_lod2"
+   ],
+   "tris": [
+    6000,
+    1500,
+    400
+   ],
+   "bbox": {
+    "min": [
+     -2.907,
+     -1.137,
+     -2.92
+    ],
+    "max": [
+     3.086,
+     3.418,
+     2.901
+    ]
+   },
+   "scale": [
+    0.6,
+    1.5
+   ],
+   "use": "huge granite boulder with a joint line, exfoliation steps and water-stain runnels (Seychelles beach landmark)",
+   "type": "boulder",
+   "height_above_ground": 3.42,
+   "depth_below_ground": 1.14,
+   "footprint": [
+    5.99,
+    5.82
+   ],
+   "bury": 0.25,
+   "source_scan": "namaqualand_boulder_04 (large-scale shape only)"
+  },
+  "basalt_a": {
+   "kit": "boulder",
+   "file": "boulders.glb",
+   "nodes": [
+    "basalt_a_lod0",
+    "basalt_a_lod1"
+   ],
+   "tris": [
+    3000,
+    750
+   ],
+   "bbox": {
+    "min": [
+     -0.717,
+     -0.247,
+     -0.58
+    ],
+    "max": [
+     0.759,
+     0.719,
+     0.408
+    ]
+   },
+   "scale": [
+    0.6,
+    2.0
+   ],
+   "use": "angular fallen basalt block, small (scree, pool rim)",
+   "type": "block",
+   "height_above_ground": 0.72,
+   "depth_below_ground": 0.25,
+   "footprint": [
+    1.48,
+    0.99
+   ],
+   "bury": 0.25
+  },
+  "basalt_b": {
+   "kit": "boulder",
+   "file": "boulders.glb",
+   "nodes": [
+    "basalt_b_lod0",
+    "basalt_b_lod1"
+   ],
+   "tris": [
+    4500,
+    1100
+   ],
+   "bbox": {
+    "min": [
+     -1.108,
+     -0.306,
+     -0.915
+    ],
+    "max": [
+     1.085,
+     0.899,
+     0.96
+    ]
+   },
+   "scale": [
+    0.6,
+    2.0
+   ],
+   "use": "angular fallen basalt block, medium",
+   "type": "block",
+   "height_above_ground": 0.9,
+   "depth_below_ground": 0.31,
+   "footprint": [
+    2.19,
+    1.88
+   ],
+   "bury": 0.25
+  },
+  "basalt_c": {
+   "kit": "boulder",
+   "file": "boulders.glb",
+   "nodes": [
+    "basalt_c_lod0",
+    "basalt_c_lod1",
+    "basalt_c_lod2"
+   ],
+   "tris": [
+    6000,
+    1500,
+    400
+   ],
+   "bbox": {
+    "min": [
+     -1.355,
+     -0.473,
+     -1.617
+    ],
+    "max": [
+     1.143,
+     1.434,
+     1.696
+    ]
+   },
+   "scale": [
+    0.6,
+    1.8
+   ],
+   "use": "large angular basalt block (cliff foot)",
+   "type": "block",
+   "height_above_ground": 1.43,
+   "depth_below_ground": 0.47,
+   "footprint": [
+    2.5,
+    3.31
+   ],
+   "bury": 0.25
+  },
+  "basalt_d": {
+   "kit": "boulder",
+   "file": "boulders.glb",
+   "nodes": [
+    "basalt_d_lod0",
+    "basalt_d_lod1",
+    "basalt_d_lod2"
+   ],
+   "tris": [
+    6000,
+    1500,
+    400
+   ],
+   "bbox": {
+    "min": [
+     -2.579,
+     -0.526,
+     -2.42
+    ],
+    "max": [
+     2.663,
+     1.75,
+     2.019
+    ]
+   },
+   "scale": [
+    0.6,
+    1.6
+   ],
+   "use": "large tilted basalt slab block (cliff foot, washed by foam)",
+   "type": "block",
+   "height_above_ground": 1.75,
+   "depth_below_ground": 0.53,
+   "footprint": [
+    5.24,
+    4.44
+   ],
+   "bury": 0.22
+  },
+  "pebbles_a": {
+   "kit": "boulder",
+   "file": "boulders.glb",
+   "nodes": [
+    "pebbles_a_lod0",
+    "pebbles_a_lod1"
+   ],
+   "tris": [
+    1500,
+    400
+   ],
+   "bbox": {
+    "min": [
+     -0.478,
+     -0.04,
+     -0.382
+    ],
+    "max": [
+     0.474,
+     0.143,
+     0.382
+    ]
+   },
+   "scale": [
+    0.7,
+    2.5
+   ],
+   "use": "rounded basalt river cobbles (stream bed, waterfall pool edge)",
+   "type": "pebbles",
+   "height_above_ground": 0.14,
+   "depth_below_ground": 0.04,
+   "footprint": [
+    0.95,
+    0.76
+   ],
+   "bury": 0.3
+  },
+  "pebbles_b": {
+   "kit": "boulder",
+   "file": "boulders.glb",
+   "nodes": [
+    "pebbles_b_lod0",
+    "pebbles_b_lod1"
+   ],
+   "tris": [
+    1500,
+    400
+   ],
+   "bbox": {
+    "min": [
+     -0.383,
+     -0.079,
+     -0.445
+    ],
+    "max": [
+     0.383,
+     0.132,
+     0.444
+    ]
+   },
+   "scale": [
+    0.7,
+    2.5
+   ],
+   "use": "angular basalt rubble / scree stones (cliff foot, jungle floor)",
+   "type": "pebbles",
+   "height_above_ground": 0.13,
+   "depth_below_ground": 0.08,
+   "footprint": [
+    0.77,
+    0.89
+   ],
+   "bury": 0.3
+  },
+  "pebbles_c": {
+   "kit": "boulder",
+   "file": "boulders.glb",
+   "nodes": [
+    "pebbles_c_lod0",
+    "pebbles_c_lod1"
+   ],
+   "tris": [
+    1500,
+    400
+   ],
+   "bbox": {
+    "min": [
+     -0.457,
+     -0.079,
+     -0.461
+    ],
+    "max": [
+     0.465,
+     0.124,
+     0.461
+    ]
+   },
+   "scale": [
+    0.7,
+    2.5
+   ],
+   "use": "rounded granite beach stones (sandy shore, at the feet of granite boulders)",
+   "type": "pebbles",
+   "height_above_ground": 0.12,
+   "depth_below_ground": 0.08,
+   "footprint": [
+    0.92,
+    0.92
+   ],
+   "bury": 0.35
   }
  }
 }

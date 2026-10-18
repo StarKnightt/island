@@ -1,0 +1,28 @@
+{
+ "tag": "boulder_beach",
+ "ground": [0.42, 0.38, 0.31],
+ "items": [
+  {"obj": "granite_d_lod0", "s": 1.0, "x": -12, "y": 7, "z": 0, "yaw": 30},
+  {"obj": "granite_c_lod0", "s": 1.0, "x": -4.5, "y": 10, "z": 0, "yaw": -60},
+  {"obj": "granite_b_lod0", "s": 1.0, "x": -18, "y": 1, "z": 0, "yaw": 80},
+  {"obj": "granite_a_lod0", "s": 1.0, "x": -8, "y": 1.5, "z": 0, "yaw": 10},
+  {"obj": "pebbles_c_lod0", "s": 1.0, "x": -10.5, "y": -1.2, "z": 0, "yaw": 0},
+  {"obj": "pebbles_c_lod0", "s": 1.4, "x": -14.5, "y": 3, "z": 0, "yaw": 120},
+  {"obj": "basalt_d_lod0", "s": 1.0, "x": 12, "y": 8, "z": 0, "yaw": -20},
+  {"obj": "basalt_c_lod0", "s": 1.0, "x": 6, "y": 5, "z": 0, "yaw": 40},
+  {"obj": "basalt_b_lod0", "s": 1.0, "x": 15.5, "y": 2, "z": 0, "yaw": 70},
+  {"obj": "basalt_a_lod0", "s": 1.0, "x": 9, "y": 0.5, "z": 0, "yaw": 0},
+  {"obj": "pebbles_b_lod0", "s": 1.5, "x": 11.5, "y": -1, "z": 0, "yaw": 0},
+  {"obj": "pebbles_a_lod0", "s": 1.5, "x": 3.5, "y": -0.5, "z": 0, "yaw": 0}
+ ],
+ "props": [[0, 3, 0]],
+ "views": {
+  "eye": {"cam": [0, -15, 1.7], "at": [0, 4, 1.4], "lens": 26, "hdri_rot": -270.8},
+  "granite": {"cam": [-9.5, -6.5, 1.7], "at": [-11.5, 4, 1.7], "lens": 30, "hdri_rot": -270.8},
+  "basalt": {"cam": [9, -5.5, 1.7], "at": [11, 3, 0.8], "lens": 30, "hdri_rot": -270.8},
+  "far": {"cam": [0, -42, 7], "at": [0, 4, 1.0], "lens": 45, "hdri_rot": -270.8},
+  "backlit": {"cam": [-9.5, -6.5, 1.7], "at": [-11.5, 4, 1.7], "lens": 30, "hdri_rot": -75.8, "hdri_strength": 0.45,
+              "sun": [8, 190, 3.5]},
+  "pebbles": {"cam": [-9.6, -3.4, 1.2], "at": [-10.5, -1.2, 0.0], "lens": 35, "hdri_rot": -270.8}
+ }
+}

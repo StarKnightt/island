@@ -63,6 +63,8 @@ for path in sys.argv[1:]:
         for k in ('lod_dist', 'bury', 'notes', 'source_scan'):
             if k in P:
                 e[k] = P[k]
+        if isinstance(P.get('scan'), dict):
+            e['source_scan'] = P['scan']['id'] + ' (large-scale shape only)'
         man['pieces'][name] = e
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 json.dump(man, open(OUT, 'w'), indent=1)

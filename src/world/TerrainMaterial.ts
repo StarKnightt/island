@@ -102,14 +102,20 @@ export function createTerrainMaterial(hf: Heightfield) {
   const reef = underwater.mul(smoothstep(0.42, 0.62, reefN)).mul(smoothstep(-0.9, -2.2, h)).mul(sand);
   const notRock = float(1).sub(rock);
   const wBase = float(1).sub(max(max(sand, rock), max(max(grass, dirt), forest))).clamp(0, 1);
+  // the plunge pool's banks: wet dark gravel, rock and moss instead of beach sand; the gorge walls round it wet
+  const pl = hf.meta.pool;
+  const dPool = length(xz.sub(vec2(pl.p[0], pl.p[1])));
+  const poolBank = smoothstep(pl.r + 15, pl.r + 4, dPool).mul(smoothstep(pl.level + 9, pl.level + 2, h));
+  const gorge = smoothstep(46, 20, dPool).mul(smoothstep(pl.level - 6, pl.level + 1, h));
+  const noSand = float(1).sub(poolBank);
   const ws = [
-    sand.mul(float(1).sub(wetShore)).mul(float(1).sub(underwater)),
-    sand.mul(max(wetShore, underwater)).mul(float(1).sub(reef)),
-    forest.mul(float(1).sub(sand)).mul(notRock).add(wBase.mul(0.55)),
+    sand.mul(float(1).sub(wetShore)).mul(float(1).sub(underwater)).mul(noSand),
+    sand.mul(max(wetShore, underwater)).mul(float(1).sub(reef)).mul(noSand),
+    forest.mul(float(1).sub(sand)).mul(notRock).add(wBase.mul(0.55)).add(poolBank.mul(0.55)),
     grass.mul(notRock).mul(float(1).sub(sand.mul(0.8))).add(wBase.mul(0.45)),
-    dirt.mul(float(1).sub(rock.mul(0.7))),
-    rock.mul(float(1).sub(forest.mul(0.5))),
-    rock.mul(forest.mul(0.8).add(0.1)).mul(smoothstep(170, 120, h)),
+    dirt.mul(float(1).sub(rock.mul(0.7))).mul(noSand),
+    rock.mul(float(1).sub(forest.mul(0.5))).add(poolBank.mul(0.5)),
+    rock.mul(forest.mul(0.8).add(0.1)).mul(smoothstep(170, 120, h)).add(poolBank.mul(0.45)).add(gorge.mul(rock).mul(0.6)),
     reef,
   ];
 
@@ -124,7 +130,7 @@ export function createTerrainMaterial(hf: Heightfield) {
   // uneven layer thickness: the band coordinate runs faster and slower with height
   const bandC = h.add(warp).div(4.2).add(mx_noise_float(vec3(h.mul(1 / 9), 0.4, 6.1)).mul(0.6));
   const bandF = fract(bandC);
-  const bandShade = hash(floor(bandC).mul(17.3).add(4.1)).mul(0.4).add(0.8);
+  const bandShade = hash(floor(bandC).mul(17.3).add(4.1)).mul(0.24).add(0.88);
   // joints are broken and come and go along the face
   const jointOn = smoothstep(0.42, 0.62, mx_noise_float(vec3(xz.mul(1 / 9), h.mul(1 / 6))).mul(0.5).add(0.5));
   const groove = smoothstep(0.84, 0.94, bandF).mul(smoothstep(1.0, 0.96, bandF)).mul(jointOn);
@@ -146,7 +152,8 @@ export function createTerrainMaterial(hf: Heightfield) {
       // the arrays decode sRGB on sampling and the packer normalised each layer's mean to its linear target
       const mean = vec3(...TARGET[5]);
       const patch = mix(vec3(1), rockBig.rgb.div(mean), 0.6);
-      const strata = mix(float(1), bandShade.mul(float(1).sub(groove.mul(0.28))), steepW);
+      // (steep faces a little darker, toward the rock kit's basalt, so terrain and kit faces read as one rock)
+      const strata = mix(float(1), bandShade.mul(float(1).sub(groove.mul(0.12))).mul(0.74), steepW);
       // walls: dark runoff streaks (narrow across, long down the face) and broad lighter and darker reaches
       const along = p.x.add(p.z);
       const streak = smoothstep(0.15, 0.65, mx_noise_float(vec3(along.mul(0.32), h.mul(0.022), 2.2)).mul(0.5).add(0.5).mul(
@@ -174,7 +181,7 @@ export function createTerrainMaterial(hf: Heightfield) {
 
   // ---- wetness: shore swash, rain on upward faces, the river banks; darker and glossier
   const rainWet = wetness.rain.mul(smoothstep(0.3, 0.9, n.y));
-  const wet = max(max(wetShore, rainWet), m1.y.mul(0.65)).clamp(0, 1);
+  const wet = max(max(max(wetShore, rainWet), m1.y.mul(0.65)), max(poolBank.mul(0.75), gorge.mul(0.7))).clamp(0, 1);
   albedo = albedo.mul(mix(float(1), float(0.58), wet.mul(float(1).sub(underwater.mul(0.6)))));
   rough = mix(rough, float(0.4), wet.mul(0.8));
   const puddle = wetness.rain.mul(smoothstep(0.58, 0.74, mx_noise_float(vec3(xz.mul(1 / 4.5), 1.3)).mul(0.5).add(0.5)))
