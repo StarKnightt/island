@@ -330,15 +330,38 @@ async function boot() {
   // shaders once, behind the loading screen, which stays up until that frame has been presented.
   mark('scene ready');
   // the priming frames draw everything once, out of view or not (frustum culling off), so every pipeline compiles
-  // behind the loading screen instead of stalling the first time the falls, the village or the lighthouse come into view
+  // behind the loading screen instead of stalling the first time the falls, the village or the lighthouse come into
+  // view. A batch at a time: every mesh starts on the layer of its batch (by material) and the camera and the sun's
+  // shadow cameras see one more layer each frame, so a frame compiles only the pipelines its batch adds; no frame
+  // stalls for long, and the bar moves with the real progress between them.
   const unculled: THREE.Object3D[] = [];
+  const parts: { o: THREE.Object3D; mask: number }[] = [];
+  const byMaterial = new Map<string, THREE.Object3D[]>();
+  // (not compileAsync: in three r186 its pipelines do not match the ones the post chain's scene pass uses, even with
+  // that pass's render target and MRT bound, so every one compiled twice and the start-up doubled)
   scene.traverse((o) => {
-    if (((o as THREE.Mesh).isMesh || (o as THREE.Sprite).isSprite) && o.frustumCulled) {
+    if (!(o as THREE.Mesh).isMesh && !(o as THREE.Sprite).isSprite) return;
+    if (o.frustumCulled) {
       o.frustumCulled = false;
       unculled.push(o);
     }
+    parts.push({ o, mask: o.layers.mask });
+    const mat = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+    const key = Array.isArray(mat) ? mat.map((x) => x.uuid).join() : mat?.uuid ?? o.uuid;
+    (byMaterial.get(key) ?? byMaterial.set(key, []).get(key)!).push(o);
   });
-  veg.prime = weather.prime = lighthouse.prime = kit.prime = 3;
+  const groups = [...byMaterial.values()];
+  const batches = Math.max(1, Math.min(30, groups.length));
+  groups.forEach((g, i) => {
+    for (const o of g) o.layers.set(1 + Math.floor((i * batches) / groups.length));
+  });
+  const viewers = () => [camera, sunLight.shadow.camera, ...((csm as unknown as { lights?: THREE.DirectionalLight[] }).lights ?? []).map((l) => l.shadow.camera)];
+  const viewMasks = viewers().map((c) => c.layers.mask);
+  const seeUpTo = (b: number) => {
+    for (const c of viewers()) c.layers.mask = 2 ** (b + 2) - 1;
+  };
+  seeUpTo(0);
+  veg.prime = weather.prime = lighthouse.prime = kit.prime = batches + 3;
   rocksReady.then(() => (veg.prime = 3));
   engine.start();
   Object.assign(ctx, {
@@ -376,9 +399,33 @@ async function boot() {
   };
   installHarness(ctx);
   ctx.timeline = timeline;
-  // the first frames compile every pipeline: the loading screen stays up until they have been presented
-  loading.progress(0.9);
-  while (engine.frame < 3) await new Promise((r) => setTimeout(r, 50));
+  // the first frames compile every pipeline, a batch per frame: the loading screen stays up until they are presented
+  const frame = async () => {
+    const f = engine.frame;
+    while (engine.frame <= f) await new Promise((r) => setTimeout(r, 4));
+  };
+  const slow: string[] = [];
+  for (let b = 0; b < batches; b++) {
+    seeUpTo(b);
+    const t = performance.now();
+    await frame();
+    const ms = performance.now() - t;
+    if (params.test && ms > 300) {
+      const names = new Set<string>();
+      groups.forEach((g, i) => {
+        if (1 + Math.floor((i * batches) / groups.length) !== b + 1) return;
+        for (const o of g) names.add(((o as THREE.Mesh).material as THREE.Material)?.name || o.name);
+      });
+      slow.push(`${(ms / 1000).toFixed(1)}s ${b === 0 ? '(first frame: post, sky, sea) ' : ''}${[...names].slice(0, 6).join(' ')}`);
+    }
+    loading.status(`Preparing shaders ${b + 1} / ${batches}`);
+    loading.progress(0.86 + (0.12 * (b + 1)) / batches);
+  }
+  if (slow.length) console.info(`[island] slow shader batches: ${slow.join(' | ')}`);
+  for (const { o, mask } of parts) o.layers.mask = mask;
+  viewers().forEach((c, i) => (c.layers.mask = viewMasks[i] ?? 1));
+  await frame();
+  await frame();
   for (const o of unculled) o.frustumCulled = true;
   loading.progress(1);
   mark('first frame');

@@ -178,7 +178,8 @@ function windFrom(look: PlantLook) {
   const gust = sin(t.mul(0.33).add(phase.mul(6.28)).add(positionWorld.x.mul(0.012)).add(positionWorld.z.mul(0.007))).mul(0.5).add(0.5);
   const sway = sin(t.mul(0.9).add(phase.mul(12.0)).add(part.mul(2.2))).mul(0.45).add(gust.mul(0.85));
   const lean = storm.mul(gust.mul(0.6).add(0.9));
-  const amt = bend.mul(bend).mul(strength.mul(sway).add(lean)).mul(look.height * look.sway);
+  // (a uniform, not a constant: every species then shares one shader, see plantMaterial)
+  const amt = bend.mul(bend).mul(strength.mul(sway).add(lean)).mul(TSLTyped.uniform(look.height * look.sway));
   const ft = t.mul(float(7.1).add(storm.mul(4)));
   const fl = sin(ft.add(part.mul(37)).add(positionLocal.x.mul(2.3)).add(positionLocal.z.mul(1.9))).mul(0.7)
     .add(sin(ft.mul(1.9).add(part.mul(11)).add(positionLocal.y.mul(3.1))).mul(0.3))
@@ -196,18 +197,21 @@ export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) 
   const leaf = src.alphaTest > 0 || src.transparent || src.side === THREE.DoubleSide;
   const col = attribute('color', 'vec4');
   const ao = col.x;
-  const base = src.map ? texture(src.map, uv()) : vec4(src.color.r, src.color.g, src.color.b, 1);
+  // (every per-species number is a uniform, not a constant in the code: the species then share a handful of shaders
+  // instead of compiling one pipeline each at start-up)
+  const U = TSLTyped.uniform;
+  const base = src.map ? texture(src.map, uv()) : vec4(U(new THREE.Vector3(src.color.r, src.color.g, src.color.b)), 1);
   // per-instance hue scatter so neighbours of one variant differ
   const iData = attribute('iData', 'vec4');
   const vary = hash(iData.y.mul(1000)).sub(0.5);
   let alb: N = base.rgb.mul(vec3(float(1).add(vary.mul(0.14)), float(1).add(vary.mul(0.07)), float(1).sub(vary.mul(0.1))));
-  if (look.tint) alb = alb.mul(vec3(...look.tint));
+  alb = alb.mul(U(new THREE.Vector3(...(look.tint ?? [1, 1, 1]))));
   // wet leaves and bark go darker and a little more saturated
   alb = alb.mul(mix(vec3(1), vec3(0.56, 0.6, 0.56), wetness.rain));
   m.colorNode = vec4(alb.mul(ao.mul(0.8).add(0.2)), base.a);
   const orm = src.roughnessMap ?? src.metalnessMap ?? src.aoMap;
   // leaves keep a floor: a mirror-smooth card per leaf glints like a lamp in the sun (wet leaves shine a little more)
-  const rough0: N = (orm ? texture(orm, uv()).g.mul(src.roughness) : float(src.roughness)).max(leaf ? 0.58 : 0.3);
+  const rough0: N = (orm ? texture(orm, uv()).g.mul(U(src.roughness)) : U(src.roughness)).max(leaf ? 0.58 : 0.3);
   m.roughnessNode = mix(rough0, rough0.min(leaf ? 0.46 : 0.5), wetness.rain);
   m.metalnessNode = float(0);
   if (orm && src.aoMap) m.aoNode = texture(orm, uv()).r;
@@ -223,7 +227,7 @@ export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) 
     const sunDir = normalize(atmo.sunDir);
     const back = pow(clamp(dot(positionViewDirection.negate(), sunDir.negate()).negate(), 0, 1), 3);
     const facing = clamp(dot(normalWorld, sunDir).negate().add(0.6), 0, 1);
-    m.emissiveNode = alb.mul(vec3(glbU.sunColor)).mul(back.mul(facing).mul(look.translucent * 0.07)).mul(cloudShadow(positionWorld)).mul(ao);
+    m.emissiveNode = alb.mul(vec3(glbU.sunColor)).mul(back.mul(facing).mul(U(look.translucent * 0.07))).mul(cloudShadow(positionWorld)).mul(ao);
   }
   m.positionNode = Fn(() => positionLocal.add(windFrom(look)))();
   return m;
@@ -312,7 +316,7 @@ export function crownMaterial(green: [number, number, number], look: PlantLook) 
   const n1 = mx_noise_float(p.mul(0.55));
   const iData = attribute('iData', 'vec4');
   const vary = hash(iData.y.mul(1000)).sub(0.5);
-  const alb = vec3(...green).mul(float(1).add(vary.mul(0.25))).mul(n1.mul(0.26).add(1)).mul(mix(float(1), float(0.68), wetness.rain));
+  const alb = vec3(TSLTyped.uniform(new THREE.Vector3(...green))).mul(float(1).add(vary.mul(0.25))).mul(n1.mul(0.26).add(1)).mul(mix(float(1), float(0.68), wetness.rain));
   m.colorNode = vec4(alb.mul(col.x), 1);
   // leaf clumps tilt the normal; the gaps between clumps read as shadow
   const bump = mx_noise_vec3(p.mul(1.1)).mul(0.65);

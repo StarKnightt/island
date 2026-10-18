@@ -16,8 +16,12 @@
         transition: opacity 0.9s ease;
       }
       #loading h1 { font: 300 46px/1 ui-serif, Georgia, "Times New Roman", serif; letter-spacing: 0.28em; margin: 0 0 28px; padding-left: 0.28em; color: #f3ecdc; }
-      #loading .bar { width: min(420px, 70vw); height: 2px; background: rgba(255,255,255,0.12); overflow: hidden; border-radius: 2px; }
+      #loading .bar { position: relative; width: min(420px, 70vw); height: 2px; background: rgba(255,255,255,0.12); overflow: hidden; border-radius: 2px; }
       #loading .fill { height: 100%; width: 0%; background: linear-gradient(90deg, #8fd3d1, #f1d6a0); transition: width 0.25s ease; }
+      /* a glint sweeping the bar: a transform animation runs on the compositor, so it keeps moving even while a
+         frame is compiling shaders on the main thread */
+      #loading .bar::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 28%; background: linear-gradient(90deg, transparent, rgba(255,250,235,0.65), transparent); animation: sweep 1.3s linear infinite; will-change: transform; }
+      @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(360%); } }
       #loading .status { margin-top: 14px; font-size: 13px; color: rgba(233,228,216,0.62); min-height: 1.4em; }
       #loading .gpu { position: absolute; bottom: 22px; font-size: 11px; color: rgba(233,228,216,0.35); }
       #loading.done { opacity: 0; pointer-events: none; }

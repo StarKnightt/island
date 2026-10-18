@@ -20,6 +20,7 @@ import { COAST, HALF_WORLD, ISLETS, MASK_RES, WORLD_SIZE } from './layout';
 import { wetness } from './weatherUniforms';
 import { fallsPath } from '../water/fallsPath';
 import { sunLit } from '../core/lighting';
+import { instancedMesh } from '../core/instancing';
 
 /**
  * Piece geometry at scale 1 (from rocks.json and the lod1 meshes): plan extent, how far the face's foot stands out
@@ -513,7 +514,7 @@ export class RockKit {
     this.findLedges();
     for (const [name, set] of this.sets) {
       set.meshes = set.lods.map((parts, l) => parts.map((part) => {
-        const mesh = new THREE.InstancedMesh(part.geometry, part.material, set.places.length);
+        const mesh = instancedMesh(part.geometry, part.material, set.places.length);
         mesh.name = `${name}_l${l}`;
         mesh.castShadow = true;
         mesh.receiveShadow = true;

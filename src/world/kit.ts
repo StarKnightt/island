@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { float, mix, normalize, texture, uv, vec3, vec4, attribute, transformNormalToView, normalMap, type N } from '../core/tsl';
+import { float, mix, normalize, texture, uv, vec3, vec4, attribute, transformNormalToView, normalMap, uniform, type N } from '../core/tsl';
 import { loadKTX2, configureTex } from '../core/Assets';
 import { wetness } from './weatherUniforms';
 export type MatName = 'thatch' | 'bamboo' | 'planks' | 'planks_blue' | 'planks_grey' | 'plaster' | 'wood' | 'paint_wood' | 'rust' | 'bark' | 'bark_smooth' | 'stone' | 'coral_stone' | 'roof_tiles' | 'tin' | 'plaster_blue' | 'stucco';
@@ -33,8 +33,9 @@ export function pbr(name: MatName, opts: { tint?: [number, number, number]; vcol
   m.name = `kit_${key}`;
   const aT = texture(ph(150, 130, 110), uv());
   const nT = texture(ph(128, 128, 200, 1), uv());
-  let col: N = aT.rgb;
-  if (opts.tint) col = col.mul(vec3(...opts.tint));
+  // (the per-material numbers are uniforms, not constants in the code, so every kit material shares one shader and
+  // one pipeline compile; see also flat())
+  let col: N = aT.rgb.mul(uniform(new THREE.Vector3(...(opts.tint ?? [1, 1, 1]))));
   if (opts.vcolor) col = col.mul(attribute('color', 'vec3'));
   // wet in the rain on surfaces facing up
   col = col.mul(mix(float(1), float(0.66), wetness.rain));
@@ -44,10 +45,10 @@ export function pbr(name: MatName, opts: { tint?: [number, number, number]; vcol
   // tangent-space detail normal (the z the packing dropped is rebuilt)
   m.normalNode = normalMap(vec3(nT.x, nT.y, nz.mul(0.5).add(0.5)));
   void normalize; void transformNormalToView;
-  m.roughnessNode = mix(nT.z.mul(opts.roughMul ?? 1), float(0.25), wetness.rain.mul(0.8));
-  m.metalnessNode = float(name === 'rust' ? 0.3 : 0);
+  m.roughnessNode = mix(nT.z.mul(uniform(opts.roughMul ?? 1)), float(0.25), wetness.rain.mul(0.8));
+  m.metalnessNode = uniform(name === 'rust' ? 0.3 : 0);
   m.aoNode = mix(float(1), nT.w, 0.8);
-  if (opts.emissive) m.emissiveNode = vec3(...opts.emissive);
+  m.emissiveNode = uniform(new THREE.Vector3(...(opts.emissive ?? [0, 0, 0])));
   if (opts.double) m.side = THREE.DoubleSide;
   const entry: LibEntry = { mat: m, src: name, aNodes: [aT], nNodes: [nT] };
   lib.set(key, entry);
@@ -233,10 +234,10 @@ export function flat(color: [number, number, number], rough = 0.8, metal = 0, em
   if (hit) return hit.mat;
   const m = new THREE.MeshStandardNodeMaterial();
   m.name = key;
-  m.colorNode = vec4(vec3(...color).mul(attribute('color', 'vec3')).mul(mix(float(1), float(0.7), wetness.rain)), 1);
-  m.roughnessNode = mix(float(rough), float(0.3), wetness.rain.mul(0.7));
-  m.metalnessNode = float(metal);
-  if (emissive) m.emissiveNode = vec3(...emissive);
+  m.colorNode = vec4(uniform(new THREE.Vector3(...color)).mul(attribute('color', 'vec3')).mul(mix(float(1), float(0.7), wetness.rain)), 1);
+  m.roughnessNode = mix(uniform(rough), float(0.3), wetness.rain.mul(0.7));
+  m.metalnessNode = uniform(metal);
+  m.emissiveNode = uniform(new THREE.Vector3(...(emissive ?? [0, 0, 0])));
   lib.set(key, { mat: m, src: '', aNodes: [], nNodes: [] });
   return m;
 }

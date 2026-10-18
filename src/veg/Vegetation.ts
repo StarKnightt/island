@@ -13,6 +13,7 @@ import { Rng, Noise2 } from '../core/noise';
 import type { Heightfield } from '../world/Heightfield';
 import { HALF_WORLD, VILLAGE } from '../world/layout';
 import { sunLit } from '../core/lighting';
+import { SHARED_INSTANCES } from '../core/instancing';
 import { grassClump, type PartGeo } from './geometry';
 import { wetness } from '../world/weatherUniforms';
 import { loadKTX2, configureTex } from '../core/Assets';
@@ -194,7 +195,8 @@ export class Vegetation {
     // meshes: per lod, per part, one InstancedMesh sharing one matrix buffer and one data buffer
     for (let l = 0; l < sp.lods.length; l++) {
       const lod = sp.lods[l];
-      const cap = Math.max(16, Math.min(sp.count, this.capacityFor(lod.maxDist, sp.count)));
+      // (see core/instancing.ts: a smaller instanced mesh gets a vertex shader of its own)
+      const cap = Math.max(SHARED_INSTANCES, Math.min(sp.count, this.capacityFor(lod.maxDist, sp.count)));
       const matrix = new THREE.InstancedBufferAttribute(new Float32Array(cap * 16), 16);
       matrix.setUsage(THREE.DynamicDrawUsage);
       const data = new THREE.InstancedBufferAttribute(new Float32Array(cap * 4), 4);

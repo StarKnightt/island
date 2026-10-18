@@ -10,6 +10,7 @@ import type { Heightfield } from './Heightfield';
 import type { Colliders } from './Colliders';
 import { Rng } from '../core/noise';
 import { loadGLTF } from '../core/Assets';
+import { instancedMesh } from '../core/instancing';
 import {
   float, fract, smoothstep, uv, vec4, vec3, abs, min, max, attribute, mix, positionLocal, sin, uniform, Fn,
   uniformArray, instanceIndex, vec2, length, pow,
@@ -272,7 +273,7 @@ export class Village {
     ];
     this.boats.push(...defs);
     for (const part of hull) {
-      const im = new THREE.InstancedMesh(part.geometry, part.material, defs.length);
+      const im = instancedMesh(part.geometry, part.material, defs.length);
       im.castShadow = true;
       im.receiveShadow = true;
       im.frustumCulled = false;
@@ -408,7 +409,7 @@ export class Village {
     // brighter low in the opening (the lamp stands on the floor), a little cooler at the top
     const v = uv().y;
     gm.colorNode = vec4(mix(warm, vec3(0.9, 0.6, 0.35), v).mul(mix(float(1.2), float(0.6), v)).mul(flick).mul(L).mul(0.05), 1);
-    const glow = new THREE.InstancedMesh(geo, gm, this.glows.length);
+    const glow = instancedMesh(geo, gm, this.glows.length);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
     this.glows.forEach((g, i) => {
       q.setFromAxisAngle(up, g.yaw);
