@@ -332,7 +332,7 @@ async function boot() {
     const f = engine.frame;
     while (engine.frame <= f) await new Promise((r) => setTimeout(r, 4));
   };
-  const prime = async (label: string, from?: number, to?: number) => {
+  const prime = async (label: string, from?: number, to?: number, maxBatches = 4) => {
     const unculled: THREE.Object3D[] = [];
     const parts: { o: THREE.Object3D; mask: number }[] = [];
     const byMaterial = new Map<string, THREE.Object3D[]>();
@@ -348,18 +348,23 @@ async function boot() {
       (byMaterial.get(key) ?? byMaterial.set(key, []).get(key)!).push(o);
     });
     const groups = [...byMaterial.values()];
-    const batches = Math.max(1, Math.min(8, groups.length));
+    // (few batches: every priming frame draws the whole island unculled, and the GPU compiles in parallel anyway)
+    const batches = Math.max(1, Math.min(maxBatches, groups.length));
     groups.forEach((g, i) => {
       for (const o of g) o.layers.set(1 + Math.floor((i * batches) / groups.length));
     });
     const viewMasks = viewers().map((c) => c.layers.mask);
     veg.prime = weather.prime = lighthouse.prime = kit.prime = batches + 2;
+    const times: string[] = [];
     for (let b = 0; b < batches; b++) {
       for (const c of viewers()) c.layers.mask = 2 ** (b + 2) - 1;
+      const tb = performance.now(), p0 = engine.pipelinesCompiled + engine.pipelinesPending;
       await frame();
+      times.push(`${(performance.now() - tb).toFixed(0)}ms/+${engine.pipelinesCompiled + engine.pipelinesPending - p0}`);
       loading.status(`${label} ${b + 1} / ${batches}`);
       if (from !== undefined && to !== undefined) loading.progress(from + ((to - from) * (b + 1)) / batches);
     }
+    if (params.test) console.info(`[island] ${label}: ${groups.length} materials, batches ${times.join(' ')}`);
     await frame();
     for (const { o, mask } of parts) o.layers.mask = mask;
     viewers().forEach((c, i) => (c.layers.mask = viewMasks[i] ?? 1));
@@ -389,6 +394,29 @@ async function boot() {
     // valley and the jungle in the middle, the beach and its reef right of centre, the ocean beyond
     lighthouse: { pos: [LIGHTHOUSE.p[0] + Math.cos(0.66) * 3.0, gy + 1.75, LIGHTHOUSE.p[1] + Math.sin(0.66) * 3.0], target: [173, 66, 69], fov: 52 },
   };
+  // At sunset the authored views would look away from the sun (the beach faces the sunrise sea), so the beach, the
+  // village and the gallery turn into it: palms in silhouette on the beach, the western shore from the jetty's end,
+  // the sun over the western sea from the rail. The aim follows the sun's real azimuth.
+  ctx.shotPoseFor = (spot: string) => {
+    const sd = atmo.sunDir.value as THREE.Vector3;
+    if (!(tod.hour > 14.5 && tod.hour < 19.5 && sd.y > -0.08 && sd.y < 0.3)) return undefined;
+    const h = Math.hypot(sd.x, sd.z) || 1, ax = sd.x / h, az = sd.z / h;
+    const toward = (p: number[], d: number, y: number) => [p[0] + ax * d, y, p[2] + az * d];
+    if (spot === 'beach') {
+      const p = [622, H(622, 38) + 1.5, 38];
+      return { pos: p, target: toward(p, 140, H(p[0] + ax * 140, p[2] + az * 140) + 16), fov: 52 };
+    }
+    if (spot === 'village') {
+      const p = [-449.5, 3.3, 385];
+      return { pos: p, target: toward(p, 160, 9), fov: 55 };
+    }
+    if (spot === 'lighthouse') {
+      const a = Math.atan2(az, ax);
+      const p = [LIGHTHOUSE.p[0] + Math.cos(a) * 3.0, gy + 1.75, LIGHTHOUSE.p[1] + Math.sin(a) * 3.0];
+      return { pos: p, target: toward(p, 700, gy - 150), fov: 52 };
+    }
+    return undefined;
+  };
   ctx.forceRefresh = () => {
     veg.update(camera, 60, true);
     sky.update(0, scene, true);
@@ -415,7 +443,7 @@ async function boot() {
   veg.update(camera, 60, true);
   mark('scene ready');
   assetBar = false;
-  await prime('Preparing plant shaders', 0.75, 0.8);
+  await prime('Preparing plant shaders', 0.75, 0.8, 2);
   rocksReady.then(() => (veg.prime = Math.max(veg.prime, 3)));
   // the driver's threads finish the pipelines while ordinary frames run
   const t0 = performance.now();

@@ -279,13 +279,6 @@ function reefWidthAt(x: number, z: number) {
 }
 const reefW = new Float32Array(N * N);
 for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) reefW[j * N + i] = reefWidthAt(wx(i), wx(j));
-if (process.env.ISLAND_REEF_DEBUG) {
-  for (const [x, z] of [[700, 0], [800, 100], [900, 0], [720, -150], [450, 600], [450, 700], [160, -560]] as V2[]) {
-    const i = Math.floor(x + HALF_WORLD), j = Math.floor(z + HALF_WORLD), k = j * N + i;
-    const nb = toMain.nearest[k];
-    console.log(`reef debug (${x}, ${z}): dm ${(toMain.dist[k] * CELL).toFixed(1)} W ${reefW[k].toFixed(1)} sd ${sd[k].toFixed(1)} nearest (${(nb % N) - HALF_WORLD}, ${Math.floor(nb / N) - HALF_WORLD})`);
-  }
-}
 /** live bottom (coral, algae, seagrass) under the sea, 0..1, for the masks */
 const liveBed = new Float32Array(N * N);
 // the pass off the river mouth: a channel through the lagoon and the reef, out to deep water
@@ -355,7 +348,6 @@ function reefBed(h: number, idx: number, x: number, z: number, d: number): numbe
   D = lerp(D, Math.min(D, D0), islet);
   live *= 1 - islet * (1 - smoothstep(10, 40, d));
   liveBed[idx] = clamp(live, 0, 1) * wR;
-  if (process.env.ISLAND_REEF_DEBUG && (idx % 9973 === 0) && dm > 100 && dm < 400) console.log(`  reefBed (${x.toFixed(0)}, ${z.toFixed(0)}) dm ${dm.toFixed(0)} W ${W.toFixed(0)} wR ${wR.toFixed(2)} C ${C.toFixed(0)} flatIn ${flatIn.toFixed(0)} D0 ${D0.toFixed(2)} D ${D.toFixed(2)} islet ${islet.toFixed(2)} d ${d.toFixed(0)}`);
   return lerp(h, -Math.max(D, 0.25), wR);
 }
 

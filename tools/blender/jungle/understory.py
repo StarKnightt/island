@@ -207,7 +207,7 @@ def make_banana(at, seed, lod, tall):
             pe = pb + J.norm(pdir) * pet
             stem_tube(mb, np.array([pb, (pb + pe) / 2, pe]), [0.035, 0.028, 0.022], 5 if lod == 0 else 3, 'banana',
                       gtop, gtop + 0.08, ph, v_per_m=0.5)
-            tiles = ['banana_intact', 'banana_torn', 'banana_torn', 'banana_shredded']
+            tiles = ['banana_intact', 'banana_torn', 'banana_shredded', 'banana_torn', 'banana_shredded']
             tile = tiles[rng.integers(0, len(tiles))] if not young else 'banana_intact'
             lph = float(rng.uniform())
             banana_leaf(mb, at, rng, pe, az, elev, L, W, math.radians(rng.uniform(60, 120) if not young else 25), tile,
@@ -217,9 +217,9 @@ def make_banana(at, seed, lod, tall):
             az = rng.uniform(0, 2 * math.pi)
             pb = top + np.array([math.cos(az) * (r0 + 0.12), math.sin(az) * (r0 + 0.12), -rng.uniform(0.05, 0.35)])
             L = h * rng.uniform(0.35, 0.5)
-            banana_leaf(mb, at, rng, pb, az, math.radians(rng.uniform(-88, -72)), L, L * 0.22,
+            banana_leaf(mb, at, rng, pb, az, math.radians(rng.uniform(-88, -72)), L, L * 0.3,
                         math.radians(rng.uniform(-8, 8)), 'banana_dead', lod, gtop, float(rng.uniform()),
-                        droop_a=math.radians(rng.uniform(65, 80)), hang=True)
+                        droop_a=math.radians(rng.uniform(30, 50)), hang=True)
     return mb
 
 
@@ -468,27 +468,25 @@ def make_treefern(at, seed, lod, height):
     top = pts[-1]
     srng = np.random.default_rng(int(rng.integers(1 << 30)))  # own generator: LOD1 keeps LOD0's frond sequence
     if lod == 0:  # shaggy trunk: old stipe bases spiralling up, densest just under the crown
-        rng, mrng = srng, rng
-        nst = int(rng.integers(52, 62))
+        nst = int(srng.integers(52, 62))
         for k in range(nst):
-            f = 1 - (1 - (k + rng.uniform()) / nst) ** 1.3
+            f = 1 - (1 - (k + srng.uniform()) / nst) ** 1.3
             z = height - 0.04 - (1 - f) * min(1.3, 0.22 * height)
             i = min(int(z / height * n), n - 1)
             fz = z / height * n - i
             c = pts[i] * (1 - fz) + pts[i + 1] * fz
             rr = radii[i] * (1 - fz) + radii[i + 1] * fz
-            a = k * 2.4 + rng.normal(0, 0.25)
+            a = k * 2.4 + srng.normal(0, 0.25)
             d = np.array([math.cos(a), math.sin(a), 0.0])
             # old stipe bases: stiff and rising near the crown, broken and drooping lower down
-            el = math.radians(rng.uniform(25, 60) if f > 0.4 else rng.uniform(-30, 30))
+            el = math.radians(srng.uniform(25, 60) if f > 0.4 else srng.uniform(-30, 30))
             dd = J.norm(d * math.cos(el) + np.array([0, 0, math.sin(el)]))
-            ln = rng.uniform(0.08, 0.22) * (0.6 + 0.4 * f)
+            ln = srng.uniform(0.08, 0.22) * (0.6 + 0.4 * f)
             p0 = c + d * rr * 0.7
             mid = p0 + dd * ln * 0.55 + np.array([0, 0, -0.03])
             stem_tube(mb, [p0, mid, p0 + dd * ln + np.array([0, 0, -0.05 * (1 - f)])],
-                      [rng.uniform(0.035, 0.06), 0.03, 0.01], 4, 'fern', gtop * z / height, gtop * z / height, ph0,
+                      [srng.uniform(0.035, 0.06), 0.03, 0.01], 4, 'fern', gtop * z / height, gtop * z / height, ph0,
                       ao0=0.4, ao1=0.7, v_per_m=2.0)
-        rng = mrng
     nf = int(rng.integers(26, 33)) if lod == 0 else int(rng.integers(18, 23))
     a0 = rng.uniform(0, 2 * math.pi)
     for k in range(nf):

@@ -133,7 +133,8 @@ export function installHarness(ctx: Ctx) {
       if (o.weather) api.setWeather(o.weather, true);
       if (o.worldTime !== undefined) engine.frozenTime = o.worldTime;
       if (o.camera === 'shot' && o.spot) {
-        const pose = ctx.shotPoses?.[o.spot];
+        // (the low evening sun gets a pose that looks into it where the spot's own does not)
+        const pose = ctx.shotPoseFor?.(o.spot) ?? ctx.shotPoses?.[o.spot];
         if (pose) api.setCamera(pose);
       } else if (o.camera) api.setCamera(o.camera as never);
       else api.setCamera('follow');

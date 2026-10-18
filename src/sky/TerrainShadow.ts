@@ -44,6 +44,8 @@ const tsU = {
 let quad: THREE.QuadMesh | null = null;
 const last = new THREE.Vector3(0, -2, 0);
 let age = 1e9;
+/** frames left to repeat the latest bake: a draw whose pipeline is still compiling is skipped */
+let again = 0;
 
 /** build the bake from the heightfield's texture and the masks (forest in mask0's alpha), once at start-up */
 export function initTerrainShadow(heightTex: THREE.Texture, mask0Tex: THREE.Texture) {
@@ -95,12 +97,13 @@ export function updateTerrainShadow(renderer: THREE.WebGPURenderer, lightDir: TH
   const el = Math.asin(THREE.MathUtils.clamp(lightDir.y, -1, 1));
   // with the light high the hills' shadows are short and the cascades have them
   const on = 1 - THREE.MathUtils.smoothstep(el, 0.45, 0.6);
-  if (on <= 0 || el < -0.02) {
-    tsU.on.value = 0;
-    return;
-  }
+  const active = on > 0 && el >= -0.02;
   const moved = lightDir.angleTo(last) > 0.0035;
-  if (force || (moved && age > 0.25) || (age > 4 && lightDir.angleTo(last) > 0.0005)) {
+  // a forced update (the first frame, before pipelines compile asynchronously) always bakes, whatever the light
+  const bake = force || (active && ((moved && age > 0.25) || (age > 4 && lightDir.angleTo(last) > 0.0005)));
+  if (bake) again = 2;
+  if (bake || again > 0) {
+    if (!bake) again--;
     age = 0;
     last.copy(lightDir);
     const h = Math.hypot(lightDir.x, lightDir.z) || 1;
@@ -112,7 +115,7 @@ export function updateTerrainShadow(renderer: THREE.WebGPURenderer, lightDir: TH
     quad.render(renderer);
     renderer.setRenderTarget(prev);
   }
-  tsU.on.value = on;
+  tsU.on.value = active ? on : 0;
   // the canopy's shade beyond the cascades matters only while the sun comes in low (its casters lie far off-screen)
   tsU.canopy.value = 1 - THREE.MathUtils.smoothstep(el, 0.12, 0.35);
 }

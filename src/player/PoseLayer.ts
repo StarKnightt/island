@@ -140,6 +140,16 @@ export class PoseLayer {
     }
 
     const idle = p.idle;
+    if (idle > 0.01 && p.plant > 0.5) {
+      // the clip stands with one foot 38 cm ahead of the other (mid-stride from the side): bring the feet closer
+      // to a relaxed stance, a hand's length apart front to back, keeping their spread and their angles
+      const mid = _a.addVectors(this.target[0], this.target[1]).multiplyScalar(0.5);
+      for (let i = 0; i < 2; i++) {
+        const off = _b.subVectors(this.target[i], mid);
+        const along = off.dot(fwd);
+        this.target[i].addScaledVector(fwd, -along * 0.6 * idle);
+      }
+    }
     if (idle > 0.01) {
       // weight shift: about seven seconds on each leg, a two-second transfer between
       const shift = THREE.MathUtils.smoothstep(Math.sin((t * Math.PI * 2) / 15), -0.45, 0.45) * 2 - 1;
@@ -200,7 +210,7 @@ export class PoseLayer {
       const parent = lid.bone.parent!;
       parent.updateWorldMatrix(true, false);
       const w = parent.localToWorld(_a.copy(lid.rest));
-      w.addScaledVector(this.headUp(), (lid.top ? -0.0045 : 0.0012) * close);
+      w.addScaledVector(this.headUp(), (lid.top ? -0.0095 : 0.0022) * close);
       lid.bone.position.copy(parent.worldToLocal(w));
     }
 

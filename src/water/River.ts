@@ -25,6 +25,9 @@ import { heightLookup } from '../world/Terrain';
 import { HALF_WORLD, WORLD_SIZE } from '../world/layout';
 
 export const riverU = { time: uniform(0) };
+/** TEMP diagnostics (falls helper): runtime switches for the pool's mirror */
+export const poolDbg = { flip: uniform(0), mirror: uniform(1) };
+(window as unknown as { __fallsDbg?: unknown }).__fallsDbg = poolDbg;
 
 /**
  * Rain on standing water: rings spreading from drops that land at random in ~0.4 m cells (two layers), as a surface
@@ -151,6 +154,9 @@ export class River {
   private poolMaterial() {
     const m = sunLit(new THREE.MeshStandardNodeMaterial());
     m.name = 'water_pool';
+    // its own environment at zero: the mirror below replaces the sky reflection (left unset, the scene's
+    // environment would apply at full strength)
+    this.waterMats.push({ m, env: 0 });
     m.transparent = true;
     m.depthWrite = true;
     const p = positionWorld, q = p.xz;
@@ -191,7 +197,7 @@ export class River {
     const sigma = mix(vec3(0.95, 0.5, 0.58), vec3(1.25, 1.15, 1.3), turbid);
     const T = exp(sigma.negate().mul(min(dEff, 30)));
     const bed = behind.mul(mix(float(0.72), float(1.12), bedN)).mul(vec3(0.92, 1.0, 0.94));
-    const jade = mix(vec3(0.03, 0.078, 0.066), vec3(0.075, 0.06, 0.036), turbid);
+    const jade = mix(vec3(0.012, 0.036, 0.03), vec3(0.05, 0.04, 0.024), turbid);
     // ---- foam: a solid boil under the falls breaking into lace that drifts and spreads toward the outflow
     const down = max(ra, 0);
     const spread = down.mul(0.42).add(this.impactW * 0.45 + 1.5);
@@ -214,7 +220,9 @@ export class River {
     const tc = sqrt(max(b.mul(b).sub(a.mul(c)), 0)).sub(b).div(a);
     const H = p.add(R.mul(tc));
     const vH = cameraViewMatrix.mul(vec4(H, 1)).xyz;
-    const uvH = getScreenPosition(vH, cameraProjectionMatrix);
+    // (the viewport copy's v runs the other way from getScreenPosition's on WebGPU)
+    const uvH0 = getScreenPosition(vH, cameraProjectionMatrix);
+    const uvH = vec2(uvH0.x, mix(float(1).sub(uvH0.y), uvH0.y, poolDbg.flip));
     const onScreen = smoothstep(0, 0.06, uvH.x).mul(smoothstep(1, 0.94, uvH.x)).mul(smoothstep(0, 0.06, uvH.y)).mul(smoothstep(1, 0.94, uvH.y));
     const dH = vH.z.negate();
     // (something nearer than the wall stands at that point on screen: the player, a boulder on the bank)
@@ -223,7 +231,7 @@ export class River {
     const cloud = cloudShadow(p);
     const lightE = atmo.lightE.mul(1 / Math.PI);
     const surround = vec3(0.045, 0.06, 0.04).mul(lightE).mul(mix(float(0.7), float(1), cloud));
-    let mirror: N = mix(surround, viewportSharedTexture(uvH).rgb.mul(0.9), wMirror);
+    let mirror: N = mix(surround, viewportSharedTexture(uvH).rgb.mul(0.9), wMirror.mul(poolDbg.mirror));
     // the falls in the mirror: where the reflected ray crosses the plane of the falling water
     const lip = vec2(this.fallsLip.x, this.fallsLip.y);
     const den = dot(R.xz, fd);
@@ -236,11 +244,13 @@ export class River {
     const streak = texture(laceTex, vec2(dot(Hf.xz.sub(lip), ac).div(3.1), Hf.y.add(t.mul(7)).div(13))).b;
     const inFalls = smoothstep(halfW, halfW.sub(0.9), acrossF).mul(smoothstep(this.fallsTop + 0.4, this.fallsTop - 0.6, Hf.y))
       .mul(select(tf.greaterThan(0).and(tf.lessThan(tc)), float(1), float(0)));
-    const fallsRad = vec3(0.78, 0.8, 0.8).mul(lightE).mul(mix(float(0.35), float(0.75), streak)).mul(this.fallsShade);
-    mirror = mix(mirror, fallsRad, inFalls.mul(0.85));
+    const fallsRad = vec3(0.78, 0.8, 0.8).mul(lightE).mul(mix(float(0.2), float(0.5), streak)).mul(this.fallsShade);
+    // (the chop round the plunge scatters it: a clear image only on the calmer water)
+    mirror = mix(mirror, fallsRad, inFalls.mul(float(0.75).sub(agit.mul(0.6))));
     // ---- light: the sun on the jade body and the foam comes from the lighting model; the sky (most of it hidden by
     // the gorge) is added here, as are the bed seen through the water and the mirror
-    const skyE = varying(particleSky()).mul(1.7);
+    // (a Lambert surface under a sky of radiance L gives back albedo x L; the gorge hides about half of the sky)
+    const skyE = varying(particleSky()).mul(0.5);
     const diffuse = mix(jade.mul(float(1).sub(T)), vec3(0.85, 0.88, 0.86), foam);
     m.colorNode = vec4(diffuse, 1);
     m.roughnessNode = mix(float(0.05), float(0.75), foam);

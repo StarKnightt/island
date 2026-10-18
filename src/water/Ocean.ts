@@ -27,6 +27,7 @@ import { clouds } from '../sky/Sky';
 import { Q } from '../core/quality';
 import { sceneViewDepth } from '../core/depth';
 import { surfU, coastAt, waves, swash, laceMask, bubbleMask, type Coast } from './surf';
+import { reefCrestDist } from './seaReef';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const TSL = TSLTyped as any;
@@ -79,11 +80,13 @@ function polarGrid(segments: number, rings: number, rMax: number) {
 
 /**
  * Direct light on the water: Lambert for the light scattered inside it (the albedo) and a GGX glint whose facets are
- * world-anchored cells that each catch the light or not. In the middle of the lobe most facets do (a smooth bright
- * core), in its tail few do (separate sparkles); `sparkle` is the cell's random value, `contrast` 0 makes it smooth.
+ * world-anchored cells that each catch the light or not. The share that does follows the lobe, times `cover` (a few
+ * cells even at its core near the viewer, all of them far out), and the lit cells carry the light of the dark ones,
+ * so the path is a field of separate sparkles densest under the sun; `sparkle` is the cell's random value,
+ * `contrast` 0 makes it smooth (overcast, foam).
  */
 class OceanLighting extends PhysicalLightingModel {
-  constructor(private glint: { sparkle: N; contrast: N }) {
+  constructor(private glint: { sparkle: N; contrast: N; cover: N }) {
     super();
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -98,15 +101,16 @@ class OceanLighting extends PhysicalLightingModel {
     const D = D_GGX({ alpha: a, dotNH });
     const vis = V_GGX_SmithCorrelated({ alpha: a, dotNL, dotNV });
     const F = float(0.02).add(float(0.98).mul(pow(float(1).sub(dotVH), 5)));
-    const tail = float(1).sub(D.mul(a.pow2()).mul(Math.PI)).clamp(0, 1);
-    const k = mix(float(1.5), float(10), tail).mul(this.glint.contrast);
-    const spark = pow(this.glint.sparkle, k).mul(k.add(1));
+    const lobe = D.mul(a.pow2()).mul(Math.PI).clamp(0, 1);
+    const p = lobe.mul(this.glint.cover).max(0.002);
+    const lit = smoothstep(float(1).sub(p).sub(0.04), float(1).sub(p), this.glint.sparkle);
+    const spark = mix(float(1), lit.div(p.add(0.02)).min(30), this.glint.contrast);
     reflectedLight.directSpecular.addAssign(irr.mul(F.mul(D).mul(vis)).mul(spark));
   }
 }
 
 class OceanMaterial extends THREE.MeshPhysicalNodeMaterial {
-  glint = { sparkle: float(0.5) as N, contrast: float(0) as N };
+  glint = { sparkle: float(0.5) as N, contrast: float(0) as N, cover: float(1) as N };
   setupLightingModel() {
     return new OceanLighting(this.glint);
   }
@@ -142,10 +146,15 @@ export class Ocean {
     const heightAt = heightLookup(hf);
     const PIXEL_ANGLE = 0.0011;
 
-    /** how much of the open-sea field reaches here: lagoons calmer, nothing over the sand, the cove nearly glassy */
+    /**
+     * how much of the open-sea field reaches here: lagoons calmer (behind the reef the swell has broken on its crest),
+     * nothing over the sand, the cove nearly glassy
+     */
     const damping = (c: Coast, depth: N) => {
       const lagoon = mix(float(1), float(0.45), c.wb.mul(smoothstep(-300, -150, c.s)));
-      return lagoon.mul(smoothstep(0.0, 5.0, depth)).mul(float(0.7).add(oceanU.storm.mul(0.6))).mul(float(1).sub(c.shelter.mul(0.85)));
+      const W = reefCrestDist(c.along);
+      const inReef = smoothstep(105, 175, W).mul(smoothstep(W.add(15), W.sub(25), c.d)).mul(smoothstep(7, 4, depth));
+      return lagoon.mul(mix(float(1), float(0.3), inReef)).mul(smoothstep(0.0, 5.0, depth)).mul(float(1).add(oceanU.storm.mul(0.4))).mul(float(1).sub(c.shelter.mul(0.85)));
     };
 
     /** displacement of the open-sea cascades at xz, faded by pixel footprint */
@@ -232,7 +241,16 @@ export class Ocean {
       const sheetFoam = laceMask(sw.sheetFoam, xz, w.n0, c.nrm, float(1.6), sw.back).mul(onSheet);
       const capsA = smoothstep(mix(float(0.75), float(0.4), oceanU.storm), float(1.6), foamH.mul(damp)).mul(float(0.55).add(oceanU.storm.mul(0.9)));
       const caps = laceMask(capsA, xz, float(0), vec2(0.6, 0.8), float(0));
-      const foam = max(max(surfFoam, lip), max(sheetFoam, caps)).clamp(0, 1);
+      // surf on the reef crest: the swell breaks where the bed comes up off the fore-reef onto the flat; white water
+      // just behind the edge, thinning across the flat, each stretch of the crest breaking in its own time
+      const depthH = max(ground.negate(), 0);
+      const seawardD = (dist: number) => max(heightAt(xz.sub(c.nrm.mul(dist))).negate(), 0);
+      const onReef = smoothstep(105, 175, reefCrestDist(c.along)).mul(smoothstep(30, 55, c.d)).mul(smoothstep(1.8, 0.9, depthH));
+      const reefEdge = max(max(smoothstep(2.0, 5.0, seawardD(7)), smoothstep(2.0, 5.0, seawardD(18)).mul(0.65)), smoothstep(2.0, 5.0, seawardD(34)).mul(0.3));
+      const crestVary = mx_noise_float(vec3(c.along.div(31), w.n.mul(0.77), 4.4)).mul(0.35).add(0.8);
+      const reefAmt = onReef.mul(reefEdge).mul(exp(w.age.div(-1.6)).mul(0.95).add(exp(w.age.div(-6)).mul(0.4))).mul(crestVary);
+      const reefFoam = laceMask(reefAmt.clamp(0, 1), xz, w.n, c.nrm, w.age.mul(0.9));
+      const foam = max(max(max(surfFoam, lip), max(sheetFoam, caps)), reefFoam).clamp(0, 1);
 
       // ---- refraction: the sea bed along the refracted rays, absorbed over the in-water path
       const cosT = sqrt(float(1).sub(float(1).sub(NdotV.mul(NdotV)).div(1.777)));
@@ -272,24 +290,30 @@ export class Ocean {
       const sparkle = mix(cellAt(s0), cellAt(s0.mul(2)), fract(lv));
       const sky = float(1).sub(atmo.overcast);
       const contrast = sky.mul(sky).mul(float(1).sub(foam)).mul(float(1).sub(onSheet.mul(0.6)));
+      // the share of facet cells that can catch the light at the core of the lobe: a few near the viewer (separate
+      // glints with dark gaps between them), all of them far out where one pixel holds many facets
+      const cover = mix(float(0.22), float(1), smoothstep(0.5, 6.0, fp));
       // roughness: calm water, a little more where the slopes are no longer resolved, rain, foam
       const alpha0 = float(0.03).add(oceanU.rain.mul(0.05));
       const alpha = sqrt(alpha0.mul(alpha0).add(lost.mul(2)));
       const rough = mix(sqrt(alpha), float(0.75), foam);
       const dbg = vec3(w.foam, c.wc, smoothstep(0, 20, c.d));
-      return { N0, NdotV, foam, bed, body, rough, sparkle, contrast, dbg };
+      return { N0, NdotV, foam, bed, body, rough, sparkle, contrast, cover, dbg };
     })();
 
     m.glint.sparkle = shade.sparkle;
     m.glint.contrast = shade.contrast;
+    m.glint.cover = shade.cover;
     const foamCol = vec3(0.86, 0.88, 0.88);
     m.colorNode = vec4(mix(shade.body, foamCol, shade.foam), 1);
     m.roughnessNode = shade.rough;
     m.metalnessNode = float(0);
     m.normalNode = transformNormalToView(shade.N0);
-    // the light from the bed comes through; the Fresnel share of the surface reflects the sky instead
+    // the light from the bed comes through; the Fresnel share of the surface reflects the sky instead (by night the
+    // bed, lit by the moon or a lamp through the water, stays dim: dark water, not shallows glowing cyan)
     const F = float(0.02).add(float(0.98).mul(pow(float(1).sub(shade.NdotV), 5)));
-    m.emissiveNode = select(oceanU.debug.greaterThan(0.5), shade.dbg.mul(oceanU.debug.mul(0.5)), shade.bed.mul(float(1).sub(F)).mul(float(1).sub(shade.foam)));
+    const byDay = mix(float(0.22), float(1), smoothstep(-0.08, 0.1, atmo.sunDir.y));
+    m.emissiveNode = select(oceanU.debug.greaterThan(0.5), shade.dbg.mul(oceanU.debug.mul(0.5)), shade.bed.mul(float(1).sub(F)).mul(float(1).sub(shade.foam)).mul(byDay));
     m.opacityNode = float(1);
     return m;
   }

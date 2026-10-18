@@ -81,19 +81,24 @@ def banana(variant, seed, W=256, H=1024):
         col = col * (1 - 0.3 * mott) + T.srgb8(132, 100, 62) * 0.3 * mott
         col = col * (1 - 0.3 * veins[..., None])
     # tears along the veins
-    ntear = {'intact': rng.integers(2, 5), 'torn': rng.integers(9, 14), 'shredded': rng.integers(20, 30), 'dead': rng.integers(14, 22)}[variant]
+    ntear = {'intact': rng.integers(5, 9), 'torn': rng.integers(16, 24), 'shredded': rng.integers(30, 42), 'dead': rng.integers(34, 46)}[variant]
     rim = np.zeros((H, W), np.float32)
+    # tears wander off the vein line a little and their edges fray (no ruler-straight cuts)
+    wob = 0.55 * T.fft_noise(H, W, beta=2.0, seed=seed + 21, aniso=(1.0, 0.4))
+    frz = T.fft_noise(H, W, beta=1.1, seed=seed + 22)
     for side in (-1, 1):
         for k in range(ntear):
             t0 = rng.uniform(0.06, 0.95)
-            depth = rng.uniform(0.55, 0.96) if variant != 'intact' else rng.uniform(0.2, 0.55)
+            depth = rng.uniform(0.55, 0.96) if variant != 'intact' else rng.uniform(0.3, 0.7)
+            if dead:
+                depth = 0.7 + 0.29 * (depth - 0.55) / 0.41
             gap = rng.uniform(1.6, 3.0) if rng.uniform() > 0.35 else rng.uniform(4.0, 10.0)
             if variant == 'intact':
                 gap = rng.uniform(1.2, 2.0)
             # tear follows the vein line through (t0 at the margin)
             ph0 = (t0 * L - hw * (math.tan(ang) + 0.15)) / 2.6
-            dph = np.abs(ph - ph0)
-            g = gap * (0.25 + 0.75 * as_ ** 1.5)  # strips spread apart toward the margin
+            dph = np.abs(ph + wob - ph0)
+            g = gap * (0.25 + 0.75 * as_ ** 1.5) + 0.7 * frz  # strips spread apart toward the margin
             on = (np.sign(s) == side) & (as_ > (1 - depth)) & (dph * 2.6 < g)
             alpha = alpha * np.where(on, 0.0, 1.0)
             rim = np.maximum(rim, ((np.sign(s) == side) & (as_ > (1 - depth)) & (dph * 2.6 < g + 1.5)).astype(np.float32))
@@ -106,6 +111,9 @@ def banana(variant, seed, W=256, H=1024):
             dd = np.sqrt(((t - t0) * L / (d * hw * 0.8)) ** 2 + ((1 - as_) / d) ** 2) + 0.35 * rag
             on = (np.sign(s) == side) & (dd < 1.0)
             alpha = alpha * np.where(on, 0.0, 1.0)
+        # frayed, nibbled margins
+        fray = T.fft_noise(H, W, beta=1.0, seed=seed + 24)
+        alpha = alpha * np.clip(sd - 1.0 - (3.5 if dead else 2.0) * np.clip(fray, 0, None) + 0.5, 0, 1)
     col = col * (1 - 0.35 * rim[..., None] * (alpha > 0)[..., None]) + T.srgb8(110, 84, 50) * 0.35 * rim[..., None] * (alpha > 0)[..., None]
     hgt = -0.9 * T.blur(midrib, 1.5) + 0.25 * veins + 0.4 * major + 0.08 * nst
     if dead:

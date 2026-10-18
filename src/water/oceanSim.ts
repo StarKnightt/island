@@ -34,6 +34,12 @@ export const OCEAN = {
   choppiness: 1.25,
   foamRecovery: 0.32,
   amplitude: 0.42,
+  /**
+   * extra gain per cascade on top of `amplitude`: the wind sea (the middle and short cascades) carries most of the
+   * slope; at these gains the total mean square slope is ~0.034, near Cox-Munk's 0.041 for a 7.5 m/s trade wind
+   * (it was 0.010: a flat lake with ripples), with a significant height of ~1.6 m
+   */
+  cascadeGain: [1.25, 2.6, 1.75],
 };
 
 function jonswapTma(omega: number, sea: SeaState): number {
@@ -217,9 +223,10 @@ export class OceanSim {
       return { x, y, cell: ivec2(x, y) };
     };
     const choppy = OCEAN.choppiness;
-    this.cascades = bands.map((band) => {
+    this.cascades = bands.map((band, ci) => {
       const { tex: spectrum, slope2 } = spectrumTexture(rng, band, SEA, n);
-      this.slope2.push(slope2);
+      const gain = OCEAN.cascadeGain[ci];
+      this.slope2.push(slope2 * gain * gain);
       const ping = freqTexture(n), pong = freqTexture(n);
       const stages = ifftStages(ping, pong, n);
       const disp: [StorageTexture, StorageTexture] = [mapTexture(n), mapTexture(n)];
@@ -237,7 +244,7 @@ export class OceanSim {
         const h = vec2(
           h0.x.mul(pc).sub(h0.y.mul(ps)).add(h0.z.mul(pc).sub(h0.w.mul(ps.negate()))),
           h0.x.mul(ps).add(h0.y.mul(pc)).add(h0.z.mul(ps.negate()).add(h0.w.mul(pc))),
-        ).mul(amp);
+        ).mul(amp).mul(gain);
         const ih = vec2(h.y.negate(), h.x);
         const dx = ih.mul(k.x.div(kLength));
         const dz = ih.mul(k.y.div(kLength));
