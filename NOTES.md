@@ -306,6 +306,11 @@ Load: first visit 9.1-10.0 s to the first frame, returning 7.5-8.3 s, 129.1 MB, 
   hold a uniform 15.0 ms; with 13 ms of extra main-thread work per frame it drops to a uniform 20 ms within half a
   second and returns to 15 ms 8 s after the load goes. `?fps=<n>` still fixes the rate.
 
+* **Pandanus** (`assets/veg/palms/pandanus.glb`, round 3): built by `tools/blender/palms/build_pandanus.py` after
+  `make_textures.py` and `make_pandanus_tex.py` (bark tile from the CC0 palm_tree_bark scan, the rest procedural),
+  optimised with `tools/optimize-glb.ts`; planted by `Vegetation.ts` as lone trees and clumps of two or three on the
+  beach berms, rock shelves and cliff tops. Credited in CREDITS.md.
+
 ### Gotchas from round 4
 
 * `shareInstancing()` meshes have `isInstancedMesh = false`: three's raycast still works (it is the class method), but
