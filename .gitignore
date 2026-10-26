@@ -12,3 +12,6 @@ dist/
 /.agent-notes/
 __pycache__/
 *.pyc
+
+# Exported chat logs (keep out of the public repo)
+cursor-chats/
