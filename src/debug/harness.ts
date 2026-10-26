@@ -193,7 +193,7 @@ export function installHarness(ctx: Ctx) {
      * Returns the player, the footsteps of this frame and whether any pipeline was still compiling (a mesh whose
      * pipeline is not ready is not drawn).
      */
-    shotFrame(o: { cam: { pos: number[]; target: number[]; fov?: number } | 'follow'; snap?: number; pitch?: number; walk: number | null; mode?: 'walk' | 'run' | 'sprint'; jump?: boolean; accum?: number; dt?: number }) {
+    shotFrame(o: { cam: { pos: number[]; target: number[]; fov?: number } | 'follow'; snap?: number; pitch?: number; walk: number | null; mode?: 'walk' | 'run' | 'sprint'; jump?: boolean; look?: number[]; accum?: number; dt?: number }) {
       const p = ctx.player?.obj;
       if (p && !stepHooked) {
         stepHooked = true;
@@ -212,7 +212,13 @@ export function installHarness(ctx: Ctx) {
       // (as the mouse would: the follow camera's pitch, negative looks up)
       if (o.pitch !== undefined && ctx.cameraRig) ctx.cameraRig.pitch = o.pitch;
       const mode = o.mode ?? 'walk';
-      if (ctx.input) ctx.input.scripted = o.walk === null ? null : { t: 1, intent: { moveX: 0, moveY: 1, walk: mode === 'walk', sprint: mode === 'sprint', jump: !!o.jump, worldYaw: o.walk } };
+      // `look`: this frame's mouse look [yaw, pitch] in radians, as the follow camera takes it from the mouse
+      const look = o.look ? { lookX: o.look[0], lookY: o.look[1] } : {};
+      if (ctx.input) {
+        ctx.input.scripted = o.walk === null
+          ? (o.look ? { t: 1, intent: { moveX: 0, moveY: 0, ...look } } : null)
+          : { t: 1, intent: { moveX: 0, moveY: 1, walk: mode === 'walk', sprint: mode === 'sprint', jump: !!o.jump, worldYaw: o.walk, ...look } };
+      }
       stepLog.length = 0;
       const pending = engine.pipelinesPending;
       // (?accum=n: n renders averaged; `accum` overrides it for this frame, 1 for an uncaptured warm-up)
@@ -220,7 +226,7 @@ export function installHarness(ctx: Ctx) {
       engine.stepOnce(o.dt ?? 1 / 60);
       const s = p ? { pos: p.pos.toArray().map((v: number) => +v.toFixed(3)), heading: +p.heading.toFixed(4), speed: +p.speed.toFixed(3) } : null;
       const cam = engine.camera.position.toArray().map((v: number) => +v.toFixed(3));
-      return { frame: engine.frame, player: s, cam, steps: stepLog.slice(), pending: Math.max(pending, engine.pipelinesPending) };
+      return { frame: engine.frame, player: s, cam, camYaw: ctx.cameraRig?.yaw ?? 0, steps: stepLog.slice(), pending: Math.max(pending, engine.pipelinesPending) };
     },
     /** debug: read back a few texels of a named render target */
     async readRT(name: string, x = 0, y = 0, w = 4, h = 4) {

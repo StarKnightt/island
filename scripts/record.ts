@@ -3,7 +3,7 @@
  * game's own third-person follow camera, the character steered like a player steers him), a hard cut to black.
  * Captured frame by frame at exactly 60 fps, with the game's own ambience and footsteps, encoded for X (Twitter).
  *
- *   pnpm record                      render every beat, mix the sound, encode E:\shots\island\gameplay_edit_v2.mp4
+ *   pnpm record                      render every beat, mix the sound, encode E:\shots\island\trailer.mp4
  *   pnpm record --seconds 10         only the first 10 s, into E:\shots\island\trailer-preview\gameplay_edit_v2_first10s.mp4
  *   pnpm record --preview            one 1920x1080 frame per beat (at its previewAt) into E:\shots\island\trailer-preview\
  *                                    ([--at <s>] another beat time; with --shots for a few)
@@ -29,7 +29,7 @@ import { argv, ensureServer, launch, ROOT } from './lib/browser';
 
 const FPS = 60;
 const W = 1920, H = 1080;
-const OUT = 'E:\\shots\\island\\gameplay_edit_v2.mp4';
+const OUT = 'E:\\shots\\island\\trailer.mp4';
 const PREVIEW_DIR = 'E:\\shots\\island\\trailer-preview';
 const FRAMES = 'E:\\tmp\\island\\gameplay';
 const AUDIO_DIR = join(ROOT, 'public', 'assets', 'audio');
@@ -60,6 +60,9 @@ interface Shot {
   /** the game's own third-person follow camera, at this pitch (negative looks up: the sky in frame) ... */
   follow?: boolean;
   pitch?: number;
+  /** a look round with the mouse, standing: from shot time `at`, over `dur` s on an eased stroke, the camera turns
+   *  to the sun's heading (+ `offset` rad) and pitches by `pitch` rad (positive looks down) */
+  look?: { at: number; dur: number; offset: number; pitch: number };
   /** ... or a rig around the character: a pose from the shot time and his spring-followed position */
   rig?: (p: { t: number; subj: THREE.Vector3; dir: THREE.Vector3 }) => { pos: THREE.Vector3; target: THREE.Vector3; fov: number };
   walk: Walk;
@@ -111,27 +114,29 @@ const SHOTS: Shot[] = [
   },
   {
     // golden hour in the village: walking west along the sand in front of the stilt huts, into the low sun
-    name: 'village', tod: 17.0, spot: 'village', dur: 4.5, follow: true, pitch: -0.06, previewAt: 2,
+    name: 'village', tod: 17.0, spot: 'village', dur: 3.5, follow: true, pitch: -0.06, previewAt: 2,
     walk: { from: [-398, 322], path: [[-404, 321.5], [-412, 321], [-420, 320.5], [-428, 320], [-436, 320]], startAt: 0 },
     layers: [{ file: 'amb_waves', db: -6 }, { file: 'amb_birds', db: -14 }, { file: 'amb_wind', db: -14 }],
   },
   {
     // sunset: jogging out along the main jetty past its crates, off the end in a jump, and swimming out
-    name: 'jetty', tod: 17.42, spot: 'village', dur: 5, follow: true, pitch: -0.05, previewAt: 2.5,
+    name: 'jetty', tod: 17.42, spot: 'village', dur: 4.5, follow: true, pitch: -0.05, previewAt: 2.5,
     walk: { from: [-452, 374.5], path: [[-452.2, 378], [-452.3, 383], [-452.2, 388.5], [-452, 394], [-451.5, 400], [-451, 406]], startAt: 0, mode: 'run', jumpAt: [-452.2, 386.6] },
     layers: [{ file: 'amb_waves', db: -4 }, { file: 'amb_wind', db: -14 }, { file: 'amb_birds', db: -18 }],
   },
   {
     // the last switchback up the summit cone, jogging toward the tower
-    name: 'climb', tod: 17.25, spot: 'lighthouse', dur: 3.5, follow: true, pitch: -0.08, previewAt: 2,
+    name: 'climb', tod: 17.25, spot: 'lighthouse', dur: 3, follow: true, pitch: -0.08, previewAt: 2,
     walk: { from: [-255, -276], path: [[-258.5, -285], [-264, -300], [-275, -303.5], [-286, -306]], startAt: 0, mode: 'run' },
     layers: [{ file: 'amb_wind', db: -9 }, { file: 'amb_birds', db: -13 }],
   },
   {
-    // golden hour on the summit: walking round the foot of the tower and out toward the sun over the western sea,
-    // the island below, then the cut to black
-    name: 'summit', tod: 17.5, spot: 'lighthouse', dur: 5, follow: true, pitch: -0.05, previewAt: 3,
-    walk: { from: [-292, -306.5], path: [[-298, -307.5], [-305, -305.5], [-311, -302.5], [-317, -299.5], [-323, -296.5]], startAt: 0 },
+    // golden hour on the summit: walking round the foot of the tower with the sun on his left, he stops; the player
+    // looks round with the mouse, the follow camera swinging round him to the sun on the western sea and tipping
+    // down onto the water; then the cut to black
+    name: 'summit', tod: 17.5, spot: 'lighthouse', dur: 7, follow: true, pitch: -0.05, previewAt: 3,
+    walk: { from: [-308, -297], path: [[-309.5, -298.5], [-311.5, -300.5], [-312.5, -301.5]], startAt: 0 },
+    look: { at: 3.4, dur: 3.0, offset: -0.22, pitch: 0.24 },
     layers: [{ file: 'amb_wind', db: -8 }, { file: 'amb_waves', db: -19 }, { file: 'amb_birds', db: -20 }],
   },
 ];
@@ -201,7 +206,7 @@ interface Api {
   manual: (on: boolean) => boolean;
   shotStart: (t: number, seed: number, exposure?: number) => number;
   placePlayer: (x: number, z: number, yaw: number) => unknown;
-  shotFrame: (o: { cam: Cam; snap?: number; pitch?: number; walk: number | null; mode?: 'walk' | 'run' | 'sprint'; jump?: boolean; accum?: number; dt: number }) => { frame: number; player: { pos: number[] } | null; cam: number[]; steps: { surface: string; pos: number[] }[]; pending: number };
+  shotFrame: (o: { cam: Cam; snap?: number; pitch?: number; walk: number | null; mode?: 'walk' | 'run' | 'sprint'; jump?: boolean; look?: number[]; accum?: number; dt: number }) => { frame: number; player: { pos: number[] } | null; cam: number[]; camYaw: number; steps: { surface: string; pos: number[] }[]; pending: number };
 }
 
 async function render() {
@@ -252,10 +257,21 @@ async function render() {
         await api.stage({ spot: o.spot, tod: o.tod, weather: 'clear', camera: o.cam, worldTime: null, settleMs: 600 });
         api.manual(true);
         api.shotStart(o.world, o.seed, 1);
-        return api.placePlayer(o.from[0], o.from[1], o.yaw) as { pos: number[] } | null;
+        const sun = (api as unknown as { ctx: { tod: { sun: { x: number; z: number } } } }).ctx.tod.sun;
+        return { ...(api.placePlayer(o.from[0], o.from[1], o.yaw) as { pos: number[] } | null), sunYaw: Math.atan2(sun.x, -sun.z) };
       }, { spot: shot.spot, tod: shot.tod, cam: pose(0), world: shot.world ?? 1000 + i * 200, seed: shot.seed ?? 9001 + i, from: walk.from, yaw });
 
       let pl = placed?.pos ?? null;
+      // the look round: its whole turn, fixed from the camera's yaw when it starts
+      let camYaw = 0, turn: number | null = null;
+      const ease = (u: number) => THREE.MathUtils.smootherstep(u, 0, 1);
+      const lookAt = (t: number): number[] | undefined => {
+        const L0 = shot.look;
+        if (!L0 || t < L0.at) return undefined;
+        if (turn === null) turn = Math.atan2(Math.sin(placed.sunYaw + L0.offset - camYaw), Math.cos(placed.sunYaw + L0.offset - camYaw));
+        const k = ease(Math.min(1, (t - L0.at) / L0.dur)) - ease(Math.min(1, (t - L0.at - 1 / FPS) / L0.dur));
+        return [turn * k, -L0.pitch * k];
+      };
       // (the spring starts at rest on him)
       fol.step(pl, 0);
       const st = { seg: 0 };
@@ -270,7 +286,8 @@ async function render() {
         const jump = jumpFrames > 0;
         if (jump) jumpFrames--;
         if (!warm) fol.step(pl, 1 / FPS);
-        const r = await L.page.evaluate((o) => (window as unknown as { __island: Api }).__island.shotFrame(o), { cam: pose(t), snap, pitch: snap !== undefined ? shot.pitch : undefined, walk: heading, mode: walk.mode, jump, accum: single ? 1 : undefined, dt: 1 / FPS });
+        const r = await L.page.evaluate((o) => (window as unknown as { __island: Api }).__island.shotFrame(o), { cam: pose(t), snap, pitch: snap !== undefined ? shot.pitch : undefined, walk: heading, mode: walk.mode, jump, look: warm ? undefined : lookAt(t), accum: single ? 1 : undefined, dt: 1 / FPS });
+        camYaw = r.camYaw;
         snap = undefined;
         pl = r.player?.pos ?? pl;
         return r;

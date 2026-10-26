@@ -204,7 +204,7 @@ Output: `E:\shots\island\<round>\clips\<name>\frame_0000.png ...` (`.jpg` for th
 ```bash
 pnpm record --preview                # one 1920x1080 frame per beat -> E:\shots\island\trailer-preview\gp_<n>_<beat>.png
 pnpm record --seconds 10             # only the first 10 s -> E:\shots\island\trailer-preview\gameplay_edit_v2_first10s.mp4
-pnpm record                          # every beat, the sound, the encode -> E:\shots\island\gameplay_edit_v2.mp4
+pnpm record                          # every beat, the sound, the encode -> E:\shots\island\trailer.mp4
 ```
 
 The gameplay trailer (about 30 s), defined at the top of `scripts/record.ts`: the opening dive from the whole island
