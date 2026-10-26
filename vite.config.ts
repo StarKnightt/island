@@ -10,12 +10,12 @@ export default defineConfig({
   },
   server: {
     host: '127.0.0.1',
-    port: 5230,
+    port: Number(process.env.ISLAND_DEV_PORT) || 5230,
     strictPort: true,
   },
   preview: {
     host: '127.0.0.1',
-    port: 5231,
+    port: Number(process.env.ISLAND_PREVIEW_PORT) || 5231,
     strictPort: true,
   },
 });

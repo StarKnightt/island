@@ -13,6 +13,9 @@ import { uniform, float, vec4, uv, pow, clamp } from '../core/tsl';
 import { heroU, hairMaterial, prepareHairGeometry, skinMaterial, smoothSeams } from './heroMaterials';
 import { Footprints, printU } from './Footprints';
 import { PoseLayer } from './PoseLayer';
+import { attachStrawHat } from './StrawHat';
+import { SandPuffs } from './SandPuffs';
+import { WadeFx } from './WadeFx';
 import { atmo } from '../sky/Atmosphere';
 
 export type Surface = 'sand' | 'wet_sand' | 'grass' | 'dirt' | 'rock' | 'wood' | 'stone' | 'metal' | 'shallow_water' | 'water' | 'leaves';
@@ -74,7 +77,11 @@ export class Player {
   constructor(private hf: Heightfield, private col: Colliders) {
     this.root.name = 'player';
     this.shadows.add(this.prints.mesh);
+    this.shadows.add(this.puffs.sprite);
+    this.shadows.add(this.wade.group);
   }
+  private puffs = new SandPuffs();
+  private wade = new WadeFx();
 
   async load() {
     const g = await loadGLTF('assets/character/hero.glb');
@@ -112,6 +119,7 @@ export class Player {
       // the hair's shadow on the scalp and neck: one-sided cut-out, a little behind its own surface
       hair.castShadow = true;
     }
+    if (head) attachStrawHat(this.model, head as THREE.SkinnedMesh, hair as THREE.SkinnedMesh | null);
     this.root.add(this.model);
     this.contact = new ContactShadows(this.model);
     this.shadows.add(this.contact.group);
@@ -363,6 +371,7 @@ export class Player {
     (heroU.fill.value as THREE.Color).setRGB(0.55, 0.66, 1.0).multiplyScalar(lightE * 0.3 * night);
     this.clock += dt;
     printU.time.value = this.clock;
+    this.wade.update(dt, this);
     // coming to a stop leaves both feet's prints
     if (this.state === 'ground' && this.speed > 0.6) this.wasMoving = true;
     else if (this.wasMoving && this.state === 'ground' && this.speed < 0.1) {
@@ -380,6 +389,7 @@ export class Player {
         idle: this.state === 'ground' ? this.clips.idle?.action.getEffectiveWeight() ?? 0 : 0,
         plant: this.plant,
         rootY: this.pos.y,
+        tread: this.state === 'swim' ? this.clips.tread?.action.getEffectiveWeight() ?? 0 : 0,
         ground: (x, z, y) => {
           const g = this.groundAt(x, z, y);
           return { y: g.y, n: g.onSurface ? UP : this.hf.normal(x, z) };
@@ -393,6 +403,7 @@ export class Player {
   /** a footfall: a print in sand under the planted foot (under both on landing), then the sound */
   private step(e: StepEvent, both = false) {
     this.stampPrints(e.surface, e.speed, both);
+    if (e.surface === 'shallow_water') this.wade.step(this, false);
     this.onStep?.(e);
   }
 
@@ -429,6 +440,7 @@ export class Player {
       const life = g.y < 0.5 ? 7 : wet ? 50 : 110;
       const depth = (0.011 + 0.011 * run) * (wet ? 0.8 : 1) * (both ? 1.25 : 1);
       this.prints.stamp(x, g.y, z, this.hf.normal(x, z), fx, fz, f.side, depth, both ? 0.25 : run, wet, life, this.clock);
+      this.puffs.kick(x, g.y, z, fx, fz, speed, this.clock, wet > 0);
     }
   }
 
@@ -468,7 +480,10 @@ export class Player {
       this.phase += dt / (c.swim?.duration ?? 1.33) * Math.max(0.6, sp / SWIM);
       // a stroke splash twice a cycle while swimming forward
       const fp = this.phase % 1;
-      if (sp > 0.3 && ((this.lastFootPhase < 0.25 && fp >= 0.25) || (this.lastFootPhase < 0.75 && fp >= 0.75))) this.onStep?.({ surface: 'water', speed: sp, foot: 0, pos: this.pos });
+      if (sp > 0.3 && ((this.lastFootPhase < 0.25 && fp >= 0.25) || (this.lastFootPhase < 0.75 && fp >= 0.75))) {
+        this.onStep?.({ surface: 'water', speed: sp, foot: 0, pos: this.pos });
+        this.wade.step(this, true);
+      }
       this.lastFootPhase = fp;
     } else if (this.state === 'air') {
       // the take-off pose carries the rise, then the airborne loop takes over round the apex and the fall

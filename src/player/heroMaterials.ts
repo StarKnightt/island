@@ -128,10 +128,10 @@ export function hairMaterial(map: THREE.Texture) {
   const tex = texture(map, uv());
   const depth = saturate(attribute('hairDepth', 'float'));
   // roots darker and a touch warmer than the tips; the scan's albedo is near black (baked occlusion), lifted to a
-  // dark brown so strands read in the light
+  // dark brown (sun-lightened a little) so strands read in the light
   const root = mix(vec3(0.62, 0.55, 0.5), vec3(1), depth);
   const wetDark = mix(float(1), float(0.55), heroU.wet);
-  m.colorNode = vec4(tex.rgb.mul(root).mul(wetDark).mul(1.9), tex.a);
+  m.colorNode = vec4(tex.rgb.mul(root).mul(wetDark).mul(vec3(3.0, 2.55, 2.15)), tex.a);
   const lum = max(luminance(tex.rgb), 1e-4);
   // dithered coverage: discard below a per-pixel threshold that changes every frame; the shadow pass uses the
   // numeric alphaTest (a stable cut) because it does not see alphaTestNode
