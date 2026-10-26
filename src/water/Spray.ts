@@ -4,6 +4,7 @@
  * rocky waterline near the camera (re-picked as it moves); each burst is timed by the same waterline phase that
  * drives the foam in surf.ts, so the white water on the sea and the spray in the air agree.
  */
+import { effectMRT } from '../core/fx';
 import * as THREE from 'three/webgpu';
 import {
   cameraPosition, exp, float, hash, instanceIndex, int, length, max, mix, positionView, pow, screenUV, select,
@@ -69,6 +70,7 @@ export class Spray {
   private build() {
     const m = new THREE.SpriteNodeMaterial();
     m.transparent = true;
+    m.mrtNode = effectMRT();
     m.depthWrite = false;
     m.blending = THREE.NormalBlending;
     const id = float(instanceIndex);

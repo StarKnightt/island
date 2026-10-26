@@ -4,6 +4,7 @@
  * real wave field), nets drying on poles, a fish rack, a fire pit, crates, barrels, baskets, buoys and lanterns.
  * Everything walkable or solid registers its colliders.
  */
+import { effectMRT } from '../core/fx';
 import * as THREE from 'three/webgpu';
 import { KitBuilder, box, cylinder, pbr, tubeGeo, flat } from './kit';
 import type { Heightfield } from './Heightfield';
@@ -513,6 +514,7 @@ export class Village {
     for (const [size, k] of [[0.28, 1.0], [1.6, 0.12]] as [number, number][]) {
       const sm = new THREE.SpriteNodeMaterial();
       sm.transparent = true;
+      sm.mrtNode = effectMRT();
       sm.depthWrite = false;
       sm.blending = THREE.AdditiveBlending;
       sm.positionNode = arr.element(instanceIndex);
@@ -545,6 +547,7 @@ export class Village {
     const fp = this.firePos;
     const flame = new THREE.SpriteNodeMaterial();
     flame.transparent = true;
+    flame.mrtNode = effectMRT();
     flame.depthWrite = false;
     flame.blending = THREE.AdditiveBlending;
     {
@@ -568,6 +571,7 @@ export class Village {
     this.group.add(flames);
     const smoke = new THREE.SpriteNodeMaterial();
     smoke.transparent = true;
+    smoke.mrtNode = effectMRT();
     smoke.depthWrite = false;
     {
       const id = float(instanceIndex);

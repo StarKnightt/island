@@ -4,6 +4,7 @@
  * haze, sea state, surface wetness (soaks in during rain, dries afterwards), rain streaks and splashes around the
  * camera, ripples on the water, and lightning with thunder in heavy rain.
  */
+import { effectMRT } from '../core/fx';
 import * as THREE from 'three/webgpu';
 import {
   Fn, float, fract, hash, instanceIndex, length, smoothstep, texture, uniform, uv, vec2, vec3, vec4, cameraPosition,
@@ -193,6 +194,7 @@ export class Weather {
     const count = Q.rainParticles;
     const m = new THREE.SpriteNodeMaterial();
     m.transparent = true;
+    m.mrtNode = effectMRT();
     m.depthWrite = false;
     m.blending = THREE.NormalBlending;
     const id = float(instanceIndex);
@@ -241,6 +243,7 @@ export class Weather {
     const count = Math.round(Q.rainParticles * 0.25);
     const m = new THREE.SpriteNodeMaterial();
     m.transparent = true;
+    m.mrtNode = effectMRT();
     m.depthWrite = false;
     const id = float(instanceIndex);
     const life = fract(rainU.time.mul(2.3).add(hash(id.mul(5.3))));
