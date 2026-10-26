@@ -124,7 +124,9 @@ export class Footprints {
       occ = max(occ, saturate(printHeight(q.add(dir.mul(s)), depth, push, side).sub(h0).sub(rise.mul(s)).div(0.0015)));
     }
     // how much of the light on open sand is direct: none under an overcast, most of it in sun or moonlight
-    const direct = pow(float(1).sub(atmo.overcast), 1.7).mul(smoothstep(-0.02, 0.07, l.y)).mul(0.85);
+    // (a low sun lights open ground weakly next to the sky, so its share ramps in over the first ~12 degrees: the
+    // shadowed hollow of a print at sunset is lit by the sky, not black)
+    const direct = pow(float(1).sub(atmo.overcast), 1.7).mul(smoothstep(-0.02, 0.2, l.y)).mul(0.8);
     const ratio = min(max(dot(nW, l), 0).add(0.02).div(max(ln, 0).add(0.02)), 1.8).mul(float(1).sub(occ));
     // the bottom sees less sky (deeper prints more), and water darkens wet sand prints
     const inside = saturate(h0.negate().div(max(depth, 1e-4)));

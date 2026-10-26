@@ -89,7 +89,7 @@ export function attachStrawHat(model: THREE.Object3D, head: THREE.SkinnedMesh, h
   const r0 = Math.max(rx, rz) + 0.006, sx = (rx + 0.006) / r0, sz = (rz + 0.006) / r0;
 
   // ---- geometry: the lathe, with the crown oval like the head, the crease and pinches pressed in
-  const sec = section(0.064, 0.082);
+  const sec = section(0.064, 0.088);
   const seg = 72;
   const pos: number[] = [], nrm: number[] = [], wv: number[] = [], idx: number[] = [];
   // arc length along the section (for the weave rows) and the part (0 brim, 1 crown wall, 2 crown top)
@@ -107,7 +107,7 @@ export function attachStrawHat(model: THREE.Object3D, head: THREE.SkinnedMesh, h
       // the crown: a crease front to back on top, pinches either side of the front
       if (i >= crownStart) {
         const up = THREE.MathUtils.smoothstep(y, 0.05, topY);
-        const crease = Math.exp(-((x / (r0 * 0.32)) ** 2)) * 0.014 * up;
+        const crease = Math.exp(-((x / (r0 * 0.32)) ** 2)) * 0.008 * up;
         const pinch = Math.exp(-(((a - 0.55) / 0.35) ** 2)) + Math.exp(-(((a - (Math.PI * 2 - 0.55)) / 0.35) ** 2));
         y -= crease;
         const pin = 1 - pinch * 0.12 * up;
