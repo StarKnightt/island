@@ -63,15 +63,17 @@ export class WadeFx {
     const r = length(q);
     // the crest spreads fast then slows (energy spreading out), thinning; a faint trough inside it
     const ringR = float(0.12).add(pow(u.clamp(0, 1), 0.6).mul(mix(float(0.7), float(1.4), R.w)));
-    const w = mix(float(0.025), float(0.07), u);
+    const w = mix(float(0.04), float(0.13), u);
     const d = r.sub(ringR).div(w);
-    // broken a little round the ring (the water is not still)
+    const d2 = r.sub(ringR.mul(0.68)).div(w.mul(0.8));
+    // broken round the ring (the surface is never still): gaps and thicker arcs, a weaker crest following inside
     const ang = atan(q.y, q.x);
-    const broken = sin(ang.mul(7).add(R.x.mul(13))).mul(0.25).add(sin(ang.mul(13).sub(R.y.mul(7))).mul(0.15)).add(0.8);
-    const crest = exp(d.mul(d).negate()).mul(broken);
+    const wob = sin(ang.mul(5).add(R.x.mul(13))).add(sin(ang.mul(11).sub(R.y.mul(7))).mul(0.6)).add(sin(ang.mul(23).add(R.z.mul(3))).mul(0.35));
+    const broken = smoothstep(-1.1, 0.9, wob).mul(0.85).add(0.15);
+    const crest = exp(d.mul(d).negate()).add(exp(d2.mul(d2).negate()).mul(0.4)).mul(broken);
     const fade = pow(float(1).sub(u.clamp(0, 1)), 1.5).mul(smoothstep(0, 0.06, u)).mul(select(u.lessThan(1), float(1), float(0)));
     const E = atmo.lightE.mul(1 / Math.PI);
-    const a = crest.mul(fade).mul(mix(float(0.35), float(0.65), R.w));
+    const a = crest.mul(fade).mul(mix(float(0.22), float(0.45), R.w));
     rm.colorNode = vec4(vec3(0.85, 0.9, 0.92).mul(E), a);
     rm.opacityNode = a;
     this.ringMesh = new THREE.InstancedMesh(geo, rm, RINGS);
