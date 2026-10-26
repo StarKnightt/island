@@ -103,7 +103,7 @@ export class TimeOfDay {
       const lum = Math.max(1e-6, this.sunColor.r * 0.2126 + this.sunColor.g * 0.7152 + this.sunColor.b * 0.0722);
       this.light.color.setRGB(this.sunColor.r / lum, this.sunColor.g / lum, this.sunColor.b / lum);
       // (fading out as the disc goes under the horizon, so the hand-over to the moon below is continuous)
-      this.light.intensity = SUN_E * lum * shade * THREE.MathUtils.smoothstep(this.sun.y, -0.035, 0.012);
+      this.light.intensity = SUN_E * lum * shade * THREE.MathUtils.smoothstep(this.sun.y, -0.035, 0.03);
       // the clouds see the sun (reddened at a low sun) unshadowed by themselves
       (clouds.lightDir.value as THREE.Vector3).copy(this.sun);
       cl.copy(this.sunColor).multiplyScalar(SUN_E * 0.5);
@@ -112,7 +112,7 @@ export class TimeOfDay {
       this.light.color.setRGB(0.62, 0.74, 1.0);
       // (fading in through the twilight: the key light hands over from the sun at a moon already up, and a moonlight
       // switched on at full strength would flip every shadow in one frame)
-      const moonE = 0.07 * THREE.MathUtils.smoothstep(m, -0.02, 0.22) * THREE.MathUtils.smoothstep(-this.sun.y, 0.035, 0.14);
+      const moonE = 0.058 * THREE.MathUtils.smoothstep(m, -0.02, 0.22) * THREE.MathUtils.smoothstep(-this.sun.y, 0.035, 0.14);
       this.light.intensity = moonE * (1 - this.overcast * 0.9);
       (clouds.lightDir.value as THREE.Vector3).copy(this.moon);
       // moonlit cumulus read dim and grey-blue to the night-adapted eye, not as the white daytime clouds a long

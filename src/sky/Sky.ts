@@ -359,6 +359,7 @@ export class Sky {
   private pmrem: THREE.PMREMGenerator;
   envRT: THREE.RenderTarget | null = null;
   private envAge = 1e9;
+  private lutSun = new THREE.Vector3();
   private n = 0;
   private lastSun = new THREE.Vector3();
   private lastLook = [-1, -1, -1];
@@ -394,7 +395,13 @@ export class Sky {
     }
     updateGradeLook(atmo.night.value as number, atmo.overcast.value as number, (atmo.sunDir.value as THREE.Vector3).y);
     updateTerrainShadow(this.renderer, clouds.lightDir.value as THREE.Vector3, dt, force);
-    if (force || this.n % 3 === 0) renderAtmosphereLUTs(this.renderer);
+    // (and whenever the sun has moved a little since: a time-lapse clock otherwise stepped the twilight sky every
+    // third frame)
+    const sunNow = atmo.sunDir.value as THREE.Vector3;
+    if (force || this.n % 3 === 0 || sunNow.angleTo(this.lutSun) > 0.002) {
+      renderAtmosphereLUTs(this.renderer);
+      this.lutSun.copy(sunNow);
+    }
     const st = this.mapState;
     const drift = clouds.drift.value as THREE.Vector2;
     const cov = clouds.coverage.value as number, thick = clouds.thickness.value as number;
@@ -419,7 +426,10 @@ export class Sky {
     const moved = sun.angleTo(this.lastSun) > 0.008;
     const look = [atmo.overcast.value as number, cov, atmo.night.value as number];
     const turned = look.some((v, i) => Math.abs(v - this.lastLook[i]) > 0.02);
-    if (force || this.envAge > 20 || ((moved || turned) && this.envAge > 0.6)) {
+    // (and at once when the sun has gone more than a couple of degrees: under a time-lapse clock the 0.6 s wait was
+    // half an hour of twilight lit by a stale sky, then a jump of the whole frame when it caught up)
+    const swept = sun.angleTo(this.lastSun) > 0.03;
+    if (force || this.envAge > 20 || swept || ((moved || turned) && this.envAge > 0.6)) {
       this.envAge = 0;
       this.lastSun.copy(sun);
       this.lastLook = look;

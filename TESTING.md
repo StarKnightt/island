@@ -201,7 +201,8 @@ Output: `E:\shots\island\<round>\clips\<name>\frame_0000.png ...` (`.jpg` for th
 `pnpm tsx scripts/poses.ts --file poses.json` (a list of camera poses in one session; a y of `"+2"` means 2 m above
 the ground there), `pnpm tsx scripts/session.ts --steps steps.mjs` (one page load, then a steps module stages and
 captures as it likes; see its header) and `pnpm tsx scripts/loadtime.ts` (load timeline of a first visit and a
-returning visit in one persistent Chrome profile). look, poses and session keep a persistent profile
+returning visit in one persistent Chrome profile, with the bytes over the wire, the main thread's long tasks and the
+longest gap between animation frames, i.e. how long the loading screen could have stood still). look, poses and session keep a persistent profile
 (`E:\tmp\island\chrome-dev`, so Chrome's compiled shaders survive and a page loads in seconds; `--fresh` for a new
 one) and take `--uncapped` (vsync and frame limit off).
 
@@ -209,12 +210,15 @@ one) and take `--uncapped` (vsync and frame limit off).
 
 * Test the production build (`pnpm build`, then `pnpm preview` or just `pnpm shots`): the dev server compiles
   modules on demand and its first load is slower.
-* Load time on this PC (production build): the world data, character and every texture and model are in by ~4 s
-  (`scene ready`); the loading screen then compiles every shader pipeline of the whole island (drawn once with culling
-  off, so nothing compiles with a hitch later in play), a batch of materials per frame: the status reads
-  `Preparing shaders k / 30` and the bar steps forward after each batch, with a glint sweeping it all the time. The
-  real numbers are in NOTES.md and the round report (`pnpm tsx scripts/loadtime.ts`); a returning visit is much faster
-  (Chrome keeps the compiled shaders). Later `stage()` calls take ~1-2 s.
+* Load time on this PC (production build): the world data, character and every texture and model are in by ~4-5 s;
+  the loading screen then builds every shader of the whole island (drawn once with culling off, so nothing compiles
+  with a hitch later in play), a batch of materials per frame: the status reads `Preparing shaders k / 14` and the bar
+  steps forward after each batch, with a glint sweeping it all the time. Most of that time is three.js building node
+  materials on the main thread, not the driver, so a returning visit is only a few seconds faster. The real numbers
+  are in NOTES.md and the round report (`pnpm tsx scripts/loadtime.ts`). Later `stage()` calls take ~1-2 s.
+* `ready()` (and so `stage()`) resolves only once the loading screen has left the page, and the game records its own
+  `ready` milestone in `timeline()` whether or not anyone calls `ready()`. `pick()` brings the camera's matrices up to
+  date first, so it is right straight after `stage()` or `setCamera()`.
 * `stage()` freezes the time of day; pass `worldTime: null` to keep waves and wind moving (perf and clips do).
 * Rain needs a second or two to build up on surfaces if set with `immediate = false`; `stage()` sets it instantly.
 * The `shot` camera of `cliffs` is offshore (a boat's view); the `cliffs` player spot is on the cliff top, so the
