@@ -9,7 +9,7 @@ import { argv, ensureServer, launch } from './lib/browser';
 const a = argv();
 const q = a.get('q', 'spot=beach&tod=noon&weather=clear');
 const server = await ensureServer(a.has('preview') ? 'preview' : 'dev');
-const L = await launch();
+const L = await launch({ uncapped: a.has("uncapped") });
 try {
   const cdp = await L.context.newCDPSession(L.page);
   await cdp.send('Profiler.enable');

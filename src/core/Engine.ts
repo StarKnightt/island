@@ -22,6 +22,25 @@ function snapHz(hz: number) {
 
 interface GpuPool { timestamps: Map<string, number>; frames?: number[] }
 
+// Shadow passes draw every caster with one shared override material and copy each caster's alphaTest onto it; the
+// alphaTest setter bumps the material's version whenever the test switches on or off, so with leaves and trunks
+// interleaved nearly every shadow draw re-derived its full material cache key (a quarter of the main thread). A render
+// object of the override always draws the same source material, so its alphaTest never really changes for it.
+{
+  const desc = Object.getOwnPropertyDescriptor(THREE.Material.prototype, 'alphaTest');
+  if (desc?.set && desc.get) {
+    const set = desc.set;
+    Object.defineProperty(THREE.Material.prototype, 'alphaTest', {
+      configurable: true,
+      get: desc.get,
+      set(this: THREE.Material & { _alphaTest: number; isShadowPassMaterial?: boolean }, v: number) {
+        if (this.isShadowPassMaterial) this._alphaTest = v;
+        else set.call(this, v);
+      },
+    });
+  }
+}
+
 export class Engine {
   readonly renderer: THREE.WebGPURenderer;
   readonly scene = new THREE.Scene();

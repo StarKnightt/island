@@ -766,7 +766,9 @@ export class Vegetation {
     // before the lists need rebuilding: fewer instance-buffer uploads while the camera swings
     const moved = cam.distanceTo(this.lastCam) > 1.2 || dir.angleTo(this.lastDir) > 0.05;
     // the frame after priming re-culls so the collapsed instances go away
-    if (!force && !priming && !moved && this.frame % 20 !== 0 && !this.unprime) return;
+    // (nothing in the lists depends on anything but the camera: a periodic re-cull of a still camera only re-uploaded
+    // megabytes of identical instances, a 40-80 ms stall every 20th frame whenever the GPU queue was full)
+    if (!force && !priming && !moved && !this.unprime) return;
     this.unprime = priming;
     this.lastCam.copy(cam);
     this.lastDir.copy(dir);
