@@ -14,7 +14,7 @@ for this project.
 
 | Asset | Author | License | Source | Used for |
 |---|---|---|---|---|
-| Microsoft Rocketbox avatar `Male_Adult_01` (mesh, skin, textures) | Microsoft (Rocketbox Studios) | MIT | [github.com/microsoft/Microsoft-Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) | the player character (`public/assets/character/hero.glb`, converted with `tools/blender/rocketbox_to_glb.py`) |
+| Microsoft Rocketbox avatar `Male_Adult_01` (mesh, skin, textures) | Microsoft (Rocketbox Studios) | MIT | [github.com/microsoft/Microsoft-Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) | the player character (`public/assets/character/hero.glb`, converted with `tools/blender/rocketbox_to_glb.py`; the outfit repainted from the scan's albedo into a beach shirt, board shorts and canvas shoes by `tools/char/paint_outfit.ts`; the straw hat is procedural, `src/player/StrawHat.ts`) |
 | Universal Animation Library (Standard) and Universal Animation Library 2 (Standard) | Quaternius | CC0 1.0 | [quaternius.itch.io/universal-animation-library](https://quaternius.itch.io/universal-animation-library), [quaternius.itch.io/universal-animation-library-2](https://quaternius.itch.io/universal-animation-library-2) | idle, walk, jog, sprint, jump, fall, land, swim and tread clips, retargeted onto the Rocketbox skeleton (`tools/retarget.ts`) |
 
 ## Textures (Poly Haven, CC0 1.0)

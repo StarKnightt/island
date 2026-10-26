@@ -15,7 +15,7 @@ import { atmo } from '../sky/Atmosphere';
 const TSL = TSLTyped as any;
 const {
   Fn, float, vec2, vec3, vec4, mix, max, min, saturate, smoothstep, sin, exp, length, normalize, dot, cross, select,
-  uv, uniform, instancedBufferAttribute, normalWorld, pow, mrt,
+  uv, uniform, instancedBufferAttribute, normalWorld, pow, mrt, packNormalToRGB, cameraViewMatrix,
 } = TSL;
 
 const MAX = 160;
@@ -80,9 +80,9 @@ export class Footprints {
     mat.blendSrcAlpha = THREE.ZeroFactor;
     mat.blendDstAlpha = THREE.OneFactor;
     mat.colorNode = this.shade();
-    // the multiply would also scale the scene pass's packed normals and velocities (a dark rectangle of ambient
-    // occlusion round every print, TRAA smear): write 1 there, which leaves them as they are
-    mat.mrtNode = mrt({ normal: vec4(1), velocity: vec4(1) });
+    // the scene pass's normal target is not blended: the decal's flat plane would replace the sand's rippled
+    // normals (a rectangle of ambient occlusion round every print); write the ground's up instead
+    mat.mrtNode = mrt({ normal: packNormalToRGB(normalize(cameraViewMatrix.mul(vec4(0, 1, 0, 0)).xyz)) });
     this.mesh = new THREE.InstancedMesh(geo, mat, MAX);
     this.mesh.name = 'footprints';
     this.mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);

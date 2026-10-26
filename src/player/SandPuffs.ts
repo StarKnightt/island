@@ -13,7 +13,7 @@ import { printU } from './Footprints';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const TSL = TSLTyped as any;
 const {
-  float, vec2, vec3, vec4, mix, max, pow, smoothstep, length, uv, exp, instancedBufferAttribute, varying, cameraPosition, select, mrt,
+  float, vec2, vec3, vec4, mix, max, pow, smoothstep, length, uv, exp, instancedBufferAttribute, varying, cameraPosition, select, mrt, packNormalToRGB, cameraViewMatrix, normalize,
 } = TSL;
 
 const MAX = 160;
@@ -62,9 +62,9 @@ export class SandPuffs {
     const puff = select(grain, smoothstep(1.0, 0.6, r), smoothstep(1.0, 0.0, r).pow(1.8));
     m.colorNode = vec4(col, puff.mul(fade));
     m.opacityNode = puff.mul(fade);
-    // leave the scene pass's normals and velocities alone, and draw nothing where the puff is clear (else every
-    // quad, live or spent, shows in the AO)
-    m.mrtNode = mrt({ normal: vec4(0), velocity: vec4(0) });
+    // the scene pass's normal target is not blended: write the ground's up there (else every quad shows in the AO),
+    // and draw nothing where the puff is clear
+    m.mrtNode = mrt({ normal: packNormalToRGB(normalize(cameraViewMatrix.mul(vec4(0, 1, 0, 0)).xyz)) });
     m.alphaTest = 0.004;
     this.sprite = new THREE.Sprite(m);
     (this.sprite as unknown as { count: number }).count = MAX;

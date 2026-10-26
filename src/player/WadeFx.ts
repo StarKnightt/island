@@ -13,7 +13,7 @@ import { atmo } from '../sky/Atmosphere';
 const TSL = TSLTyped as any;
 const {
   float, vec2, vec3, vec4, mix, max, pow, smoothstep, length, uv, exp, instancedBufferAttribute, varying, cameraPosition,
-  select, uniform, sin, atan, mrt,
+  select, uniform, sin, atan, mrt, packNormalToRGB, cameraViewMatrix, normalize,
 } = TSL;
 
 const RINGS = 40, DROPS = 120;
@@ -76,8 +76,9 @@ export class WadeFx {
     const a = crest.mul(fade).mul(mix(float(0.22), float(0.45), R.w));
     rm.colorNode = vec4(vec3(0.85, 0.9, 0.92).mul(E), a);
     rm.opacityNode = a;
-    // leave the scene pass's normals and velocities alone (else every ring plane shows in the AO)
-    rm.mrtNode = mrt({ normal: vec4(0), velocity: vec4(0) });
+    // the scene pass's normal target is not blended: write the water's up there (else every ring plane shows in the
+    // AO), and draw nothing where the ring is clear
+    rm.mrtNode = mrt({ normal: packNormalToRGB(normalize(cameraViewMatrix.mul(vec4(0, 1, 0, 0)).xyz)) });
     rm.alphaTest = 0.004;
     this.ringMesh = new THREE.InstancedMesh(geo, rm, RINGS);
     this.ringMesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
@@ -114,7 +115,7 @@ export class WadeFx {
     const dot_ = smoothstep(1.0, 0.25, dr);
     dm.colorNode = vec4(dcol, dot_.mul(dfade));
     dm.opacityNode = dot_.mul(dfade);
-    dm.mrtNode = mrt({ normal: vec4(0), velocity: vec4(0) });
+    dm.mrtNode = mrt({ normal: packNormalToRGB(normalize(cameraViewMatrix.mul(vec4(0, 1, 0, 0)).xyz)) });
     dm.alphaTest = 0.004;
     const sprite = new THREE.Sprite(dm);
     (sprite as unknown as { count: number }).count = DROPS;
