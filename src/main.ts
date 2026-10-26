@@ -12,7 +12,7 @@ import { TimeOfDay } from './sky/TimeOfDay';
 import { aerialFogNode, atmo, transmittanceRT, skyViewRT } from './sky/Atmosphere';
 import { Loading } from './ui/Loading';
 import { installHarness, type Ctx } from './debug/harness';
-import { SPOTS, LIGHTHOUSE, HALF_WORLD, WORLD_SIZE } from './world/layout';
+import { SPOTS, LIGHTHOUSE, VILLAGE, HALF_WORLD, WORLD_SIZE } from './world/layout';
 import { wetness } from './world/weatherUniforms';
 import { Ocean, oceanU } from './water/Ocean';
 import { Spray, sprayU } from './water/Spray';
@@ -414,9 +414,14 @@ async function boot() {
       return { pos: p, target: toward(p, 160, 9), fov: 55 };
     }
     if (spot === 'lighthouse') {
-      const a = Math.atan2(az, ax);
+      // straight into the sun the frame is only sea (the island lies behind the tower), so the aim swings 40 % of the
+      // way toward the village: the canopy and the west coast fill the lower half, the sun path sits at the right
+      const sa = Math.atan2(az, ax);
+      let d = Math.atan2(VILLAGE.center[1] - LIGHTHOUSE.p[1], VILLAGE.center[0] - LIGHTHOUSE.p[0]) - sa;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      const a = sa + d * 0.38;
       const p = [LIGHTHOUSE.p[0] + Math.cos(a) * 3.0, gy + 1.75, LIGHTHOUSE.p[1] + Math.sin(a) * 3.0];
-      return { pos: p, target: toward(p, 700, gy - 150), fov: 52 };
+      return { pos: p, target: [p[0] + Math.cos(a) * 700, gy - 125, p[2] + Math.sin(a) * 700], fov: 52 };
     }
     return undefined;
   };

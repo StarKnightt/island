@@ -208,6 +208,24 @@ function portFree(port: number): Promise<boolean> {
   });
 }
 
+/** the capture conditions shared by `pnpm shots` and `pnpm perf`: a time of day plus weather */
+export const CONDITIONS: Record<string, { tod: string; weather: 'clear' | 'rain' }> = {
+  sunrise: { tod: 'sunrise', weather: 'clear' },
+  morning: { tod: 'morning', weather: 'clear' },
+  noon: { tod: 'noon', weather: 'clear' },
+  afternoon: { tod: 'afternoon', weather: 'clear' },
+  sunset: { tod: 'sunset', weather: 'clear' },
+  dusk: { tod: 'dusk', weather: 'clear' },
+  night: { tod: 'night', weather: 'clear' },
+  rain: { tod: '14.5', weather: 'rain' },
+};
+
+/** throw on a condition name the table doesn't have, before any browser starts */
+export function checkConditions(names: string[]) {
+  const bad = names.filter((n) => !CONDITIONS[n]);
+  if (bad.length) throw new Error(`unknown condition ${bad.join(', ')}; use ${Object.keys(CONDITIONS).join(', ')}`);
+}
+
 /** make sure a server is answering: reuse one on the port, else start `pnpm dev|preview` and stop it afterwards */
 export async function ensureServer(kind: 'dev' | 'preview'): Promise<{ url: string; stop: () => void }> {
   const port = kind === 'dev' ? DEV_PORT : PREVIEW_PORT;
@@ -233,8 +251,14 @@ export async function ensureServer(kind: 'dev' | 'preview'): Promise<{ url: stri
     url,
     stop: () => {
       if (child.pid) {
-        if (process.platform === 'win32') spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-        else child.kill();
+        // synchronous, so the tree (pnpm, then vite) is gone before this process exits
+        if (process.platform === 'win32') {
+          try {
+            execFileSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+          } catch {
+            // already gone
+          }
+        } else child.kill();
       }
     },
   };

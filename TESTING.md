@@ -66,7 +66,7 @@ All optional, combine freely: `http://127.0.0.1:5231/?spot=cliffs&tod=sunset&fre
 | `night` | 22:30 (moon and stars) | clear |
 | `rain` | 14:30 | rain (full overcast, rain streaks and splashes, wet surfaces, puddles, ripples) |
 
-`pnpm shots` also accepts `morning`, `afternoon` and `dusk`.
+`pnpm shots` and `pnpm perf` also accept `morning`, `afternoon` and `dusk`; an unknown name stops the run before the browser starts.
 
 ## The debug API: `window.__island`
 

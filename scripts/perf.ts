@@ -13,7 +13,7 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { argv, ensureServer, launch } from './lib/browser';
+import { argv, checkConditions, CONDITIONS, ensureServer, launch } from './lib/browser';
 
 const a = argv();
 const round = a.get('round', 'dev');
@@ -24,10 +24,8 @@ const mode = a.has('uncapped') ? 'uncapped' : a.get('mode', 'both');
 const view = a.get('view', 'follow');
 const outDir = join('E:\\shots\\island', round, 'perf');
 mkdirSync(outDir, { recursive: true });
-const COND: Record<string, { tod: string; weather: 'clear' | 'rain' }> = {
-  sunrise: { tod: 'sunrise', weather: 'clear' }, noon: { tod: 'noon', weather: 'clear' }, sunset: { tod: 'sunset', weather: 'clear' },
-  night: { tod: 'night', weather: 'clear' }, rain: { tod: '14.5', weather: 'rain' },
-};
+const COND = CONDITIONS;
+checkConditions(conditions);
 type Stat = { avg: number; p50: number; p95: number; p99: number; max: number; n: number };
 type Stats = { fps: number; targetFps: number; refreshHz: number; drawCalls: number; triangles: number; frame: Stat; cpu: Stat; gpu: Stat };
 interface Run { fps: number; target: number; refreshHz: number; frameAvg: number; frameP95: number; frameP99: number; frameMax: number; cpuAvg: number; cpuP95: number; gpuAvg: number; gpuP95: number; gpuP99: number; gpuN: number; drawCalls: number; triangles: number }

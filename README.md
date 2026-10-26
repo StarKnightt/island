@@ -42,7 +42,8 @@ authored shot for that place (the sunset variants turn toward the sun). Press P 
 
 1. **Beach at sunrise:** the spawn, looking along the crescent beach to the sea and the palm islet as the sun comes up.
    `?spot=beach&tod=sunrise&weather=clear&hud=0`, then `__island.stage({ spot: 'beach', tod: 'sunrise', camera: 'shot', worldTime: null })`
-2. **Lighthouse gallery at sunset:** from the rail over the whole island to the sun going down over the western sea.
+2. **Lighthouse gallery at sunset:** from the rail across the canopy and the island's west coast, the sun going down over
+   the sea at the right of the frame (crop the dark tip at the bottom-right corner with a longer lens, `]` in photo mode).
    `?spot=lighthouse&tod=sunset&weather=clear&hud=0`, then `__island.stage({ spot: 'lighthouse', tod: 'sunset', camera: 'shot', worldTime: null })`
 3. **Waterfall at noon:** from the east bank across the plunge pool to the falls, with the sun high in the gorge.
    `?spot=waterfall&tod=noon&weather=clear&hud=0`, then `__island.stage({ spot: 'waterfall', tod: 'noon', camera: 'shot', worldTime: null })`

@@ -9,7 +9,7 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { argv, ensureServer, launch } from './lib/browser';
+import { argv, checkConditions, CONDITIONS, ensureServer, launch } from './lib/browser';
 
 const a = argv();
 const round = a.get('round', 'dev');
@@ -21,17 +21,8 @@ const settle = Number(a.get('settle', '1500'));
 const outDir = join('E:\\shots\\island', round);
 mkdirSync(outDir, { recursive: true });
 
-/** a condition is a time of day plus weather */
-const COND: Record<string, { tod: string; weather: 'clear' | 'rain' }> = {
-  sunrise: { tod: 'sunrise', weather: 'clear' },
-  morning: { tod: 'morning', weather: 'clear' },
-  noon: { tod: 'noon', weather: 'clear' },
-  afternoon: { tod: 'afternoon', weather: 'clear' },
-  sunset: { tod: 'sunset', weather: 'clear' },
-  dusk: { tod: 'dusk', weather: 'clear' },
-  night: { tod: 'night', weather: 'clear' },
-  rain: { tod: '14.5', weather: 'rain' },
-};
+const COND = CONDITIONS;
+checkConditions(conditions);
 
 const server = await ensureServer(a.has('dev') ? 'dev' : 'preview');
 const L = await launch();
@@ -72,6 +63,9 @@ try {
   console.log(`${results.length} shots in ${((Date.now() - t0) / 1000).toFixed(0)} s -> ${outDir}`);
   if (L.console.length) console.log('console:\n' + L.console.filter((l) => !l.includes('powerPreference')).slice(0, 15).join('\n'));
 } finally {
-  await L.browser.close();
-  server.stop();
+  try {
+    await L.browser.close();
+  } finally {
+    server.stop();
+  }
 }
