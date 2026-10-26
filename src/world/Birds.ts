@@ -97,7 +97,7 @@ export class Birds {
   }
 
   /** t: world time (s); night: 0 day .. 1 night */
-  update(t: number, night: number) {
+  update(t: number, night: number, cam?: THREE.Vector3) {
     birdU.time.value = t;
     this.mesh.visible = night < 0.35;
     if (!this.mesh.visible) return;
@@ -116,7 +116,10 @@ export class Birds {
       const bank = Math.atan((v * v) / (Math.abs(b.r) * 9.81)) * Math.sign(b.w);
       this.e.set(-Math.atan2(vy, v) * 0.6, yaw, bank);
       this.q.setFromEuler(this.e);
-      this.s.setScalar(b.scale);
+      // past ~800 m a bird is under two pixels: gone (seen from the summit, the far gulls drew a ragged column of
+      // specks down the sea)
+      const far = cam ? 1 - THREE.MathUtils.smoothstep(this.p.distanceTo(cam), 500, 800) : 1;
+      this.s.setScalar(b.scale * Math.max(far, 1e-4));
       this.m4.compose(this.p, this.q, this.s);
       this.mesh.setMatrixAt(i, this.m4);
       // flapping in bursts between glides (frigatebirds hardly ever beat)

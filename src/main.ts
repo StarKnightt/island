@@ -281,7 +281,7 @@ async function boot() {
     river.update(t);
     village.update(t, (i) => ocean.sim.probe(i), tod.night);
     lighthouse.update(dt, tod.night);
-    birds.update(t, tod.night);
+    birds.update(t, tod.night, camera.position);
     hud.update(dt, player.pos.x, player.pos.z, tod.hour, weather.kind);
     dbg.update(dt);
     vegU.sunColor.value.copy(sunLight.color).multiplyScalar(sunLight.intensity);
