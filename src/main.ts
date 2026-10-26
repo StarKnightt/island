@@ -451,20 +451,29 @@ async function boot() {
   rocksReady.then(() => (veg.prime = Math.max(veg.prime, 3)));
   // the driver's threads finish the pipelines while ordinary frames run
   const t0 = performance.now();
+  // the screen starts to fade once the driver has most of the last pipelines done: the fade's slow start hides the
+  // few still compiling (it waited for every one, then faded for another second)
+  const p0 = engine.pipelinesPending;
+  let lifting: Promise<void> | null = null;
+  const lift = async () => {
+    await refreshMeasured;
+    loading.progress(1);
+    mark('first frame');
+    lifting = loading.done();
+  };
   while (engine.pipelinesPending > 0 && performance.now() - t0 < 120000) {
     const total = engine.pipelinesCompiled + engine.pipelinesPending;
     loading.status(`Compiling shaders ${engine.pipelinesCompiled} / ${total}`);
     loading.progress(0.8 + (0.18 * engine.pipelinesCompiled) / Math.max(1, total));
+    if (!lifting && engine.pipelinesPending <= p0 * 0.3) await lift();
     await frame();
   }
   console.info(`[island] ${engine.pipelinesCompiled} pipelines compiled in parallel, ${((performance.now() - t0) / 1000).toFixed(1)} s after the last prime`);
-  await refreshMeasured;
   await frame();
   await frame();
-  loading.progress(1);
-  mark('first frame');
+  if (!lifting) await lift();
   // (ready() waits for the screen to be gone: round 2's first capture caught it fading)
-  await loading.done();
+  await lifting;
   booting = false;
   engine.resetPacing();
   // (the ready milestone in timeline() whether or not a harness asks for it)
