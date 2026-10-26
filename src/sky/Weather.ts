@@ -41,6 +41,7 @@ export class Weather {
   cover = 0;
   wet = 0;
   wind = 0.3;
+  deck = 1;
   auto = true;
   /** how fast the weather runs (time-lapses); 1 = real time */
   speed = 1;
@@ -107,6 +108,7 @@ export class Weather {
       this.rain = target.rain;
       this.wet = w === 'rain' ? 1 : 0;
       this.wind = target.wind;
+      this.deck = target.deck;
     }
     this.apply();
     return this.state();
@@ -119,14 +121,15 @@ export class Weather {
   private targets() {
     const p = this.t;
     switch (this.kind) {
-      case 'clear': return { cover: 0, rain: 0, wind: 0.3 };
-      case 'gathering': return { cover: THREE.MathUtils.smoothstep(p, 0, 1), rain: THREE.MathUtils.smoothstep(p, 0.75, 1) * 0.3, wind: 0.3 + 0.5 * p };
+      case 'clear': return { cover: 0, rain: 0, wind: 0.3, deck: 1 };
+      // (the front comes in dark; the clearing has sun breaks in the thinning deck)
+      case 'gathering': return { cover: THREE.MathUtils.smoothstep(p, 0, 1), rain: THREE.MathUtils.smoothstep(p, 0.75, 1) * 0.3, wind: 0.3 + 0.5 * p, deck: 1 - 0.3 * THREE.MathUtils.smoothstep(p, 0.4, 1) };
       // rain cells pass: heavier bursts and lulls (a few in a squall), the deck a little lighter between them
       case 'rain': {
         const cell = 0.5 + 0.5 * Math.sin(p * 29 + 1.3) * Math.sin(p * 11.7 + 0.4);
-        return { cover: 0.93 + 0.07 * cell, rain: 0.42 + 0.28 * Math.sin(p * Math.PI) + 0.3 * cell, wind: 0.72 + 0.16 * cell };
+        return { cover: 0.93 + 0.07 * cell, rain: 0.42 + 0.28 * Math.sin(p * Math.PI) + 0.3 * cell, wind: 0.72 + 0.16 * cell, deck: 1.35 - 0.7 * cell };
       }
-      case 'clearing': return { cover: 1 - THREE.MathUtils.smoothstep(p, 0.1, 1), rain: (1 - THREE.MathUtils.smoothstep(p, 0, 0.4)) * 0.6, wind: 0.8 - 0.5 * p };
+      case 'clearing': return { cover: 1 - THREE.MathUtils.smoothstep(p, 0.1, 1), rain: (1 - THREE.MathUtils.smoothstep(p, 0, 0.4)) * 0.6, wind: 0.8 - 0.5 * p, deck: 0.85 + 0.4 * Math.sin(Math.min(p * 1.6, 1) * Math.PI) };
     }
   }
 
@@ -146,6 +149,7 @@ export class Weather {
     this.cover += (tg.cover - this.cover) * k;
     this.rain += (tg.rain - this.rain) * (1 - Math.exp(-dt * 0.8));
     this.wind += (tg.wind - this.wind) * k;
+    this.deck += (tg.deck - this.deck) * (1 - Math.exp(-dt * 0.35));
     // surfaces soak quickly in rain and dry over a few minutes
     if (this.rain > 0.05) this.wet = Math.min(1, this.wet + dt * this.rain * 0.08);
     else this.wet = Math.max(0, this.wet - dt / 240);
@@ -172,6 +176,7 @@ export class Weather {
     wetness.rain.value = this.wet;
     wetness.intensity.value = this.rain;
     wetness.wind.value = this.wind;
+    atmo.deck.value = this.deck;
     oceanU.rain.value = this.rain;
     oceanU.storm.value = THREE.MathUtils.smoothstep(this.wind, 0.4, 0.9);
     rainU.intensity.value = this.rain;

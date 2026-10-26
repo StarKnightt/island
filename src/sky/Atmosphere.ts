@@ -54,6 +54,8 @@ export const atmo = {
   mistColor: uniform(new THREE.Color(0.6, 0.62, 0.58)),
   /** 0..1 overcast: flattens the sky toward grey */
   overcast: uniform(0),
+  /** brightness of the overcast deck (1 = its mean): dark under a heavy rain cell, lighter in a lull */
+  deck: uniform(1),
   /** night factor for the stars, moon light */
   night: uniform(0),
   /** illuminance of a horizontal surface (sun or moon + sky), scene units: lights unlit effects (mist, spray) */
@@ -388,7 +390,7 @@ export function aerialFogNode() {
     // under an overcast the haze is the grey of the overcast sky's horizon (Sky.ts: about a fifth of the dome
     // overhead, scaled from the clear sky 15 degrees up in this direction)
     const lumRef = skyRadiance(normalize(vec3(v.x, 0.27, v.z))).dot(vec3(0.2126, 0.7152, 0.0722));
-    return mix(sky, vec3(atmo.mistColor).mul(lumRef.mul(0.73)), atmo.overcast);
+    return mix(sky, vec3(atmo.mistColor).mul(lumRef.mul(0.73).mul(atmo.deck)), atmo.overcast);
   })();
   return fog(colorN, factor);
 }

@@ -218,7 +218,7 @@ export function skyColorNode(withSun: boolean) {
     // (darker still in the last ten degrees, where the deck pales into it: brighter, the dome showed below the deck as
     // a white band over the sea with a hard top edge; Atmosphere.ts's rain haze matches this horizon)
     const cie = float(1).add(above.y.mul(2)).div(3).mul(mix(float(0.65), float(1), smoothstep(0.0, 0.25, above.y)));
-    col.assign(mix(col, vec3(0.95, 0.97, 1.0).mul(lumRef.mul(2.0).mul(cie)), atmo.overcast));
+    col.assign(mix(col, vec3(0.95, 0.97, 1.0).mul(lumRef.mul(2.0).mul(cie).mul(atmo.deck)), atmo.overcast));
     // night sky glow (moonlight scattered by the air, airglow, starlight) so the darkest sky is deep blue, not black,
     // and the image-based light keeps shadowed ground readable under the moon
     col.addAssign(vec3(0.0013, 0.0024, 0.0058).mul(atmo.night));
@@ -343,7 +343,7 @@ export function skyColorNode(withSun: boolean) {
     // below the horizon (the environment map's lower half): light bounced off the ground (sand, leaves, sea) under
     // the sun and the sky, so undersides and trunks get a neutral bounce instead of a colour of their own; it fades
     // at a low sun so shade stays cool (sky-lit) against the warm light
-    const horizon = mix(skyRadiance(normalize(vec3(dir.x, 0.02, dir.z))), vec3(0.95, 0.97, 1.0).mul(lumRef.mul(0.44)), atmo.overcast);
+    const horizon = mix(skyRadiance(normalize(vec3(dir.x, 0.02, dir.z))), vec3(0.95, 0.97, 1.0).mul(lumRef.mul(0.44).mul(atmo.deck)), atmo.overcast);
     const sunIrr = transmittanceAt(float(R_GROUND).add(atmo.camHeight), max(sun.y, 0.0)).mul(SUN_E).mul(max(sun.y, 0)).mul(float(1).sub(atmo.overcast.mul(0.88)));
     const skyIrr = mix(zen, horizon, 0.5).mul(Math.PI);
     const ground = vec3(0.13, 0.12, 0.095).mul(sunIrr.add(skyIrr)).div(Math.PI);
@@ -424,7 +424,7 @@ export class Sky {
     // the sun or moon has moved, the weather or the night has turned; otherwise every 20 s for the drifting clouds
     const sun = atmo.sunDir.value as THREE.Vector3;
     const moved = sun.angleTo(this.lastSun) > 0.008;
-    const look = [atmo.overcast.value as number, cov, atmo.night.value as number];
+    const look = [atmo.overcast.value as number, cov, atmo.night.value as number, (atmo.deck.value as number) * 1.5];
     const turned = look.some((v, i) => Math.abs(v - this.lastLook[i]) > 0.02);
     // (and at once when the sun has gone more than a couple of degrees: under a time-lapse clock the 0.6 s wait was
     // half an hour of twilight lit by a stale sky, then a jump of the whole frame when it caught up)
