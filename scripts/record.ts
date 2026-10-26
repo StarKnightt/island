@@ -51,10 +51,13 @@ interface Shot {
   dur: number;
   /** dissolve from the previous shot, seconds (0: a straight cut) */
   xin: number;
-  keys: Key[];
-  /** 0 = linear along the path, 1 = full ease-in/out (smootherstep); in between keeps the camera drifting at the ends */
+  /** a camera path through keys (position and aim on their own curves) ... */
+  keys?: Key[];
+  /** ... or a rig around the character: a pose from the shot's eased progress and his spring-followed position */
+  rig?: (p: { x: number; u: number; s: number; subj: THREE.Vector3; dir: THREE.Vector3 }) => { pos: THREE.Vector3; target: THREE.Vector3; fov: number };
+  /** the speed ramp: 0 = constant speed, 1 = a full cubic ease-in/out (a near hold, a fast middle, a settle) */
   ease: number;
-  /** aim partly at the character: target = mix(path target, his position + height, weight) */
+  /** aim partly at the character: target = mix(path target, his spring-followed position + height, weight) */
   track?: { weight: number; height: number };
   walk?: Walk;
   /** a grade on the game's metered exposure (1 = as played) */
@@ -74,37 +77,43 @@ const lhAim = (p: V3, dist: number, y: number): V3 => [p[0] + LD[0] * dist, y, p
 
 const SHOTS: Shot[] = [
   {
-    // low over the wet sand at sunrise, the sea and the sun ahead, waves rolling in; he walks in from the left
-    name: 'beach', tod: 6.55, spot: 'beach', dur: 6, xin: 0, ease: 0.6, previewAt: 4,
+    // low over the wet sand at sunrise, the sea and the sun ahead, waves rolling in; he walks in from the left while
+    // the camera pushes in toward the sun (3.6 m of dolly and a zoom from 52 to 44 degrees on one ramp)
+    name: 'beach', tod: 6.55, spot: 'beach', dur: 6, xin: 0, ease: 0.75, previewAt: 4,
     keys: [
-      { pos: [612, 0.95, 74.5], target: [642.6, 3, 48.8], fov: 50 },
-      { pos: [611.5, 1.6, 75.5], target: [643, 4, 50], fov: 50 },
+      { pos: [611.5, 1.0, 76], target: [642.6, 3, 48.8], fov: 52 },
+      { pos: [613.2, 1.25, 72.8], target: [643, 3.6, 49.5], fov: 44 },
     ],
-    track: { weight: 0.12, height: 1 },
+    track: { weight: 0.1, height: 1 },
     walk: { from: [611.1, 69.1], path: [[614, 67], [617.5, 64.5], [620, 62.5]], startAt: -0.3 },
     layers: [{ file: 'amb_waves', db: 0 }, { file: 'amb_surf', db: -4 }, { file: 'amb_birds', db: -9 }],
   },
   {
-    // noon in the rainforest: he walks away from us down the sun-flecked floor, the camera follows slowly
-    name: 'jungle', tod: 12.8, spot: 'jungle', dur: 6, xin: 0.8, ease: 0.6, previewAt: 3, exposure: 1.6,
+    // noon in the rainforest: he walks away from us down the sun-flecked trail; the camera holds, picks him up and
+    // tracks 7 m along the trail behind him while it zooms in from 56 to 47 degrees, the aim on his spring
+    name: 'jungle', tod: 12.8, spot: 'jungle', dur: 6, xin: 0.8, ease: 0.8, previewAt: 3, exposure: 1.6,
     keys: [
-      { pos: [359, 1.9, -66.2], target: [325, 2.6, -57.5], fov: 56, ground: true },
-      { pos: [353.5, 2.2, -64.8], target: [318, 2.6, -55.5], fov: 56, ground: true },
+      { pos: [355.6, 1.9, -66.0], target: [325, 2.6, -57.5], fov: 56, ground: true },
+      { pos: [348.6, 2.1, -64.3], target: [316, 2.6, -55], fov: 47, ground: true },
     ],
-    track: { weight: 0.15, height: 1 },
+    track: { weight: 0.3, height: 1 },
     walk: { from: [350.5, -63.8], path: [[343, -62], [335, -60], [327, -58], [319, -56]], startAt: -0.4 },
     layers: [{ file: 'amb_jungle', db: -6 }, { file: 'amb_birds', db: -12 }, { file: 'amb_wind', db: -20 }],
   },
   {
-    // sunset in the village: the camera trucks with him along the shore, the huts on the right, the main jetty and
-    // its canoes ahead against the low sun
-    name: 'village', tod: 17.42, spot: 'village', dur: 10, xin: 0.8, ease: 0.5, previewAt: 6,
-    keys: [
-      { pos: [-405.5, 2.6, 348], target: [-445, 3.0, 330], fov: 52 },
-      { pos: [-411, 2.9, 349], target: [-450, 3.2, 327], fov: 52 },
-      { pos: [-417, 3.3, 349.5], target: [-454, 3.4, 324], fov: 52 },
-    ],
-    track: { weight: 0.2, height: 1 },
+    // sunset in the village: an orbit round him as he walks the shore, always facing west into the low sun. It opens
+    // behind him on the seaward side (the huts, the main jetty and its canoes against the sky), swings 80 degrees
+    // round behind him to the landward side and settles on the sun over the sea with the jetty ahead of him,
+    // closing from 11 to 9.5 m and zooming from 52 to 44 degrees (the hillside's round crowns stay behind the camera)
+    name: 'village', tod: 17.42, spot: 'village', dur: 10, xin: 0.8, ease: 0.85, previewAt: 6,
+    rig: ({ u, s, subj, dir }) => {
+      const phi = THREE.MathUtils.degToRad(THREE.MathUtils.lerp(55, -25, u));
+      const r = THREE.MathUtils.lerp(11, 9.5, u);
+      const pos = subj.clone().add(new THREE.Vector3(Math.cos(phi) * r, 2.2, Math.sin(phi) * r));
+      // (lead room ahead of him; aimed above his head so the sky and the treeline keep the upper half)
+      const target = subj.clone().add(new THREE.Vector3(0, THREE.MathUtils.lerp(2.4, 1.9, s), 0)).addScaledVector(dir, THREE.MathUtils.lerp(6, 3, s));
+      return { pos, target, fov: THREE.MathUtils.lerp(52, 44, u) };
+    },
     walk: { from: [-412, 337.5], path: [[-418, 338.3], [-424, 339.2], [-430, 340]], startAt: -0.4 },
     layers: [
       { file: 'amb_waves', db: -3 }, { file: 'amb_chimes', db: -6 }, { file: 'amb_chickens', db: -13 },
@@ -112,31 +121,35 @@ const SHOTS: Shot[] = [
     ],
   },
   {
-    // a drone rising off the end of the main jetty, the moored canoes riding the swell, the village beyond
-    name: 'jetty', tod: 17.42, spot: 'village', dur: 6, xin: 0, ease: 0.6, previewAt: 3,
+    // a drone rising off the end of the main jetty from 3 to 22 m, back and up on one curve, widening from 46 to 56
+    // degrees: the moored canoes riding the swell, then the village beyond
+    name: 'jetty', tod: 17.42, spot: 'village', dur: 6, xin: 0, ease: 0.85, previewAt: 3,
     keys: [
-      { pos: [-434, 4.5, 398], target: [-458, 1.5, 366], fov: 50 },
-      { pos: [-428, 11, 404], target: [-458, 1, 362], fov: 50 },
-      { pos: [-420, 18, 410], target: [-458, 0.5, 358], fov: 50 },
+      { pos: [-436, 3.0, 396], target: [-456, 1.2, 368], fov: 46 },
+      { pos: [-430, 10, 404], target: [-457, 1, 362], fov: 50 },
+      { pos: [-421, 22, 413], target: [-458, 0, 352], fov: 56 },
     ],
     layers: [{ file: 'amb_waves', db: -6 }, { file: 'amb_creak', db: -11 }, { file: 'amb_gulls', db: -10, filter: 'highpass=f=250' }, { file: 'amb_wind', db: -16 }],
   },
   {
-    // a crane up past the lighthouse tower to the gallery's view over the island and the sun on the western sea
-    name: 'lighthouse', tod: 17.42, spot: 'lighthouse', dur: 7, xin: 0.8, ease: 0.7, previewAt: 6,
+    // a pull-back reveal: tight on the gallery and the lantern at the left edge, the camera backs away and up from
+    // 7 to 18 m off the tower while the lens widens from 40 to 52 degrees, opening onto the island and the sun on
+    // the western sea (the tower keeps its place in the frame and shrinks)
+    name: 'lighthouse', tod: 17.42, spot: 'lighthouse', dur: 7, xin: 0.8, ease: 0.85, previewAt: 6,
     keys: [
-      { pos: lh(16, 10, 225), target: lhAim(lh(16, 10, 225), 300, 262), fov: 52 },
-      { pos: lh(16, 10, 231), target: lhAim(lh(16, 10, 231), 400, 215), fov: 52 },
-      { pos: lh(16, 10, GALLERY + 6), target: lhAim(lh(16, 10, GALLERY + 6), 700, GALLERY - 120), fov: 52 },
+      { pos: lh(7, 4.4, GALLERY + 3), target: lhAim(lh(7, 4.4, GALLERY + 3), 700, GALLERY - 110), fov: 40 },
+      { pos: lh(12, 7.5, GALLERY + 5), target: lhAim(lh(12, 7.5, GALLERY + 5), 700, GALLERY - 116), fov: 46 },
+      { pos: lh(18, 11.25, GALLERY + 7), target: lhAim(lh(18, 11.25, GALLERY + 7), 700, GALLERY - 120), fov: 52 },
     ],
     layers: [{ file: 'amb_wind', db: 5 }, { file: 'amb_surf', db: -6, filter: 'lowpass=f=700' }, { file: 'amb_birds', db: -20 }],
   },
   {
-    // the whole island in the golden hour from the sea, a slow push in, then the fade to black
-    name: 'final', tod: 17.3, spot: 'village', dur: 5, xin: 0.8, ease: 0.4, previewAt: 2,
+    // the whole island in the golden hour from the sea: a slow zoom out from 32 to 44 degrees with a little drift
+    // back, settling into a hold as the picture fades to black
+    name: 'final', tod: 17.3, spot: 'village', dur: 5, xin: 0.8, ease: 0.7, previewAt: 2,
     keys: [
-      { pos: [-1000, 110, 620], target: [-150, 40, -80], fov: 40 },
-      { pos: [-970, 106, 592], target: [-150, 39, -80], fov: 40 },
+      { pos: [-995, 109, 615], target: [-150, 40, -80], fov: 32 },
+      { pos: [-1015, 113, 635], target: [-150, 41, -80], fov: 44 },
     ],
     layers: [{ file: 'amb_waves', db: -3 }, { file: 'amb_wind', db: -5 }],
   },
@@ -159,21 +172,56 @@ function starts() {
   });
 }
 
-const smoother = (x: number) => x * x * x * (x * (x * 6 - 15) + 10);
+// the speed ramps: a cubic ease-in/out for the camera's travel (it nearly holds, runs through the middle and settles),
+// a softer smoothstep for its aim, so the view turns a little ahead of the move and lands with it
+const cubic = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const smooth = (x: number) => x * x * (3 - 2 * x);
+const ramp = (x: number, k: number) => (1 - k) * x + k * cubic(x);
+const aimRamp = (x: number, k: number) => (1 - k) * x + k * smooth(x);
 
-/** a shot's camera as a function of shot time: eased, arc-length Catmull-Rom paths through the keys */
+/** a shot's camera as a function of shot time and the followed subject: arc-length Catmull-Rom paths through the
+ *  keys (or the shot's rig), travelled on the speed ramp */
 function cameraPath(shot: Shot, keys: Key[], i: number) {
   const { pre, post } = span(i);
   const t0 = -pre / FPS, t1 = shot.dur + post / FPS;
   const curve = (pts: V3[]) => (pts.length === 2 ? new THREE.LineCurve3(new THREE.Vector3(...pts[0]), new THREE.Vector3(...pts[1])) : new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(...p)), false, 'centripetal'));
-  const pos = curve(keys.map((k) => k.pos));
-  const tgt = curve(keys.map((k) => k.target));
+  const pos = keys.length ? curve(keys.map((k) => k.pos)) : null;
+  const tgt = keys.length ? curve(keys.map((k) => k.target)) : null;
   const fovs = keys.map((k) => k.fov ?? 55);
-  return (t: number) => {
+  return (t: number, subj: THREE.Vector3, dir: THREE.Vector3) => {
     const x = THREE.MathUtils.clamp((t - t0) / (t1 - t0), 0, 1);
-    const u = (1 - shot.ease) * x + shot.ease * smoother(x);
+    const u = ramp(x, shot.ease), s = aimRamp(x, shot.ease);
+    if (shot.rig) return shot.rig({ x, u, s, subj, dir });
     const f = u * (fovs.length - 1), j = Math.min(fovs.length - 2, Math.floor(f));
-    return { pos: pos.getPointAt(u), target: tgt.getPointAt(u), fov: THREE.MathUtils.lerp(fovs[j], fovs[j + 1], f - j) };
+    const target = tgt!.getPointAt(s);
+    if (shot.track) target.lerp(subj.clone().setY(subj.y + shot.track.height), shot.track.weight);
+    return { pos: pos!.getPointAt(u), target, fov: THREE.MathUtils.lerp(fovs[j], fovs[j + 1], f - j) };
+  };
+}
+
+/** the character as the camera sees him: a critically damped spring on his position (no overshoot, no step bob)
+ *  and his smoothed walking direction, stepped once per frame */
+function follower(w: number) {
+  const p = new THREE.Vector3(), v = new THREE.Vector3(), dir = new THREE.Vector3(1, 0, 0), last = new THREE.Vector3();
+  let init = false;
+  return {
+    p, dir,
+    step(pos: number[] | null, dt: number) {
+      if (!pos) return;
+      const x = new THREE.Vector3(pos[0], pos[1], pos[2]);
+      if (!init) {
+        p.copy(x);
+        last.copy(x);
+        init = true;
+        return;
+      }
+      const k = w * w, c = 2 * w;
+      v.addScaledVector(x.clone().sub(p).multiplyScalar(k).sub(v.clone().multiplyScalar(c)), dt);
+      p.addScaledVector(v, dt);
+      const d = x.clone().sub(last).setY(0);
+      if (d.lengthSq() > 1e-8) dir.lerp(d.normalize(), 1 - Math.exp(-dt * 1.5)).normalize();
+      last.copy(x);
+    },
   };
 }
 
@@ -235,33 +283,41 @@ async function render() {
         const hf = (window as unknown as { __island: Api }).__island.ctx.hf;
         const g = (x: number, z: number) => Math.max(hf.height(x, z), 0);
         return ks.map((k) => (k.ground ? { ...k, pos: [k.pos[0], k.pos[1] + g(k.pos[0], k.pos[2]), k.pos[2]], target: [k.target[0], k.target[1] + g(k.target[0], k.target[2]), k.target[2]] } : k));
-      }, shot.keys) as Key[];
+      }, shot.keys ?? []) as Key[];
       const cam = cameraPath(shot, keys, i);
-      const pose = (t: number, pl?: number[] | null) => {
-        const c = cam(t);
-        if (shot.track && pl) c.target.lerp(new THREE.Vector3(pl[0], pl[1] + shot.track.height, pl[2]), shot.track.weight);
+      const fol = follower(2.2);
+      if (shot.walk) {
+        fol.p.set(shot.walk.from[0], 0, shot.walk.from[1]);
+        fol.dir.set(shot.walk.path[0][0] - shot.walk.from[0], 0, shot.walk.path[0][1] - shot.walk.from[1]).normalize();
+      }
+      const pose = (t: number) => {
+        const c = cam(t, fol.p, fol.dir);
         return { pos: c.pos.toArray().map((v) => +v.toFixed(4)), target: c.target.toArray().map((v) => +v.toFixed(4)), fov: +c.fov.toFixed(3) };
       };
       const t0 = -pre / FPS;
       const startYaw = shot.walk ? Math.atan2(shot.walk.path[0][0] - shot.walk.from[0], -(shot.walk.path[0][1] - shot.walk.from[1])) : 0;
-      await L.page.evaluate(async (o) => {
+      const placed = await L.page.evaluate(async (o) => {
         const api = (window as unknown as { __island: Api }).__island;
         api.manual(false);
         await api.stage({ spot: o.spot, tod: o.tod, weather: 'clear', camera: o.cam, worldTime: null, settleMs: 600 });
         api.manual(true);
         api.shotStart(1000 + o.i * 200, 9001 + o.i, o.exposure);
         // (a shot without him parks him in the rainforest, out of every other frame)
-        if (o.walk) api.placePlayer(o.walk.from[0], o.walk.from[1], o.yaw);
-        else api.placePlayer(365, 18, 0);
+        return (o.walk ? api.placePlayer(o.walk.from[0], o.walk.from[1], o.yaw) : api.placePlayer(365, 18, 0)) as { pos: number[] } | null;
       }, { spot: shot.spot, tod: shot.tod, cam: pose(t0), i, walk: shot.walk ?? null, yaw: startYaw, exposure: shot.exposure ?? 1 });
 
-      let pl = null as number[] | null;
+      let pl = (shot.walk && placed?.pos) || null;
+      // (the spring starts at rest on him)
+      fol.step(pl, 0);
       const st = { seg: 0 };
+      let lastCam = pose(t0);
       const frame = async (t: number, warm = false) => {
         let walk: number | null = null;
         if (!warm && shot.walk && t >= shot.walk.startAt && pl) walk = steer(shot.walk, { x: pl[0], z: pl[2] }, st);
-        const r = await L.page.evaluate((o) => (window as unknown as { __island: Api }).__island.shotFrame(o), { cam: pose(t, pl), walk, dt: 1 / FPS });
-        pl = r.player?.pos ?? null;
+        if (!warm) fol.step(pl, 1 / FPS);
+        lastCam = pose(t);
+        const r = await L.page.evaluate((o) => (window as unknown as { __island: Api }).__island.shotFrame(o), { cam: lastCam, walk, dt: 1 / FPS });
+        if (shot.walk) pl = r.player?.pos ?? pl;
         return r;
       };
       // warm-up at the first pose: TAA history, exposure, spray and the sea settle (nothing captured)
@@ -291,7 +347,7 @@ async function render() {
         const t = t0 + f / FPS;
         const r = await frame(t);
         if (r.pending) pending++;
-        for (const s of r.steps) steps.push({ f, surface: s.surface, pos: s.pos, cam: pose(t, pl).pos });
+        for (const s of r.steps) steps.push({ f, surface: s.surface, pos: s.pos, cam: lastCam.pos });
         const png = await capture();
         writes.push(writeFile(join(dir, `f_${String(f).padStart(5, '0')}.png`), png));
         if (writes.length >= 12) await writes.shift();
