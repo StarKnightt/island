@@ -45,10 +45,11 @@ export const atmo = {
   /** ground mist at dawn: extinction per metre at sea level, thinning with a scale height of DAWN_H */
   dawnMist: uniform(0.0),
   /**
-   * boundary-layer haze for the aerial perspective, per metre at sea level: with the aerosol and the air about 1.1e-4
-   * at noon (visibility ~35 km), ridges 1-2 km out pale by 10-20 %, a coast 5 km out by ~40 %, the sea horizon soft
+   * boundary-layer haze for the aerial perspective, per metre at sea level: with the aerosol and the air about 1.7e-4
+   * at noon (visibility ~23 km, a humid trade-wind day), ridges 1-2 km out pale by 15-30 %, a coast 5 km out by
+   * ~55 %, the sea horizon soft
    */
-  haze: uniform(8e-5),
+  haze: uniform(1.4e-4),
   // (rain haze over a green island is a neutral, faintly green grey: a blue-grey one read as frost on the forest)
   mistColor: uniform(new THREE.Color(0.6, 0.62, 0.58)),
   /** 0..1 overcast: flattens the sky toward grey */

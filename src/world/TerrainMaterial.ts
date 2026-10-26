@@ -192,7 +192,7 @@ export function createTerrainMaterial(hf: Heightfield) {
   // less lime green (seen from the hills and the gallery the floor read as bare brown ground or a pale lawn)
   const camFar = smoothstep(50, 220, length(cameraPosition.sub(p)));
   albedo = mix(albedo, vec3(0.022, 0.036, 0.016), forest.mul(notRock).mul(camFar).mul(0.85));
-  albedo = mix(albedo, albedo.mul(vec3(0.62, 0.72, 0.52)), grass.mul(notRock).mul(float(1).sub(forest)).mul(camFar).mul(0.7));
+  albedo = mix(albedo, albedo.mul(vec3(0.46, 0.58, 0.36)), grass.mul(notRock).mul(float(1).sub(forest)).mul(camFar).mul(0.85));
 
   // ---- wetness: shore swash, rain on upward faces, the river banks; darker and glossier
   const rainWet = wetness.rain.mul(smoothstep(0.3, 0.9, n.y));

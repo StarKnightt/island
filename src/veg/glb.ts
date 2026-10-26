@@ -311,11 +311,13 @@ export function crownProxy(v: GlbVariant, leafMat: string, clusters = 12): THREE
       cnt++;
     }
     if (!cnt) continue;
-    const rxz = Math.sqrt(sxz / cnt / 2) * 1.7 + 0.4, ry = Math.sqrt(sy / cnt) * 1.6 + 0.4;
+    // (generous: neighbouring crowns overlap into one closed, lumpy canopy instead of balls with ground between)
+    const rxz = Math.sqrt(sxz / cnt / 2) * 2.0 + 0.5, ry = Math.sqrt(sy / cnt) * 1.75 + 0.4;
     const base = P.length / 3, phase = rnd();
     for (let i = 0; i < ip.count; i++) {
       const x = ip.getX(i), y = ip.getY(i), z = ip.getZ(i);
-      const lump = 1 + 0.16 * Math.sin(x * 5.1 + k) * Math.sin(y * 4.3 + 2 * k) * Math.sin(z * 4.7 + 3);
+      // two octaves of lumps: florets on the crown, not one smooth ball
+      const lump = 1 + 0.16 * Math.sin(x * 5.1 + k) * Math.sin(y * 4.3 + 2 * k) * Math.sin(z * 4.7 + 3) + 0.09 * Math.sin(x * 11.3 + 2 * k) * Math.sin(y * 9.1 + k) * Math.sin(z * 10.7 + 1);
       // flattened underneath, as crowns are
       const yy = y < 0 ? y * 0.55 : y;
       P.push(cen[k].x + x * rxz * lump, cen[k].y + yy * ry * lump, cen[k].z + z * rxz * lump);
@@ -354,8 +356,10 @@ export function crownMaterial(green: [number, number, number], look: PlantLook) 
   const alb = vec3(TSLTyped.uniform(new THREE.Vector3(...green))).mul(hue).mul(float(1).add(vary.mul(0.5))).mul(n1.mul(0.3).add(1)).mul(mix(float(1), float(0.68), wetness.rain));
   m.colorNode = vec4(alb.mul(col.x), 1);
   // leaf clumps tilt the normal; the gaps between clumps read as shadow
-  const bump = mx_noise_vec3(p.mul(1.1)).mul(0.65);
-  m.normalNode = transformNormalToView(normalize(normalWorldGeometry.add(bump)));
+  // (and the crown's own shape only half shows: lit as a canopy of leaf clumps facing up, not as a sphere with a
+  // terminator round it, which turned a forest seen from the gallery into bubble wrap)
+  const bump = mx_noise_vec3(p.mul(1.1)).mul(0.6).add(mx_noise_vec3(p.mul(2.7)).mul(0.35));
+  m.normalNode = transformNormalToView(normalize(normalWorldGeometry.add(vec3(0, 0.55, 0)).add(bump)));
   m.roughnessNode = float(0.75);
   m.metalnessNode = float(0);
   m.positionNode = Fn(() => positionLocal.add(windFrom(look)))();

@@ -250,7 +250,9 @@ export class Ocean {
       const crestVary = mx_noise_float(vec3(c.along.div(31), w.n.mul(0.77), 4.4)).mul(0.35).add(0.8);
       const reefAmt = onReef.mul(reefEdge).mul(exp(w.age.div(-1.6)).mul(0.95).add(exp(w.age.div(-6)).mul(0.4))).mul(crestVary);
       const reefFoam = laceMask(reefAmt.clamp(0, 1), xz, w.n, c.nrm, w.age.mul(0.9));
-      const foam = max(max(max(surfFoam, lip), max(sheetFoam, caps)), reefFoam).clamp(0, 1);
+      // (the island data ends at the world tile's edge and clamps there: no shore surf out in the open ocean beyond it)
+      const inTile = smoothstep(1010, 960, max(abs(xz.x), abs(xz.y)));
+      const foam = max(max(max(surfFoam, lip), max(sheetFoam, reefFoam)).mul(inTile), caps).clamp(0, 1);
 
       // ---- refraction: the sea bed along the refracted rays, absorbed over the in-water path
       const cosT = sqrt(float(1).sub(float(1).sub(NdotV.mul(NdotV)).div(1.777)));
