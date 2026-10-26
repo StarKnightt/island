@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 import {
   COAST, ESCARPMENT, FALLS_INDEX, HALF_WORLD, HEIGHT_RES, HILLS, H_MAX, H_MIN, ISLETS, LIGHTHOUSE, MASK_RES, PATHS, PEAK,
-  POOL, RIVER, VILLAGE, WORLD_SIZE, type V2,
+  POOL, RIVER, VILLAGE, WORLD_SIZE, villageDist, type V2,
 } from '../src/world/layout.ts';
 import { Noise2, clamp, lerp, smax, smin, smoothstep } from '../src/core/noise.ts';
 
@@ -929,7 +929,7 @@ for (let j = 0; j < M; j++) {
     const beachK = clamp(1 - k, 0, 1);
     const rd = riverD[ci];
     const path = pathW[ci];
-    const dv = Math.hypot(x - VILLAGE.center[0], z - VILLAGE.center[1]);
+    const vd = villageDist(x, z);
     const dl = Math.hypot(x - LIGHTHOUSE.p[0], z - LIGHTHOUSE.p[1]);
     // sand: beaches and their lagoon floors, the river mouth bars
     let sand = beachK * (1 - smoothstep(48 + 14 * n1, 72 + 14 * n1, s)) * (h < 4.5 ? 1 : 1 - smoothstep(4.5, 6, h));
@@ -937,7 +937,10 @@ for (let j = 0; j < M; j++) {
     if (s < 0) sand = Math.max(sand, beachK * 0.9 + 0.1);
     // rock: cliffs and rock shelves at the coast, steep ground, the summit
     // (not the reef's coral slopes)
-    let rock = smoothstep(38, 50, slope + 6 * n2) * (s < 0 && liveBed[ci] > 0.02 ? 0 : 1);
+    // (inland, away from the coast and below the summit, a 40-50 degree hillside is overgrown, not bare: the rock
+    // shows only on faces steeper than that)
+    const inlandK = smoothstep(30, 70, s) * (1 - smoothstep(170, 195, h));
+    let rock = smoothstep(38 + 12 * inlandK, 50 + 10 * inlandK, slope + 6 * n2) * (s < 0 && liveBed[ci] > 0.02 ? 0 : 1);
     rock = Math.max(rock, clamp(k - 0.6, 0, 1) * (1 - smoothstep(10 + 10 * n1, 26 + 10 * n1, s)) * (s > -6 ? 1 : 0.5));
     rock = Math.max(rock, smoothstep(196, 206, h + 8 * n2) * 0.85);
     // falls gorge
@@ -948,12 +951,12 @@ for (let j = 0; j < M; j++) {
     let grass = smoothstep(180, 204, h + 10 * n1);
     grass = Math.max(grass, clamp(k - 1.2, 0, 1) * (1 - smoothstep(30, 70, s)) * smoothstep(4, 12, s));
     grass = Math.max(grass, beachK * smoothstep(50, 70, s) * (1 - smoothstep(80, 110, s)) * 0.8);
-    grass = Math.max(grass, smoothstep(55, 85, dv) * (1 - smoothstep(110, 150, dv)) * 0.9);
+    grass = Math.max(grass, smoothstep(5, 28, vd) * (1 - smoothstep(50, 90, vd)) * 0.9);
     grass = Math.max(grass, (1 - path) * smoothstep(0.02, 0.4, path) * 0.7);
     grass *= 1 - rock * 0.8;
     // dirt: trails, the village ground, river banks
     let dirt = path;
-    dirt = Math.max(dirt, (1 - smoothstep(50, 75, dv)) * smoothstep(20, 34, s) * (0.6 + 0.4 * smoothstep(-0.2, 0.3, n2)));
+    dirt = Math.max(dirt, (1 - smoothstep(3, 18, vd)) * smoothstep(20, 34, s) * (0.6 + 0.4 * smoothstep(-0.2, 0.3, n2)));
     dirt = Math.max(dirt, (1 - smoothstep(0.5, 3.5, rd)) * 0.7);
     // forest density
     let forest = s > 0 ? 1 : 0;
@@ -961,7 +964,7 @@ for (let j = 0; j < M; j++) {
     forest *= 1 - smoothstep(186, 206, h + 8 * n1);
     forest *= 1 - path;
     forest *= smoothstep(0.5, 6, rd);
-    forest *= smoothstep(70, 105, dv) * 0.85 + 0.15 * smoothstep(40, 70, dv);
+    forest *= smoothstep(8, 32, vd) * 0.85 + 0.15 * smoothstep(0, 8, vd);
     forest *= 1 - smoothstep(44, 56, slope);
     forest *= smoothstep(-0.62, -0.32, noiseC.fbm(x / 160, z / 160, 3));
     forest *= smoothstep(LIGHTHOUSE.platformR + 8, LIGHTHOUSE.platformR + 30, dl);

@@ -141,7 +141,8 @@ export class TimeOfDay {
     // (a moonless night opens up further than a moonlit one: starlight and the sky glow keep the sand faintly grey and
     // the palms in silhouette instead of a black screen between moonset and dawn)
     const moonUp = THREE.MathUtils.smoothstep(this.moon.y, -0.02, 0.15);
-    const maxExp = THREE.MathUtils.lerp(30, 16, moonUp);
+    // (under the moon the cap holds the white sand to a dim blue-grey, below the sky's glow, not snow under a lamp)
+    const maxExp = THREE.MathUtils.lerp(30, 11, moonUp);
     this.exposureTarget = THREE.MathUtils.clamp(0.42 / Math.pow(L, 0.66), 0.15, maxExp) * (1 - 0.35 * this.overcast);
     void clouds;
   }

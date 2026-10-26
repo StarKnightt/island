@@ -11,7 +11,7 @@ import {
 } from '../core/tsl';
 import { Rng, Noise2 } from '../core/noise';
 import type { Heightfield } from '../world/Heightfield';
-import { HALF_WORLD, VILLAGE, LIGHTHOUSE, SPOTS } from '../world/layout';
+import { HALF_WORLD, LIGHTHOUSE, SPOTS, villageDist } from '../world/layout';
 
 /**
  * The opening views stay clear: no shrub or understory plant between a spot's player and the sight it faces, nor
@@ -427,7 +427,7 @@ export class Vegetation {
       const edge = Math.max(sand * 0.95, 0.35) * (1 - forest * 0.5);
       const grove = THREE.MathUtils.smoothstep(noise.fbm(px / 55, pz / 55, 3), -0.35, 0.35);
       // the village keeps its ground open between the huts: a few shade palms, the groves round it
-      const vk = THREE.MathUtils.smoothstep(Math.hypot(px - VILLAGE.center[0], pz - VILLAGE.center[1]), 50, 110);
+      const vk = THREE.MathUtils.smoothstep(villageDist(px, pz), 0, 45);
       const p = band * edge * (0.25 + 0.75 * grove) * 0.42 * (0.12 + 0.88 * vk);
       if (r.next() > p || !free(px, pz, 1.2)) continue;
       // near the sea the short leaners (a, b), behind them the tall ones (d, e, f)
@@ -457,10 +457,22 @@ export class Vegetation {
       // berm) rather than lone mounds out on the open sand
       const berm = THREE.MathUtils.smoothstep(s, 14, 26) * (1 - THREE.MathUtils.smoothstep(s, 45, 62)) * (1 - THREE.MathUtils.smoothstep(hf.sand(px, pz), 0.75, 0.98) * 0.85);
       const patch = THREE.MathUtils.smoothstep(noise.fbm(px / 22 + 7, pz / 22, 2), 0.0, 0.3);
-      if (r.next() > berm * patch * (kind < 0.4 ? 0.85 : 0.45) || !free(px, pz, 1.1) || inSightline(px, pz)) continue;
-      // scrub_d is pruned low on its +x side: face that to the sea
-      const sp = r.pick(scrubs);
-      push(sp, px, pz, sp === scrubs[2] ? -toSea(px, pz) : r.next() * 6.28, r.range(0.75, 1.25), 0.15);
+      if (r.next() > berm * patch * (kind < 0.4 ? 0.85 : 0.45) * 0.3 || !free(px, pz, 1.1) || inSightline(px, pz)) continue;
+      // a run of overlapping mounds along the berm, half buried at their feet and of uneven size, so the scrub reads
+      // as one ragged hedge strip rather than a row of separate balls
+      const gx = hf.shoreDist(px + 1, pz) - hf.shoreDist(px - 1, pz), gz = hf.shoreDist(px, pz + 1) - hf.shoreDist(px, pz - 1);
+      const gl = Math.hypot(gx, gz) || 1, tx = -gz / gl, tz = gx / gl;
+      const n = 3 + Math.floor(r.next() * 4);
+      let along = 0;
+      for (let i = 0; i < n; i++) {
+        const sc = r.range(0.55, 1.3);
+        const qx = px + tx * along + (gx / gl) * r.range(-1.2, 1.6), qz = pz + tz * along + (gz / gl) * r.range(-1.2, 1.6);
+        along += r.range(1.1, 2.0) * sc;
+        if (hf.water(qx, qz) > 0.1 || hf.shoreDist(qx, qz) < 12 || inSightline(qx, qz)) continue;
+        // scrub_d is pruned low on its +x side: face that to the sea
+        const sp = r.pick(scrubs);
+        push(sp, qx, qz, sp === scrubs[2] ? -toSea(qx, qz) : r.next() * 6.28, sc, 0.15 + r.range(0.1, 0.45) * sc);
+      }
     }
     // pandanus: lone trees and clumps of two or three on the berm behind the beaches and along the rock shelves,
     // where the salt spray keeps the palms back; they lean out over the sand toward the sea (+x of the model)
@@ -475,7 +487,7 @@ export class Vegetation {
       const near = 1 - THREE.MathUtils.smoothstep(s, 22, 48);
       const patch = THREE.MathUtils.smoothstep(noise.fbm(px / 40 - 13, pz / 40 + 5, 2), 0.05, 0.4);
       // fewer in the village (its ground stays open) and none in the opening views
-      const vk = THREE.MathUtils.smoothstep(Math.hypot(px - VILLAGE.center[0], pz - VILLAGE.center[1]), 60, 110);
+      const vk = THREE.MathUtils.smoothstep(villageDist(px, pz), 4, 45);
       const p = near * patch * (kind > 0.4 && kind < 1.6 ? 0.55 : 0.3) * vk;
       if (r.next() > p) continue;
       const n = r.next() < 0.45 ? 1 : r.next() < 0.7 ? 2 : 3;
@@ -502,10 +514,10 @@ export class Vegetation {
       if (g < 0.25 || hf.shoreDist(px, pz) < 28) continue;
       const h = hf.height(px, pz);
       if (h < 2 || hf.rock(px, pz) > 0.45 || hf.water(px, pz) > 0.05 || dirt > 0.75 || hf.sand(px, pz) > 0.5) continue;
-      if (hf.normal(px, pz).y < 0.72 || clearing(px, pz, 4)) continue;
+      if (hf.normal(px, pz).y < 0.64 || clearing(px, pz, 4)) continue;
       if (Math.hypot(px - LIGHTHOUSE.p[0], pz - LIGHTHOUSE.p[1]) < LIGHTHOUSE.platformR + 6) continue;
       // (the huts' own ground stays open; the hill behind them is thicket)
-      const open = THREE.MathUtils.smoothstep(Math.hypot(px - VILLAGE.center[0], pz - VILLAGE.center[1]), 52, 80);
+      const open = THREE.MathUtils.smoothstep(villageDist(px, pz), 2, 16);
       const thicket = THREE.MathUtils.smoothstep(noise.fbm(px / 26 - 11, pz / 26 + 4, 3), -0.5, 0.25);
       if (r.next() > Math.min(1, g * 1.1) * thicket * 0.9 * open || !free(px, pz, 1.3) || inSightline(px, pz)) continue;
       // on the windswept headland round the summit the shrubs stay low

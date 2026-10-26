@@ -166,6 +166,16 @@ export const ESCARPMENT: { p: V2; step: number }[] = [
 ];
 
 /** the fishing village on the cove's north shore */
+/**
+ * Distance (m) from the village's built belt (the huts, the communal house, the fire and the beach in front of them),
+ * 0 inside it. The open ground and the thinned forest are measured from this belt rather than from the centre, so the
+ * hill right behind the back row stays a green wall instead of a bare disc.
+ */
+export function villageDist(x: number, z: number) {
+  const dx = Math.max(-527 - x, 0, x + 396), dz = Math.max(260 - z, 0, z - 342);
+  return Math.hypot(dx, dz);
+}
+
 export const VILLAGE = {
   center: [-455, 300] as V2,
   /** levelled ground: radius and height at the waterfront / at the back */
