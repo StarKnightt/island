@@ -120,7 +120,11 @@ export class Weather {
     switch (this.kind) {
       case 'clear': return { cover: 0, rain: 0, wind: 0.3 };
       case 'gathering': return { cover: THREE.MathUtils.smoothstep(p, 0, 1), rain: THREE.MathUtils.smoothstep(p, 0.75, 1) * 0.3, wind: 0.3 + 0.5 * p };
-      case 'rain': return { cover: 1, rain: 0.65 + 0.35 * Math.sin(p * Math.PI) , wind: 0.8 };
+      // rain cells pass: heavier bursts and lulls (a few in a squall), the deck a little lighter between them
+      case 'rain': {
+        const cell = 0.5 + 0.5 * Math.sin(p * 29 + 1.3) * Math.sin(p * 11.7 + 0.4);
+        return { cover: 0.93 + 0.07 * cell, rain: 0.42 + 0.28 * Math.sin(p * Math.PI) + 0.3 * cell, wind: 0.72 + 0.16 * cell };
+      }
       case 'clearing': return { cover: 1 - THREE.MathUtils.smoothstep(p, 0.1, 1), rain: (1 - THREE.MathUtils.smoothstep(p, 0, 0.4)) * 0.6, wind: 0.8 - 0.5 * p };
     }
   }

@@ -428,7 +428,7 @@ export class Sky {
     const turned = look.some((v, i) => Math.abs(v - this.lastLook[i]) > 0.02);
     // (and at once when the sun has gone more than a couple of degrees: under a time-lapse clock the 0.6 s wait was
     // half an hour of twilight lit by a stale sky, then a jump of the whole frame when it caught up)
-    const swept = sun.angleTo(this.lastSun) > 0.03;
+    const swept = sun.angleTo(this.lastSun) > 0.03 || look.some((v, i) => Math.abs(v - this.lastLook[i]) > 0.06);
     if (force || this.envAge > 20 || swept || ((moved || turned) && this.envAge > 0.6)) {
       this.envAge = 0;
       this.lastSun.copy(sun);
