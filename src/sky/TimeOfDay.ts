@@ -60,10 +60,10 @@ export class TimeOfDay {
   private compute() {
     const H = ((this.hour - 12) / 24) * Math.PI * 2;
     celestial(H, DECL, this.sun);
-    // a waxing gibbous moon: it rises in the east about an hour before sunset, so at dusk it hangs low over the sea
-    // off the spawn beach and lays its path on the water, lights the whole night (no black hours before moonrise)
-    // and sets about half an hour before the dawn twilight begins
-    celestial(H + Math.PI + 0.3, MOON_DECL, this.moon);
+    // a moon just past full: it rises in the east around sunset, so at dusk it is just clear of the sea off the spawn
+    // beach and lays its path on the water, lights the whole night (no black hours before moonrise) and sets in the
+    // dawn twilight
+    celestial(H + Math.PI + 0.1, MOON_DECL, this.moon);
     this.sunElevation = Math.asin(this.sun.y);
     this.night = THREE.MathUtils.smoothstep(-this.sun.y, -0.02, 0.16);
     atmo.sunDir.value.copy(this.sun);
