@@ -34,11 +34,14 @@ function parseTod(v: string | null): number | null {
 
 /** trailer capture (`pnpm record`): no HUD, muted, frozen clock, automated, every frame stepped by the recorder */
 const capture = flag('capture');
+/** capture only (`?capture=1&accum=n`): each stepped frame is the mean of n jittered renders (the temporal AA off) */
+const accum = capture ? Math.max(0, Math.round(num('accum', 0))) : 0;
 
 export const params = {
   capture,
   /** capture only (`?capture=1&clean=1`): no vignette, the picture exactly as rendered and tone mapped */
   clean: capture && flag('clean'),
+  accum,
   spot: str('spot'),
   tod: parseTod(str('tod')),
   freeze: flag('freeze') || capture,
@@ -55,7 +58,7 @@ export const params = {
   test: flag('test') || capture,
   noPost: flag('nopost'),
   noAO: flag('noao'),
-  noTAA: flag('notaa'),
+  noTAA: flag('notaa') || accum > 0,
   /** diagnostics: TRAA's subpixel correction back on (three's default; it lets the per-frame dither through in motion) */
   taaSubpixel: flag('taasub'),
   gpuTiming: flag('gputime') || flag('debug') || flag('test'),

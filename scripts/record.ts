@@ -3,8 +3,8 @@
  * game's own third-person follow camera, the character steered like a player steers him), a hard cut to black.
  * Captured frame by frame at exactly 60 fps, with the game's own ambience and footsteps, encoded for X (Twitter).
  *
- *   pnpm record                      render every beat, mix the sound, encode E:\shots\island\gameplay_edit.mp4
- *   pnpm record --seconds 10         only the first 10 s, into E:\shots\island\trailer-preview\gameplay_edit_first10s.mp4
+ *   pnpm record                      render every beat, mix the sound, encode E:\shots\island\gameplay_edit_v2.mp4
+ *   pnpm record --seconds 10         only the first 10 s, into E:\shots\island\trailer-preview\gameplay_edit_v2_first10s.mp4
  *   pnpm record --preview            one 1920x1080 frame per beat (at its previewAt) into E:\shots\island\trailer-preview\
  *                                    ([--at <s>] another beat time; with --shots for a few)
  *   pnpm record --shots beach,jetty  render only these beats (the others keep their frames), then mix and encode
@@ -29,19 +29,26 @@ import { argv, ensureServer, launch, ROOT } from './lib/browser';
 
 const FPS = 60;
 const W = 1920, H = 1080;
-const OUT = 'E:\\shots\\island\\gameplay_edit.mp4';
+const OUT = 'E:\\shots\\island\\gameplay_edit_v2.mp4';
 const PREVIEW_DIR = 'E:\\shots\\island\\trailer-preview';
 const FRAMES = 'E:\\tmp\\island\\gameplay';
 const AUDIO_DIR = join(ROOT, 'public', 'assets', 'audio');
 const WARMUP = 90;
+/** renders averaged into each frame (?accum: jittered supersampling, the dithers resolved) */
+const ACCUM = 8;
 /** the sound's crossfade at each cut and its fade at the end (s) */
 const XF = 0.16;
+/** the sound: every layer high-passed (no rumble or boom), gently compressed and limited, soft (LUFS integrated) */
+const HP = 140;
+const LUFS = -20;
+const MASTER = 'highpass=f=110:poles=2,acompressor=threshold=-26dB:ratio=2.5:attack=30:release=300:makeup=1,alimiter=limit=0.6:attack=5:release=80:level=false';
 /** black held after the last beat (s) */
 const TAIL = 0.5;
 
 type V2 = [number, number];
-/** `from`: where he stands at the first warm-up frame (gameplay beats walk through the warm-up) */
-interface Walk { from: V2; path: V2[]; startAt: number; mode?: 'walk' | 'run' }
+/** `from`: where he stands at the first warm-up frame (gameplay beats walk through the warm-up); `jumpAt`: he
+ *  jumps once on reaching it */
+interface Walk { from: V2; path: V2[]; startAt: number; mode?: 'walk' | 'run' | 'sprint'; jumpAt?: V2 }
 interface Layer { file: string; db: number; filter?: string }
 interface Shot {
   name: string;
@@ -50,8 +57,9 @@ interface Shot {
   spot: string;
   /** seconds on screen; every cut is straight */
   dur: number;
-  /** the game's own third-person follow camera ... */
+  /** the game's own third-person follow camera, at this pitch (negative looks up: the sky in frame) ... */
   follow?: boolean;
+  pitch?: number;
   /** ... or a rig around the character: a pose from the shot time and his spring-followed position */
   rig?: (p: { t: number; subj: THREE.Vector3; dir: THREE.Vector3 }) => { pos: THREE.Vector3; target: THREE.Vector3; fov: number };
   walk: Walk;
@@ -86,48 +94,45 @@ const SHOTS: Shot[] = [
       return { pos, target, fov: lerp(lerp(40, 52, dive), 45, orbit) };
     },
     walk: { from: [-412, 337.5], path: [[-418, 338.3], [-424, 339.2], [-430, 340]], startAt: 0 },
-    layers: [
-      { file: 'amb_waves', db: -3 }, { file: 'amb_chimes', db: -6 }, { file: 'amb_chickens', db: -13 },
-      { file: 'amb_wind', db: -11 }, { file: 'amb_surf', db: -12 },
-    ],
+    layers: [{ file: 'amb_waves', db: -5 }, { file: 'amb_wind', db: -13 }, { file: 'amb_birds', db: -14 }],
   },
   {
     // sunrise: walking north along the firm sand 6 m up from the waterline, the sea and the sun on his left, the
     // crescent of the beach curving away ahead
-    name: 'beach', tod: 6.55, spot: 'beach', dur: 4, follow: true, previewAt: 2,
+    name: 'beach', tod: 6.55, spot: 'beach', dur: 3.5, follow: true, pitch: -0.07, previewAt: 2,
     walk: { from: [606, -2], path: [[606, 10], [606.3, 22], [606.8, 34], [607.8, 46], [609.5, 58], [611.5, 70]], startAt: 0 },
-    layers: [{ file: 'amb_waves', db: 0 }, { file: 'amb_surf', db: -4 }, { file: 'amb_birds', db: -9 }],
+    layers: [{ file: 'amb_waves', db: -4 }, { file: 'amb_birds', db: -12 }, { file: 'amb_wind', db: -16 }],
   },
   {
-    // noon in the rainforest: down the sun-flecked trail, heading west
-    name: 'jungle', tod: 12.8, spot: 'jungle', dur: 4, follow: true, previewAt: 2,
-    walk: { from: [356.5, -65.2], path: [[350.5, -63.8], [343, -62], [335, -60], [327, -58], [319, -56]], startAt: 0 },
-    layers: [{ file: 'amb_jungle', db: -6 }, { file: 'amb_birds', db: -12 }, { file: 'amb_wind', db: -20 }],
-  },
-  // (the routes below are checked on frames before the full render)
-  {
-    // late afternoon in the village: along the sand past the stilt huts
-    name: 'village', tod: 15.5, spot: 'village', dur: 4, follow: true, previewAt: 2,
-    walk: { from: [-398, 334], path: [[-404, 335], [-410, 336.5], [-416, 338], [-422, 339]], startAt: 0 },
-    layers: [{ file: 'amb_waves', db: -4 }, { file: 'amb_chickens', db: -11 }, { file: 'amb_chimes', db: -9 }, { file: 'amb_wind', db: -14 }],
+    // early morning: sprinting off the top of the beach into the rainforest, along the trail toward the waterfall
+    name: 'jungle', tod: 7.3, spot: 'beach', dur: 3.5, follow: true, pitch: -0.06, previewAt: 2,
+    walk: { from: [604, -79], path: [[592, -82], [578, -85.5], [562, -89], [546, -91.5], [530, -91.5], [510, -89.5]], startAt: 0, mode: 'sprint' },
+    layers: [{ file: 'amb_birds', db: -9 }, { file: 'amb_wind', db: -16 }, { file: 'amb_waves', db: -17 }],
   },
   {
-    // late morning off the spawn beach: wading out and swimming into the bay
-    name: 'swim', tod: 10.5, spot: 'beach', dur: 3.5, follow: true, previewAt: 2,
-    walk: { from: [614, 20], path: [[620, 20], [628, 20.5], [636, 21], [644, 21.5]], startAt: 0 },
-    layers: [{ file: 'amb_waves', db: -2 }, { file: 'amb_surf', db: -6 }, { file: 'amb_gulls', db: -14, filter: 'highpass=f=250' }],
+    // golden hour in the village: walking west along the sand in front of the stilt huts, into the low sun
+    name: 'village', tod: 17.0, spot: 'village', dur: 4.5, follow: true, pitch: -0.06, previewAt: 2,
+    walk: { from: [-398, 322], path: [[-404, 321.5], [-412, 321], [-420, 320.5], [-428, 320], [-436, 320]], startAt: 0 },
+    layers: [{ file: 'amb_waves', db: -6 }, { file: 'amb_birds', db: -14 }, { file: 'amb_wind', db: -14 }],
   },
   {
-    // sunset: out along the main jetty, past the moored canoes
-    name: 'jetty', tod: 17.42, spot: 'village', dur: 3.5, follow: true, previewAt: 2,
-    walk: { from: [-450, 362], path: [[-447, 368], [-444, 375], [-441, 382], [-438, 389]], startAt: 0 },
-    layers: [{ file: 'amb_waves', db: -6 }, { file: 'amb_creak', db: -11 }, { file: 'amb_gulls', db: -10, filter: 'highpass=f=250' }, { file: 'amb_wind', db: -16 }],
+    // sunset: jogging out along the main jetty past its crates, off the end in a jump, and swimming out
+    name: 'jetty', tod: 17.42, spot: 'village', dur: 5, follow: true, pitch: -0.05, previewAt: 2.5,
+    walk: { from: [-452, 374.5], path: [[-452.2, 378], [-452.3, 383], [-452.2, 388.5], [-452, 394], [-451.5, 400], [-451, 406]], startAt: 0, mode: 'run', jumpAt: [-452.2, 386.6] },
+    layers: [{ file: 'amb_waves', db: -4 }, { file: 'amb_wind', db: -14 }, { file: 'amb_birds', db: -18 }],
   },
   {
-    // the last light from the lighthouse gallery: round the rail toward the sun on the western sea, then the cut to black
-    name: 'lighthouse', tod: 17.5, spot: 'lighthouse', dur: 5, follow: true, previewAt: 3,
-    walk: { from: [-297.4, -301.6], path: [[-298.4, -297.7], [-302, -298.4], [-302.6, -301.4], [-300.6, -303.3]], startAt: 0 },
-    layers: [{ file: 'amb_wind', db: 5 }, { file: 'amb_surf', db: -6, filter: 'lowpass=f=700' }, { file: 'amb_birds', db: -20 }],
+    // the last switchback up the summit cone, jogging toward the tower
+    name: 'climb', tod: 17.25, spot: 'lighthouse', dur: 3.5, follow: true, pitch: -0.08, previewAt: 2,
+    walk: { from: [-255, -276], path: [[-258.5, -285], [-264, -300], [-275, -303.5], [-286, -306]], startAt: 0, mode: 'run' },
+    layers: [{ file: 'amb_wind', db: -9 }, { file: 'amb_birds', db: -13 }],
+  },
+  {
+    // golden hour on the summit: walking round the foot of the tower and out toward the sun over the western sea,
+    // the island below, then the cut to black
+    name: 'summit', tod: 17.5, spot: 'lighthouse', dur: 5, follow: true, pitch: -0.05, previewAt: 3,
+    walk: { from: [-292, -306.5], path: [[-298, -307.5], [-305, -305.5], [-311, -302.5], [-317, -299.5], [-323, -296.5]], startAt: 0 },
+    layers: [{ file: 'amb_wind', db: -8 }, { file: 'amb_waves', db: -19 }, { file: 'amb_birds', db: -20 }],
   },
 ];
 
@@ -196,7 +201,7 @@ interface Api {
   manual: (on: boolean) => boolean;
   shotStart: (t: number, seed: number, exposure?: number) => number;
   placePlayer: (x: number, z: number, yaw: number) => unknown;
-  shotFrame: (o: { cam: Cam; snap?: number; walk: number | null; mode?: 'walk' | 'run'; dt: number }) => { frame: number; player: { pos: number[] } | null; cam: number[]; steps: { surface: string; pos: number[] }[]; pending: number };
+  shotFrame: (o: { cam: Cam; snap?: number; pitch?: number; walk: number | null; mode?: 'walk' | 'run' | 'sprint'; jump?: boolean; accum?: number; dt: number }) => { frame: number; player: { pos: number[] } | null; cam: number[]; steps: { surface: string; pos: number[] }[]; pending: number };
 }
 
 async function render() {
@@ -208,12 +213,22 @@ async function render() {
   const todo = used.filter((i) => only.includes(SHOTS[i].name));
   const first = SHOTS[todo[0]];
   try {
-    await L.page.goto(`${server.url}?capture=1&clean=1&quality=high&spot=${first.spot}&tod=${first.tod}`, { waitUntil: 'domcontentloaded' });
+    await L.page.goto(`${server.url}?capture=1&clean=1&accum=${ACCUM}&quality=high&spot=${first.spot}&tod=${first.tod}`, { waitUntil: 'domcontentloaded' });
     await L.page.waitForFunction(() => typeof (window as unknown as { __island?: { ready?: unknown } }).__island?.ready === 'function', null, { timeout: 180000 });
     await L.page.evaluate(() => (window as unknown as { __island: Api }).__island.ready());
     const dims = await L.page.evaluate(() => [innerWidth, innerHeight, devicePixelRatio]);
     if (dims[0] !== W || dims[1] !== H || dims[2] !== 1) throw new Error(`viewport ${dims.join('x')}, want ${W}x${H} at dpr 1`);
     if (preview) mkdirSync(PREVIEW_DIR, { recursive: true });
+    // the averaging passes' own pipelines compile here, not on a beat's first frame (each beat then starts afresh)
+    for (let k = 0; k < 600; k++) {
+      const r = await L.page.evaluate(() => {
+        const api = (window as unknown as { __island: Api }).__island;
+        api.manual(true);
+        return api.shotFrame({ cam: 'follow', walk: null, dt: 1 / 60 });
+      });
+      if (k > 3 && !r.pending) break;
+      await new Promise((res) => setTimeout(res, 50));
+    }
     const capture = async () => {
       const r = (await cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true, clip: { x: 0, y: 0, width: W, height: H, scale: 1 } })) as { data: string };
       return Buffer.from(r.data, 'base64');
@@ -245,12 +260,17 @@ async function render() {
       fol.step(pl, 0);
       const st = { seg: 0 };
       let snap: number | undefined = yaw;
-      const frame = async (t: number, warm = false) => {
+      // (the jump is held for 4 frames, a key press)
+      let jumpFrames = walk.jumpAt ? -1 : 0;
+      const frame = async (t: number, warm = false, single = warm) => {
         // (a gameplay beat walks through its warm-up, so it opens on him already under way)
         const go = pl && (shot.follow || (!warm && t >= walk.startAt));
         const heading = go ? steer(walk, { x: pl![0], z: pl![2] }, st) : null;
+        if (walk.jumpAt && jumpFrames < 0 && pl && Math.hypot(pl[0] - walk.jumpAt[0], pl[2] - walk.jumpAt[1]) < 0.5) jumpFrames = 4;
+        const jump = jumpFrames > 0;
+        if (jump) jumpFrames--;
         if (!warm) fol.step(pl, 1 / FPS);
-        const r = await L.page.evaluate((o) => (window as unknown as { __island: Api }).__island.shotFrame(o), { cam: pose(t), snap, walk: heading, mode: walk.mode, dt: 1 / FPS });
+        const r = await L.page.evaluate((o) => (window as unknown as { __island: Api }).__island.shotFrame(o), { cam: pose(t), snap, pitch: snap !== undefined ? shot.pitch : undefined, walk: heading, mode: walk.mode, jump, accum: single ? 1 : undefined, dt: 1 / FPS });
         snap = undefined;
         pl = r.player?.pos ?? pl;
         return r;
@@ -259,7 +279,8 @@ async function render() {
 
       if (preview) {
         const at = a.has('at') ? Number(a.get('at', '0')) : shot.previewAt;
-        for (let f = 0; f < Math.round(at * FPS); f++) await frame(f / FPS);
+        const n = Math.round(at * FPS);
+        for (let f = 0; f < n; f++) await frame(f / FPS, false, f < n - 1);
         const path = join(PREVIEW_DIR, `gp_${i + 1}_${shot.name}.png`);
         writeFileSync(path, await capture());
         console.log(`${shot.name}: ${path} (t = ${at} s, player ${pl?.map((v) => v.toFixed(1)).join(' ')})`);
@@ -307,9 +328,10 @@ function lufs(file: string) {
 }
 
 /**
- * The sound: per beat a bed of the game's ambience loops (each loop levelled to -20 LUFS, then the beat's dB),
- * overlapping each cut by XF with short fades so the beds crossfade on the cut; his footsteps at the frames the game
- * stepped, quieter with his distance from the camera; the whole mix normalised to -16 LUFS integrated (two-pass
+ * The sound: per beat a soft bed of the game's waves, wind and birds (each loop levelled to -20 LUFS, high-passed
+ * at HP, then the beat's dB), overlapping each cut by XF with short fades so the beds crossfade on the cut; his
+ * footsteps at the frames the game stepped, quieter with his distance from the camera; the whole mix through MASTER
+ * (high-pass, gentle compression, a limiter) and normalised to LUFS integrated with a narrow loudness range (two-pass
  * loudnorm), cut with the picture at the end (an XF fade, against a click), then silence over the black tail.
  */
 function mixAudio(wav: string, tail: number) {
@@ -331,7 +353,7 @@ function mixAudio(wav: string, tail: number) {
       const n = inputs.length / 6;
       // (a different start into each loop, so a file used in two beats does not repeat itself)
       inputs.push('-stream_loop', '-1', '-ss', String(3 + i * 7 + k * 2), '-i', join(AUDIO_DIR, `${l.file}.ogg`));
-      const f = [`[${n}:a]aresample=48000`, 'aformat=channel_layouts=stereo', `atrim=0:${len.toFixed(4)}`, 'asetpts=PTS-STARTPTS', l.filter, `volume=${(gainFor(l.file) + l.db).toFixed(2)}dB`,
+      const f = [`[${n}:a]aresample=48000`, 'aformat=channel_layouts=stereo', `atrim=0:${len.toFixed(4)}`, 'asetpts=PTS-STARTPTS', `highpass=f=${HP}:poles=2`, l.filter, `volume=${(gainFor(l.file) + l.db).toFixed(2)}dB`,
         `afade=t=in:st=0:d=${fin}`, fout ? `afade=t=out:st=${(len - fout).toFixed(4)}:d=${fout}` : null, `adelay=${Math.round(a0 * 1000)}:all=1`].filter(Boolean);
       chains.push(`${f.join(',')}[b${i}_${k}]`);
       labels.push(`[b${i}_${k}]`);
@@ -357,7 +379,7 @@ function mixAudio(wav: string, tail: number) {
     const n = inputs.length / 6;
     inputs.push('-stream_loop', '0', '-ss', '0', '-i', join(AUDIO_DIR, `${file}.ogg`));
     const uses = steps.filter((s) => s.file === file);
-    chains.push(`[${n}:a]aresample=48000,aformat=channel_layouts=stereo,volume=${(gainFor(file) + 2).toFixed(2)}dB,asplit=${uses.length}${uses.map((_, k) => `[s_${file}_${k}]`).join('')}`);
+    chains.push(`[${n}:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=120:poles=2,volume=${(gainFor(file) - 2).toFixed(2)}dB,asplit=${uses.length}${uses.map((_, k) => `[s_${file}_${k}]`).join('')}`);
     uses.forEach((u, k) => {
       chains.push(`[s_${file}_${k}]volume=${u.gain.toFixed(2)}dB,adelay=${Math.round(u.t * 1000)}:all=1[t_${file}_${k}]`);
       labels.push(`[t_${file}_${k}]`);
@@ -366,9 +388,9 @@ function mixAudio(wav: string, tail: number) {
   const graph = `${chains.join(';')};${labels.join('')}amix=inputs=${labels.length}:normalize=0:duration=longest,atrim=0:${LEN},asetpts=PTS-STARTPTS[mix]`;
   const raw = wav.replace(/\.wav$/, '.raw.wav');
   ff([...inputs, '-filter_complex', graph, '-map', '[mix]', '-c:a', 'pcm_s24le', raw], 'audio mix');
-  const m = spawnSync('ffmpeg', ['-hide_banner', '-i', raw, '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json', '-f', 'null', '-'], { encoding: 'utf8' }).stderr;
+  const m = spawnSync('ffmpeg', ['-hide_banner', '-i', raw, '-af', `${MASTER},loudnorm=I=${LUFS}:TP=-3:LRA=7:print_format=json`, '-f', 'null', '-'], { encoding: 'utf8' }).stderr;
   const js = JSON.parse(m.slice(m.lastIndexOf('{'), m.lastIndexOf('}') + 1)) as Record<string, string>;
-  const ln = `loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=${js.input_i}:measured_TP=${js.input_tp}:measured_LRA=${js.input_lra}:measured_thresh=${js.input_thresh}:offset=${js.target_offset}:linear=true`;
+  const ln = `${MASTER},loudnorm=I=${LUFS}:TP=-3:LRA=7:measured_I=${js.input_i}:measured_TP=${js.input_tp}:measured_LRA=${js.input_lra}:measured_thresh=${js.input_thresh}:offset=${js.target_offset}:linear=true`;
   ff(['-i', raw, '-af', `${ln},aresample=48000,atrim=0:${LEN},afade=t=out:st=${(LEN - XF).toFixed(4)}:d=${XF}${tail ? `,apad=pad_dur=${tail}` : ''}`, '-c:a', 'pcm_s24le', wav], 'loudnorm');
   rmSync(raw, { force: true });
   console.log(`audio: ${steps.length} footsteps, ${labels.length - steps.length} ambience layers -> ${wav}`);
@@ -386,7 +408,7 @@ function encode(wav: string, out: string, tail: number) {
   });
   parts.push(`${used.map((_, k) => `[v${k}]`).join('')}concat=n=${used.length}:v=1:a=0,settb=1/${FPS},setpts=N${tail ? `,tpad=stop_mode=add:stop_duration=${tail}:color=black` : ''},format=yuv420p[vout]`);
   ff([...inputs, '-i', wav, '-filter_complex', parts.join(';'), '-map', '[vout]', '-map', `${used.length}:a`,
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', '20', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-r', String(FPS), '-g', '120',
+    '-c:v', 'libx264', '-preset', 'slow', '-crf', '22', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-r', String(FPS), '-g', '120',
     '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', '-shortest', out], 'encode');
   console.log(`video: ${(LEN + tail).toFixed(3)} s -> ${out} (${(statSync(out).size / 1e6).toFixed(1)} MB)`);
 }
@@ -399,7 +421,7 @@ function contactSheet(video: string) {
 }
 
 const tail = seconds ? 0 : TAIL;
-const out = seconds ? join(PREVIEW_DIR, `gameplay_edit_first${seconds}s.mp4`) : OUT;
+const out = seconds ? join(PREVIEW_DIR, `gameplay_edit_v2_first${seconds}s.mp4`) : OUT;
 mkdirSync(FRAMES, { recursive: true });
 if (a.has('audio-only')) {
   mixAudio(join(FRAMES, 'gameplay.wav'), tail);

@@ -5,13 +5,20 @@
 import * as THREE from 'three/webgpu';
 import type { Engine } from '../core/Engine';
 import type { TimeOfDay } from '../sky/TimeOfDay';
-import { TOD_PRESETS, seedRandom } from '../core/params';
+import { TOD_PRESETS, params, seedRandom } from '../core/params';
+import { heroU } from '../player/heroMaterials';
+import { clouds } from '../sky/Sky';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Ctx = { engine: Engine; tod: TimeOfDay; [k: string]: any };
 
 export function installHarness(ctx: Ctx) {
   const { engine, tod } = ctx;
+  // the averaged capture's extra renders: the hair and sky dithers move on as they do from frame to frame
+  engine.onSubframe.push(() => {
+    heroU.frame.value = (heroU.frame.value + 1) % 64;
+    clouds.frame.value = (clouds.frame.value + 1) % 64;
+  });
   let readyAt = 0;
   let stepHooked = false;
   const stepLog: { surface: string; foot: number; pos: number[] }[] = [];
@@ -186,7 +193,7 @@ export function installHarness(ctx: Ctx) {
      * Returns the player, the footsteps of this frame and whether any pipeline was still compiling (a mesh whose
      * pipeline is not ready is not drawn).
      */
-    shotFrame(o: { cam: { pos: number[]; target: number[]; fov?: number } | 'follow'; snap?: number; walk: number | null; mode?: 'walk' | 'run'; dt?: number }) {
+    shotFrame(o: { cam: { pos: number[]; target: number[]; fov?: number } | 'follow'; snap?: number; pitch?: number; walk: number | null; mode?: 'walk' | 'run' | 'sprint'; jump?: boolean; accum?: number; dt?: number }) {
       const p = ctx.player?.obj;
       if (p && !stepHooked) {
         stepHooked = true;
@@ -202,9 +209,14 @@ export function installHarness(ctx: Ctx) {
         ctx.cameraRig.set('follow');
         if (o.snap !== undefined) ctx.cameraRig.snapBehind(o.snap);
       }
-      if (ctx.input) ctx.input.scripted = o.walk === null ? null : { t: 1, intent: { moveX: 0, moveY: 1, walk: (o.mode ?? 'walk') === 'walk', worldYaw: o.walk } };
+      // (as the mouse would: the follow camera's pitch, negative looks up)
+      if (o.pitch !== undefined && ctx.cameraRig) ctx.cameraRig.pitch = o.pitch;
+      const mode = o.mode ?? 'walk';
+      if (ctx.input) ctx.input.scripted = o.walk === null ? null : { t: 1, intent: { moveX: 0, moveY: 1, walk: mode === 'walk', sprint: mode === 'sprint', jump: !!o.jump, worldYaw: o.walk } };
       stepLog.length = 0;
       const pending = engine.pipelinesPending;
+      // (?accum=n: n renders averaged; `accum` overrides it for this frame, 1 for an uncaptured warm-up)
+      engine.accum = o.accum ?? params.accum;
       engine.stepOnce(o.dt ?? 1 / 60);
       const s = p ? { pos: p.pos.toArray().map((v: number) => +v.toFixed(3)), heading: +p.heading.toFixed(4), speed: +p.speed.toFixed(3) } : null;
       const cam = engine.camera.position.toArray().map((v: number) => +v.toFixed(3));

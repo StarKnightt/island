@@ -242,7 +242,11 @@ export class Ocean {
       const capsA = smoothstep(mix(float(0.12), float(0.3), oceanU.storm), mix(float(0.5), float(0.95), oceanU.storm), foamH.mul(damp)).mul(0.78);
       // (kept below full cover so a cap is a torn lace of streaks and holes, never a flat white chip; open water only:
       // in a lagoon a metre deep the short chop does not break into caps)
-      const caps = laceMask(capsA.mul(smoothstep(3.0, 10.0, max(ground.negate(), 0))), xz, float(0), vec2(0.6, 0.8), float(0));
+      // metres of sea per pixel (about): from high up or far out a torn cap is a single white pixel that blinks, so past
+      // half a metre per pixel the caps give way to their mean cover, a faint even paling
+      const fp = camDist.mul(0.0009).div(sqrt(max(V.y, 0.05)));
+      const capsCover = capsA.mul(smoothstep(3.0, 10.0, max(ground.negate(), 0)));
+      const caps = mix(laceMask(capsCover, xz, float(0), vec2(0.6, 0.8), float(0)), capsCover.mul(0.3), smoothstep(0.35, 1.2, fp));
       // surf on the reef crest: the swell breaks where the bed comes up off the fore-reef onto the flat; white water
       // just behind the edge, thinning across the flat, each stretch of the crest breaking in its own time
       const depthH = max(ground.negate(), 0);
@@ -282,7 +286,6 @@ export class Ocean {
       const body = mix(inscat, vec3(0.22, 0.33, 0.32), aer.mul(0.55));
 
       // ---- glint: world-anchored facet cells about two pixels wide (two sizes blended), re-drawn ~5 times a second
-      const fp = camDist.mul(0.0009).div(sqrt(max(V.y, 0.05)));
       const lv = log2(max(fp.mul(1.8), 0.04).div(0.04));
       const cellAt = (size: N) => {
         const cell = floor(xz.div(size)).add(70000);
@@ -293,7 +296,11 @@ export class Ocean {
       const s0 = pow(float(2), floor(lv)).mul(0.04);
       const sparkle = mix(cellAt(s0), cellAt(s0.mul(2)), fract(lv));
       const sky = float(1).sub(atmo.overcast);
-      const contrast = sky.mul(sky).mul(float(1).sub(foam)).mul(float(1).sub(onSheet.mul(0.6)));
+      // far out the separate glints would be single pixels blinking: from a quarter of a metre of sea per pixel (about
+      // 60 m off at a grazing view from the beach, 180 m from high up) they fade into the smooth sheen of the same
+      // mean brightness, gone by 0.9 m per pixel
+      const far = smoothstep(0.25, 0.9, fp);
+      const contrast = sky.mul(sky).mul(float(1).sub(foam)).mul(float(1).sub(onSheet.mul(0.6))).mul(float(1).sub(far));
       // the share of facet cells that can catch the light at the core of the lobe: a few near the viewer (separate
       // glints with dark gaps between them), all of them far out where one pixel holds many facets
       const cover = mix(float(0.22), float(1), smoothstep(0.5, 6.0, fp));

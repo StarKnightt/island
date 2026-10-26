@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
   unpackRGBToNormal, packNormalToRGB, float, mix, mrt, normalView, output, pass, renderOutput, screenUV,
-  vec3, vec4, velocity, sample,
+  vec3, vec4, velocity, sample, texture, uniform,
 } from './tsl';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -87,6 +87,11 @@ export class Engine {
   /** frozen world time for deterministic captures (waves, wind, clouds); null = running */
   frozenTime: number | null = null;
   renderScale = Q.renderScale;
+  /** capture (?accum=n): run before each extra render of a frame, to re-seed the per-frame dithers */
+  readonly onSubframe: (() => void)[] = [];
+  /** capture: renders averaged into each stepped frame (1 = one plain render) */
+  accum = params.accum;
+  private acc: { cur: THREE.RenderTarget; ping: THREE.RenderTarget[]; prev: ReturnType<typeof texture>; now: ReturnType<typeof texture>; k: ReturnType<typeof uniform>; add: THREE.RenderPipeline; show: THREE.RenderPipeline; out: ReturnType<typeof texture> } | null = null;
 
   static async create(container: HTMLElement) {
     // ask for the texture limits the terrain and water shaders need (16 sampled textures per stage is the default)
@@ -249,6 +254,8 @@ export class Engine {
       aoPass.thickness.value = 1.4;
       aoPass.scale.value = 1.0;
       aoPass.samples.value = 12;
+      // (the averaged capture: its noise turns with every render, so the mean resolves it)
+      aoPass.useTemporalFiltering = params.accum > 1;
       const aoV = aoPass.getTextureNode().sample(screenUV).r;
       // reversed depth: the sky is the cleared far plane (0) and gets no AO
       const isSky = depthTex.sample(screenUV).x.lessThan(1e-7);
@@ -417,10 +424,63 @@ export class Engine {
   stepOnce(dt: number) {
     this.time = this.frozenTime ?? this.time + dt;
     for (const u of this.updaters) u(dt, this.time);
-    this.pipeline.render();
+    if (this.accum > 1) this.renderAccumulated(this.accum);
+    else this.pipeline.render();
     this.skippedDraws = this.skipping;
     this.skipping = 0;
     this.frame++;
+  }
+
+  /**
+   * Capture only: the frame as the mean of n renders of the same instant, each with its own sub-pixel jitter (a
+   * Halton 2,3 pattern over the pixel) and fresh per-frame dither seeds, summed in half float and shown once. The
+   * graded display-space output of every render is averaged, so it is n-sample supersampling of the game's picture.
+   */
+  private renderAccumulated(n: number) {
+    const { renderer, camera } = this;
+    const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+    if (!this.acc || this.acc.cur.width !== size.x || this.acc.cur.height !== size.y) {
+      this.acc?.cur.dispose();
+      this.acc?.ping.forEach((t) => t.dispose());
+      const rt = () => new THREE.RenderTarget(size.x, size.y, { type: THREE.HalfFloatType, depthBuffer: false });
+      const cur = rt(), ping = [rt(), rt()];
+      const prev = texture(ping[0].texture), now = texture(cur.texture), out = texture(ping[1].texture), k = uniform(1);
+      const add = new THREE.RenderPipeline(renderer);
+      add.outputColorTransform = false;
+      add.outputNode = mix(prev.sample(screenUV), now.sample(screenUV), k);
+      const show = new THREE.RenderPipeline(renderer);
+      show.outputColorTransform = false;
+      show.outputNode = out.sample(screenUV);
+      this.acc = { cur, ping, prev, now, k, add, show, out };
+    }
+    const A = this.acc;
+    const halton = (i: number, b: number) => {
+      let f = 1, r = 0;
+      for (; i > 0; i = Math.floor(i / b)) r += (f /= b) * (i % b);
+      return r;
+    };
+    // (three's per-frame passes run once per node frame, which only the animation loop advances)
+    const nodeFrame = (renderer as unknown as { _nodes: { nodeFrame: { update(): void } } })._nodes.nodeFrame;
+    let dst = 0;
+    for (let s = 0; s < n; s++) {
+      if (s) {
+        nodeFrame.update();
+        for (const f of this.onSubframe) f();
+      }
+      camera.setViewOffset(size.x, size.y, halton(s + 1, 2) - 0.5, halton(s + 1, 3) - 0.5, size.x, size.y);
+      renderer.setRenderTarget(A.cur);
+      this.pipeline.render();
+      // running mean: the target written last holds the mean of the renders so far
+      dst = s % 2 === 0 ? 1 : 0;
+      A.prev.value = A.ping[1 - dst].texture;
+      A.k.value = 1 / (s + 1);
+      renderer.setRenderTarget(A.ping[dst]);
+      A.add.render();
+    }
+    camera.clearViewOffset();
+    renderer.setRenderTarget(null);
+    A.out.value = A.ping[dst].texture;
+    A.show.render();
   }
 
   private push(a: number[], v: number) {
