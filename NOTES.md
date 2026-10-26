@@ -311,6 +311,32 @@ Load: first visit 9.1-10.0 s to the first frame, returning 7.5-8.3 s, 129.1 MB, 
   optimised with `tools/optimize-glb.ts`; planted by `Vegetation.ts` as lone trees and clumps of two or three on the
   beach berms, rock shelves and cliff tops. Credited in CREDITS.md.
 
+### Round 4, second session (17:00-18:00)
+
+* **Waterfall.** The splash particles took all their random values from their id, so each replayed one trajectory
+  every lifetime and the curtain repeated every second: they are re-seeded every lifetime (the lifetime itself stays,
+  so ages never jump) and the plunge surges on two unrelated periods. The pool's impact rings are stronger, reach
+  further and are warped by noise with slowly swelling strength; lace is carried outward from the boil (two flow
+  phases crossfaded). The drifting foam over the outer pool is still faint.
+* **Effects and the normal target.** `core/fx.ts` `effectMRT()`: spray, falls splash and mist, rain streaks and
+  splashes, village smoke, flame and glows write the world's up into the scene pass's unblended normal target (as the
+  character's effects do), so GTAO no longer draws squares round puffs.
+* **Rain.** `atmo.deck` scales the overcast dome, its ground bounce and the rain haze: heavier cells darken the deck
+  to ~0.65, lulls lift it to ~1.35, the gathering front darkens it, the clearing has sun breaks. `timelapse_rain`'s
+  downpour now moves between ~72 and ~95 luma (it was a flat 84-87).
+* **Summit "glitter column".** It was the far gulls (a ragged column of specks down the sea from the gallery), not
+  the glints: birds fade out between 500 and 800 m from the camera. The sea's sparkles were already a field.
+* **Lagoon.** About a third of the open-sea field reaches behind the reef (was an eighth: glassy); whitecaps only in
+  water deeper than 3-10 m.
+* **Loading.** The overlay starts to fade once 70 % of the last pipelines are compiled (first frame ~0.5 s
+  sooner). Overlapping the shader priming with the asset loading was tried and reverted: the main thread is the
+  bottleneck in both (shader builds ~4 s, GLB parsing and scattering ~2 s), so the plants arrived later and the first
+  frame moved from 8.9 to 11.7 s. A few seconds needs fewer or cheaper node builds (the CSM shadow node in every
+  lit material), not reordering.
+* Measured 17:47-17:57 with the GPU lock: capped 66.7 fps, p99 15.1 ms in all 30 combinations (the pacer never stepped
+  down); uncapped 30 / 30 >= 60, lowest 67.3 (waterfall rain). Load: first visit 8.3 s to the first frame (10.0 s
+  ready), returning 7.0 s (8.6 s), 129.1 MB.
+
 ### Gotchas from round 4
 
 * `shareInstancing()` meshes have `isInstancedMesh = false`: three's raycast still works (it is the class method), but
