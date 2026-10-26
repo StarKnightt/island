@@ -12,6 +12,7 @@
     "shots": "tsx scripts/shots.ts",
     "perf": "tsx scripts/perf.ts",
     "clip": "tsx scripts/clip.ts",
+    "record": "tsx scripts/record.ts",
     "assets:fetch": "tsx scripts/fetch-assets.ts",
     "assets:build": "tsx scripts/build-assets.ts",
     "gen:island": "tsx tools/gen-island.ts"

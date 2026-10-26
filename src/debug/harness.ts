@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import type { Engine } from '../core/Engine';
 import type { TimeOfDay } from '../sky/TimeOfDay';
-import { TOD_PRESETS } from '../core/params';
+import { TOD_PRESETS, seedRandom } from '../core/params';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Ctx = { engine: Engine; tod: TimeOfDay; [k: string]: any };
@@ -13,6 +13,8 @@ export type Ctx = { engine: Engine; tod: TimeOfDay; [k: string]: any };
 export function installHarness(ctx: Ctx) {
   const { engine, tod } = ctx;
   let readyAt = 0;
+  let stepHooked = false;
+  const stepLog: { surface: string; foot: number; pos: number[] }[] = [];
   const api = {
     version: 1,
     error: null as string | null,
@@ -159,6 +161,48 @@ export function installHarness(ctx: Ctx) {
     step(n = 1, dt = 1 / 30) {
       for (let i = 0; i < n; i++) engine.stepOnce(dt);
       return engine.frame;
+    },
+    /** start a trailer shot from a known state: the world clock at `worldTime` s, the capture's random sequence at
+     *  `seed` (?capture=1 only), the time of day frozen, the metered exposure times `exposure` (a grade per shot) */
+    shotStart(worldTime: number, seed: number, exposure = 1) {
+      engine.frozenTime = null;
+      engine.time = worldTime;
+      seedRandom(seed);
+      tod.frozen = true;
+      ctx.exposureBias = exposure;
+      return engine.time;
+    },
+    /** put the player down at x, z (on the ground or deck there) facing `yaw`, standing still */
+    placePlayer(x: number, z: number, yaw: number) {
+      const p = ctx.player?.obj;
+      if (!p) return null;
+      if (ctx.input) ctx.input.scripted = null;
+      p.place(x, z, yaw);
+      return api.player();
+    },
+    /**
+     * One trailer frame (pnpm record, manual mode): the camera at an exact pose, the player walking toward world
+     * heading `walk` (radians, as act) or standing (`null`), then exactly `dt` seconds of world and one render.
+     * Returns the player, the footsteps of this frame and whether any pipeline was still compiling (a mesh whose
+     * pipeline is not ready is not drawn).
+     */
+    shotFrame(o: { cam: { pos: number[]; target: number[]; fov?: number }; walk: number | null; mode?: 'walk' | 'run'; dt?: number }) {
+      const p = ctx.player?.obj;
+      if (p && !stepHooked) {
+        stepHooked = true;
+        const prev = p.onStep;
+        p.onStep = (e: { surface: string; speed: number; foot: number; pos: THREE.Vector3 }) => {
+          prev?.(e);
+          stepLog.push({ surface: e.surface, foot: e.foot, pos: e.pos.toArray().map((v: number) => +v.toFixed(2)) });
+        };
+      }
+      api.setCamera(o.cam);
+      if (ctx.input) ctx.input.scripted = o.walk === null ? null : { t: 1, intent: { moveX: 0, moveY: 1, walk: (o.mode ?? 'walk') === 'walk', worldYaw: o.walk } };
+      stepLog.length = 0;
+      const pending = engine.pipelinesPending;
+      engine.stepOnce(o.dt ?? 1 / 60);
+      const s = p ? { pos: p.pos.toArray().map((v: number) => +v.toFixed(3)), heading: +p.heading.toFixed(4), speed: +p.speed.toFixed(3) } : null;
+      return { frame: engine.frame, player: s, steps: stepLog.slice(), pending: Math.max(pending, engine.pipelinesPending) };
     },
     /** debug: read back a few texels of a named render target */
     async readRT(name: string, x = 0, y = 0, w = 4, h = 4) {

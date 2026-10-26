@@ -32,21 +32,25 @@ function parseTod(v: string | null): number | null {
   return Number.isFinite(n) ? ((n % 24) + 24) % 24 : null;
 }
 
+/** trailer capture (`pnpm record`): no HUD, muted, frozen clock, automated, every frame stepped by the recorder */
+const capture = flag('capture');
+
 export const params = {
+  capture,
   spot: str('spot'),
   tod: parseTod(str('tod')),
-  freeze: flag('freeze'),
-  weather: (str('weather') ?? 'auto') as 'clear' | 'rain' | 'auto',
+  freeze: flag('freeze') || capture,
+  weather: (str('weather') ?? (capture ? 'clear' : 'auto')) as 'clear' | 'rain' | 'auto',
   dayMinutes: num('daylen', 30),
-  hud: q.get('hud') !== '0',
-  mute: flag('mute'),
+  hud: q.get('hud') !== '0' && !capture,
+  mute: flag('mute') || capture,
   debug: flag('debug'),
   photo: flag('photo'),
   quality: str('quality'),
   fps: str('fps') ?? 'auto',
   cam: str('cam'),
   webgl: flag('webgl'),
-  test: flag('test'),
+  test: flag('test') || capture,
   noPost: flag('nopost'),
   noAO: flag('noao'),
   noTAA: flag('notaa'),
@@ -57,3 +61,19 @@ export const params = {
   toneMap: str('tm') ?? 'aces',
 };
 export type Params = typeof params;
+
+// a capture renders the same frames on every run: the few unseeded draws (blinks, sand puffs, wade drops) follow a
+// fixed sequence (the world itself is placed by its own seeded generators)
+let s = 0x2f6b1d3;
+/** restart the capture's random sequence (each trailer shot starts from its own seed) */
+export function seedRandom(seed: number) {
+  s = seed | 0;
+}
+if (capture) {
+  Math.random = () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}

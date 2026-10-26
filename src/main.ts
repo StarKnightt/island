@@ -56,7 +56,7 @@ async function boot() {
     if (assetBar && assetProgress.pending > 0) loading.progress(0.28 + 0.47 * (assetProgress.done / assetProgress.pending));
   };
   const webgpu = engine.backendName === 'WebGPU';
-  const ctx: Ctx = { engine, tod: null as unknown as TimeOfDay, spotNames: SPOTS.map((s) => s.name), quality: { preset, ...Q } };
+  const ctx: Ctx = { engine, tod: null as unknown as TimeOfDay, spotNames: SPOTS.map((s) => s.name), quality: { preset, ...Q }, exposureBias: 1 };
 
   // ---- island data
   loading.status('Shaping the island');
@@ -273,7 +273,7 @@ async function boot() {
     // (under the canopy the eye also opens up in the gloom of a rain, and by day a camera in the jungle exposes for
     // the shade, about a stop over open ground: the sun flecks burn and the gaps to the sky blow out, as in photos)
     const shadeDay = (1 - tod.night) * (1 - tod.overcast);
-    grade.exposure.value = tod.exposure * (1 + weather.flash * 2.5) * (1 + canopyK * (1.3 * shadeDay + 5.0 * tod.night + 1.4 * tod.overcast)) * (1 - 0.6 * glareK);
+    grade.exposure.value = tod.exposure * (1 + weather.flash * 2.5) * (1 + canopyK * (1.3 * shadeDay + 5.0 * tod.night + 1.4 * tod.overcast)) * (1 - 0.6 * glareK) * ctx.exposureBias;
     audio.update(dt, camera, { night: tod.night, hour: tod.hour, rain: weather.rain, wind: weather.wind, underwater: camera.position.y < player.waterLevel - 0.05 });
     camera.updateMatrixWorld();
     terrain.update(camera, Q.shadowFar);
