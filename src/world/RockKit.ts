@@ -456,6 +456,13 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
   const along = p.x.mul(0.62).add(p.z.mul(0.78));
   const stain = smoothstep(0.35, 0.8, varying(mx_noise_float(vec3(along.mul(0.21), p.y.mul(0.012), 7.7))).mul(0.5).add(0.5));
   alb = alb.mul(float(1).sub(stain.mul(0.5)));
+  // crisp detail finer than the stretched scan: narrow runnels down the face, thin bedding lines across it, grit in
+  // between, so the broad scan lumps read as fractured, weathered rock and not as smooth wax
+  const run = mx_noise_float(vec3(along.mul(0.85), p.y.mul(0.05), 3.3));
+  const runnel = smoothstep(0.08, 0.0, run.abs()).mul(smoothstep(0.2, 0.6, float(1).sub(up.abs())));
+  const bed = smoothstep(0.1, 0.0, mx_noise_float(vec3(p.y.mul(0.55), along.mul(0.04), 8.1)).abs());
+  const grit = mx_noise_float(p.mul(2.7)).mul(0.5).add(0.5);
+  alb = alb.mul(float(1).sub(runnel.mul(0.45))).mul(float(1).sub(bed.mul(0.3))).mul(grit.mul(0.36).add(0.82));
   // the waterfall: everything within reach of its spray is wet; the gorge is mossy
   const dFalls = length(p.xz.sub(rockU.falls.xz));
   const dPool = length(p.xz.sub(rockU.pool.xz));
@@ -482,7 +489,7 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
   alb = alb.mul(mix(float(1), float(0.48), wet)).mul(mix(float(1), float(0.72), soaked));
   m.colorNode = vec4(alb, 1);
   const wetRough = mix(min(orm.g, float(0.48)), min(orm.g, float(0.17)), soaked.div(wet.max(0.001)));
-  m.roughnessNode = mix(orm.g.mul(float(1).sub(green.mul(0.1))), wetRough, wet.mul(float(1).sub(green.mul(0.5))));
+  m.roughnessNode = mix(orm.g.max(0.62).mul(float(1).sub(green.mul(0.1))), wetRough, wet.mul(float(1).sub(green.mul(0.5))));
   m.metalnessNode = float(0);
   m.aoNode = orm.r;
   if (src.normalMap) m.normalNode = normalMap(texture(src.normalMap, U));
