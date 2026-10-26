@@ -13,6 +13,8 @@ import { uniform, float, vec4, uv, pow, clamp } from '../core/tsl';
 import { heroU, hairMaterial, prepareHairGeometry, skinMaterial, smoothSeams } from './heroMaterials';
 import { Footprints, printU } from './Footprints';
 import { PoseLayer } from './PoseLayer';
+import { attachStrawHat } from './StrawHat';
+import { SandPuffs } from './SandPuffs';
 import { atmo } from '../sky/Atmosphere';
 
 export type Surface = 'sand' | 'wet_sand' | 'grass' | 'dirt' | 'rock' | 'wood' | 'stone' | 'metal' | 'shallow_water' | 'water' | 'leaves';
@@ -74,7 +76,9 @@ export class Player {
   constructor(private hf: Heightfield, private col: Colliders) {
     this.root.name = 'player';
     this.shadows.add(this.prints.mesh);
+    this.shadows.add(this.puffs.sprite);
   }
+  private puffs = new SandPuffs();
 
   async load() {
     const g = await loadGLTF('assets/character/hero.glb');
@@ -112,6 +116,7 @@ export class Player {
       // the hair's shadow on the scalp and neck: one-sided cut-out, a little behind its own surface
       hair.castShadow = true;
     }
+    if (head) attachStrawHat(this.model, head as THREE.SkinnedMesh, hair as THREE.SkinnedMesh | null);
     this.root.add(this.model);
     this.contact = new ContactShadows(this.model);
     this.shadows.add(this.contact.group);
@@ -429,6 +434,7 @@ export class Player {
       const life = g.y < 0.5 ? 7 : wet ? 50 : 110;
       const depth = (0.011 + 0.011 * run) * (wet ? 0.8 : 1) * (both ? 1.25 : 1);
       this.prints.stamp(x, g.y, z, this.hf.normal(x, z), fx, fz, f.side, depth, both ? 0.25 : run, wet, life, this.clock);
+      if (!wet) this.puffs.kick(x, g.y, z, fx, fz, speed, this.clock);
     }
   }
 

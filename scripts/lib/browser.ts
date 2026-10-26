@@ -16,8 +16,8 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 export const ROOT = join(import.meta.dirname, '..', '..');
-export const DEV_PORT = 5230;
-export const PREVIEW_PORT = 5231;
+export const DEV_PORT = Number(process.env.ISLAND_DEV_PORT) || 5230;
+export const PREVIEW_PORT = Number(process.env.ISLAND_PREVIEW_PORT) || 5231;
 
 export interface Rect { x: number; y: number; width: number; height: number }
 export interface Display extends Rect { name: string; primary: boolean; work: Rect; headless?: boolean }
@@ -152,7 +152,7 @@ export async function stubPointerLock(context: BrowserContext) {
 }
 
 /** the persistent profile of development captures (look, poses, session): Chrome keeps its compiled shaders there */
-export const DEV_PROFILE = 'E:\\tmp\\island\\chrome-dev';
+export const DEV_PROFILE = process.env.ISLAND_DEV_PROFILE || 'E:\\tmp\\island\\chrome-dev';
 
 /** Playwright launch options for a display: headed and placed, or headless with the page as a 1920x1080 viewport */
 export function launchOptions(display: Display, opts: { width?: number; height?: number; dsf?: number; uncapped?: boolean; audio?: boolean } = {}) {
