@@ -49,7 +49,7 @@ authored shot for that place (the sunset variants turn toward the sun). Press P 
    `?spot=waterfall&tod=noon&weather=clear&hud=0`, then `__island.stage({ spot: 'waterfall', tod: 'noon', camera: 'shot', worldTime: null })`
 4. **Village at sunset:** from the end of the main jetty, past the moored canoes, to the western shore in the low sun.
    `?spot=village&tod=sunset&weather=clear&hud=0`, then `__island.stage({ spot: 'village', tod: 'sunset', camera: 'shot', worldTime: null })`
-5. **Sea cliffs in the afternoon:** from a boat off the north coast along the 50-80 m cliffs, the surf breaking at their
+5. **Sea cliffs in the afternoon:** from a boat off the north coast along the 50-80 m cliffs, white water and backwash lace at their
    feet. `?spot=cliffs&tod=afternoon&weather=clear&hud=0`, then `__island.stage({ spot: 'cliffs', tod: 'afternoon', camera: 'shot', worldTime: null })`
 
 Also worth a take: the beach at dusk (`tod: 'dusk'`), with the moon rising over the sea, and a squall walking in over the

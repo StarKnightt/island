@@ -355,3 +355,33 @@ Load: first visit 9.1-10.0 s to the first frame, returning 7.5-8.3 s, 129.1 MB, 
   unresolved-slope roughness does not reach it); the beach breaker inside the reef lagoon is small.
 * Rain brightness is flat through the downpour (exposure compensates the deck's small changes).
 * Character (face, hair, outfit, shoes on the beach) and the falls' looping impact are as in round 3.
+
+## Round 4c (short session against critic-04)
+
+* Lighthouse sunset shot: the aim swings 38 % of the way from the sun toward the village, so the canopy and the west
+  coast fill the lower half and the sun path sits at the right (straight into the sun the frame was only sea). The
+  noon gallery shot is tilted up about 5 degrees off the near crowns.
+* Village backdrop: the bare ground and the thinned forest are measured from the hut belt (`villageDist` in
+  layout.ts) instead of a 50-110 m disc round the centre, so the hill right behind the back row is forest. Inland,
+  40-50 degree slopes are overgrown rather than painted rock (the beige patches on the hill were rock on steep grass).
+* Beach scrub grows in runs of 3-6 overlapping, half-buried mounds along the berm, a ragged hedge instead of balls.
+  The extra random draws shift every vegetation layer placed after the scrub (pandanus, inland scrub, the
+  rainforest), so jungle and hill views differ in detail from round 4's captures.
+* Night: the moonlit exposure cap is 11 (was 16), so the sand is a dim blue-grey. The moon now rises near sunset,
+  so at dusk it is just clear of the sea off the beach.
+* Cliffs: the wall's white water is measured from the drawn rock foot (5-10 m out from the baked shoreline, where
+  the kit meshes overhang), with a stronger band and backwash lace; whitecaps stay below full cover so they are torn
+  lace, not solid chips; the kit rock has runnels, bedding lines and grit, and dry faces are rougher.
+* Waterfall: the body is near opaque white; the sheet no longer receives the shadow map (the rim's straight shadow
+  made the seam), the gorge march darkens it under a low sun instead; bigger, stronger splash and mist; wider boil.
+* Jungle: under the canopy by day the exposure opens about a stop. Understory stems, stumps and logs are desaturated.
+* Harness: one condition table for `shots` and `perf` (`perf` crashed on `afternoon`); the preview server the harness
+  starts is killed synchronously, even if closing the browser throws.
+
+### Still weak (round 4c)
+
+* Cliffs: no burst of spray up the wall (the white water stays on the surface); the rock's large lumps are geometry
+  and still read soft close up.
+* Waterfall: the pool in front shows little foam and a reflected stripe of the falls; the splash reads as soft puffs.
+* Jungle: one leaf-litter texture; some sunlit trunks read warm orange in the afternoon.
+* Lighthouse: the near crowns under the gallery are still leaf-clump blobs (kept out of the authored frames).
