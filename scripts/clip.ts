@@ -78,7 +78,9 @@ try {
     for (let i = 0; i < n; i++) {
       await L.page.evaluate((dt) => (window as unknown as { __island: { step: (n: number, dt: number) => number } }).__island.step(1, dt), 1 / rate);
       const path = join(dir, `frame_${String(i).padStart(4, '0')}.${ext}`);
-      await L.page.screenshot(ext === 'jpg' ? { path, type: 'jpeg', quality: 90 } : { path });
+      // (always the full 1920x1080 frame: an emulated viewport on another display once gave 1920x1079)
+      const clip = { x: 0, y: 0, width: 1920, height: 1080 };
+      await L.page.screenshot(ext === 'jpg' ? { path, type: 'jpeg', quality: 90, clip } : { path, clip });
     }
     await L.page.evaluate(() => {
       const api = (window as unknown as { __island: Record<string, (...x: unknown[]) => unknown> }).__island;
@@ -87,7 +89,7 @@ try {
       api.manual(false);
     });
     const mp4 = join(outRoot, `${c.name}.mp4`);
-    const ff = spawnSync('ffmpeg', ['-v', 'error', '-y', '-framerate', String(rate), '-i', join(dir, `frame_%04d.${ext}`), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-threads', '4', mp4]);
+    const ff = spawnSync('ffmpeg', ['-v', 'error', '-y', '-framerate', String(rate), '-i', join(dir, `frame_%04d.${ext}`), '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-threads', '4', mp4]);
     console.log(`${c.name}: ${n} frames${ff.status === 0 && existsSync(mp4) ? ` -> ${mp4}` : ' (ffmpeg failed)'}`);
   }
 } finally {

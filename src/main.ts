@@ -435,7 +435,7 @@ async function boot() {
     state: () => player.state_(),
     obj: player,
   };
-  installHarness(ctx);
+  const harness = installHarness(ctx);
   ctx.timeline = timeline;
   // the island so far compiles while the plants and the rock kit are still streaming in
   // (the bar keeps following the downloads meanwhile)
@@ -466,6 +466,8 @@ async function boot() {
   // (ready() waits for the screen to be gone: round 2's first capture caught it fading)
   await loading.done();
   booting = false;
+  // (the ready milestone in timeline() whether or not a harness asks for it)
+  void harness.ready();
 }
 
 boot().catch((e) => {

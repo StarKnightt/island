@@ -21,7 +21,8 @@ export function installHarness(ctx: Ctx) {
     async ready(timeoutMs = 120000) {
       const t0 = performance.now();
       for (;;) {
-        const busy = ctx.isBusy?.() ?? false;
+        // (and the loading screen gone from the page, not just fading)
+        const busy = (ctx.isBusy?.() ?? false) || !!document.getElementById('loading');
         if (!busy && engine.frame > 30) {
           if (!readyAt) readyAt = performance.now();
           if (performance.now() - readyAt > 400) {
@@ -172,6 +173,8 @@ export function installHarness(ctx: Ctx) {
      * not found.
      */
     pick(x: number, y: number, root?: string) {
+      // (the camera's matrices are otherwise only brought up to date by the next rendered frame)
+      engine.camera.updateMatrixWorld(true);
       const ray = new THREE.Raycaster();
       ray.setFromCamera(new THREE.Vector2(x * 2 - 1, 1 - y * 2), engine.camera);
       ray.camera = engine.camera;
