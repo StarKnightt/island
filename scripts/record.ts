@@ -101,26 +101,29 @@ const SHOTS: Shot[] = [
     layers: [{ file: 'amb_jungle', db: -6 }, { file: 'amb_birds', db: -12 }, { file: 'amb_wind', db: -20 }],
   },
   {
-    // sunset in the village, on the rhythm measured from the ocean-drive trailer (its opening dive and the runner
-    // tracking shot, 10 fps optical flow): a dive that accelerates to a peak at 1.3 s (13 m off and 7.5 m up down to
-    // 4.4 m and 1.35 m), a near hold, then a re-accelerating 90-degree orbit round behind him toward the sun and the
-    // jetty, closing to 3.8 m and zooming from 52 to 45 degrees, still moving at 40 % speed into the next shot.
-    // He stays backlit, so his face never reads; the hillside's round crowns stay behind the camera
-    name: 'village', tod: 17.42, spot: 'village', dur: 10, xin: 0.8, ease: 0, previewAt: 6,
+    // sunset in the village, opened like the ocean-drive trailer: the whole island seen from the sea (1.3 km off and
+    // about 415 m up, aimed at the island's middle) rushes down to 4.4 m behind him on the village beach, the distance
+    // falling on a log scale so it reads as one steady dive (slow to start, fastest at about 2 s, settling by 4.2 s)
+    // while the aim hands over from the island to him; then a near hold and a re-accelerating 90-degree orbit round
+    // behind him toward the sun and the jetty, closing to 3.8 m and zooming from 52 to 45 degrees, still moving at
+    // 40 % speed into the next shot. He stays backlit, so his face never reads
+    name: 'village', tod: 17.42, spot: 'village', dur: 12, xin: 0.8, ease: 0, previewAt: 8,
     rig: ({ x, subj, dir }) => {
-      const { lerp, smootherstep, degToRad } = THREE.MathUtils;
-      const t = x * 10;
-      const dive = smootherstep(t, 0, 2.6);
+      const { lerp, smoothstep, smootherstep, degToRad } = THREE.MathUtils;
+      const t = x * 12;
+      const dive = smootherstep(t, 0, 4.2);
       // the orbit's speed: up to full over its first 18 %, then easing to 40 % at the end (integrated, normalized)
       const ramp = (q: number) => (q < 0.18 ? (q * q / 2 - 0.2 * q * q * q) / 0.18 : (0.0162 - 0.2 * 0.005832) / 0.18 + (q - 0.3 * q * q) - (0.18 - 0.3 * 0.0324));
-      const orbit = t < 3.1 ? 0 : ramp(Math.min(1, (t - 3.1) / 6.9)) / ramp(1);
-      const phi = degToRad(lerp(lerp(80, 60, dive), -30, orbit));
-      const r = lerp(lerp(13, 4.4, dive), 3.8, orbit);
-      const y = lerp(lerp(7.5, 1.35, dive), 1.25, orbit);
+      const orbit = t < 4.6 ? 0 : ramp(Math.min(1, (t - 4.6) / 7.4)) / ramp(1);
+      const rDive = Math.exp(lerp(Math.log(1300), Math.log(4.4), dive));
+      const phi = degToRad(lerp(lerp(122, 70, smoothstep(dive, 0.2, 1)), -30, orbit));
+      const r = lerp(rDive, 3.8, orbit);
+      const y = lerp(1.35 + (rDive - 4.4) * 0.32, 1.25, orbit);
       const pos = subj.clone().add(new THREE.Vector3(Math.cos(phi) * r, y, Math.sin(phi) * r));
       // (lead room ahead of him; aimed a little above his head so the sky and the treeline keep the upper half)
-      const target = subj.clone().add(new THREE.Vector3(0, lerp(2.2, 1.5, dive), 0)).addScaledVector(dir, lerp(3.0, 1.8, orbit));
-      return { pos, target, fov: lerp(52, 45, orbit) };
+      const near = subj.clone().add(new THREE.Vector3(0, lerp(2.2, 1.5, dive), 0)).addScaledVector(dir, lerp(3.0, 1.8, orbit));
+      const target = new THREE.Vector3(-150, 40, -80).lerp(near, smoothstep(dive, 0.35, 0.85));
+      return { pos, target, fov: lerp(lerp(40, 52, dive), 45, orbit) };
     },
     walk: { from: [-412, 337.5], path: [[-418, 338.3], [-424, 339.2], [-430, 340]], startAt: -0.4 },
     layers: [
