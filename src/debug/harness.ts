@@ -141,6 +141,7 @@ export function installHarness(ctx: Ctx) {
       else api.setCamera('follow');
       ctx.forceRefresh?.();
       await api.ready(60000);
+      engine.resetPacing();
       await new Promise((r) => setTimeout(r, o.settleMs ?? 1200));
       engine.resetStats();
       return { time: api.getTime(), weather: api.getWeather(), camera: api.getCamera(), player: api.player() };

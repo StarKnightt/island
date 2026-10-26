@@ -466,6 +466,7 @@ async function boot() {
   // (ready() waits for the screen to be gone: round 2's first capture caught it fading)
   await loading.done();
   booting = false;
+  engine.resetPacing();
   // (the ready milestone in timeline() whether or not a harness asks for it)
   void harness.ready();
 }

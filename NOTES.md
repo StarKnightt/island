@@ -299,6 +299,13 @@ combinations at >= 60 fps (lowest 69.5 after re-measuring the rain row, which ov
 run); capped 64-66.7 fps with p95/p99 15-20 ms (an earlier quiet run at 15:20 held 66.7 fps, p99 15.1 ms in all 30).
 Load: first visit 9.1-10.0 s to the first frame, returning 7.5-8.3 s, 129.1 MB, longest frozen frame 1.0-1.8 s.
 
+* **Frame pacing.** The auto cap paces evenly (`Engine.pace`): a rate held only most of the time alternated 15 and
+  20 ms frames on the 200 Hz screen (judder). With more than 4 % late frames in the last 120 it steps down a divisor
+  (66.7 -> 50 fps, a steady 20 ms; never below 45 fps) and back up on trial after 8 s with the main thread's p90 under
+  0.6 of the faster frame, the wait doubling after a failed trial. Checked: jungle, waterfall and beach while running
+  hold a uniform 15.0 ms; with 13 ms of extra main-thread work per frame it drops to a uniform 20 ms within half a
+  second and returns to 15 ms 8 s after the load goes. `?fps=<n>` still fixes the rate.
+
 ### Gotchas from round 4
 
 * `shareInstancing()` meshes have `isInstancedMesh = false`: three's raycast still works (it is the class method), but

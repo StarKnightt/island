@@ -321,10 +321,59 @@ export class Engine {
   applyCap(fps: string | number) {
     this.capMode = fps;
     const hz = this.refreshHz;
-    if (fps === 'auto') this.divisor = Math.max(1, Math.floor(hz / 60));
+    if (fps === 'auto') this.divisor = this.autoBase = Math.max(1, Math.floor(hz / 60));
     else if (Number(fps) === 0) this.divisor = 0;
     else this.divisor = Math.max(1, Math.round(hz / Math.max(1, Number(fps))));
   }
+
+  /**
+   * Even pacing for the auto cap: a frame rate that is held only most of the time alternates one-refresh-late frames
+   * with on-time ones (15 / 20 ms on a 200 Hz screen), which reads as judder. When more than 4 % of the last 120
+   * frames land a refresh late, the cap steps to the next divisor (66.7 -> 50 fps there: a steady 20 ms) as long as
+   * that still gives at least 45 fps. It steps back up only on trial: after 8 s at the slower rate with the main
+   * thread well inside the faster frame; a trial that falls back within 6 s doubles the wait (up to two minutes).
+   */
+  private pace(interval: number, cpu: number, now: number) {
+    const period = 1000 / this.refreshHz;
+    const w = this.paceWin;
+    w.push(interval > (this.divisor + 0.5) * period ? 1 : 0);
+    if (w.length > 120) w.shift();
+    const late = w.reduce((a, b) => a + b, 0);
+    if (w.length >= 60 && late > w.length * 0.04 && this.refreshHz / (this.divisor + 1) >= 45) {
+      if (now - this.paceUpAt < 6000) this.paceWait = Math.min(this.paceWait * 2, 120000);
+      this.divisor++;
+      w.length = 0;
+      this.paceDownAt = now;
+      this.paceCpu.length = 0;
+      return;
+    }
+    if (this.divisor <= this.autoBase) return;
+    this.paceCpu.push(cpu);
+    if (this.paceCpu.length > 240) this.paceCpu.shift();
+    if (now - this.paceDownAt < this.paceWait || this.paceCpu.length < 240) return;
+    const sorted = [...this.paceCpu].sort((a, b) => a - b);
+    if (sorted[Math.floor(sorted.length * 0.9)] < 0.6 * (this.divisor - 1) * period) {
+      this.divisor--;
+      w.length = 0;
+      this.paceCpu.length = 0;
+      this.paceUpAt = now;
+      this.paceDownAt = now;
+    }
+  }
+  /** back to the auto cap's own rate with a fresh window (the end of loading, a staged capture) */
+  resetPacing() {
+    if (this.capMode === 'auto') this.divisor = this.autoBase;
+    this.paceWin.length = 0;
+    this.paceCpu.length = 0;
+    this.paceWait = 8000;
+    this.paceDownAt = this.paceUpAt = -1e9;
+  }
+  private autoBase = 1;
+  private paceWin: number[] = [];
+  private paceCpu: number[] = [];
+  private paceDownAt = -1e9;
+  private paceUpAt = -1e9;
+  private paceWait = 8000;
 
   get targetFps() {
     return this.divisor === 0 ? Infinity : this.refreshHz / this.divisor;
@@ -359,6 +408,7 @@ export class Engine {
       const cpu = performance.now() - t0;
       this.push(this.wall, interval);
       this.push(this.cpu, cpu);
+      if (this.capMode === 'auto' && this.divisor > 0) this.pace(interval, cpu, now);
       if (params.gpuTiming) this.resolveGpu();
     });
   }

@@ -38,7 +38,7 @@ All optional, combine freely: `http://127.0.0.1:5231/?spot=cliffs&tod=sunset&fre
 | `debug` | `1` | debug overlay: GPU adapter, backend, preset, frame cap, fps, frame / CPU / GPU ms, draws, triangles, player state and surface, time, weather |
 | `photo` | `1` | start in photo mode |
 | `quality` | `low` `medium` `high` `ultra` | graphics preset (default: from the GPU; automated runs use `high`) |
-| `fps` | `auto` `<n>` `0` | frame cap: `auto` = largest integer divisor of the display refresh that keeps >= 60 fps (66.7 on a 200 Hz screen); a number; `0` uncapped |
+| `fps` | `auto` `<n>` `0` | frame cap: `auto` = largest integer divisor of the display refresh that keeps >= 60 fps (66.7 on a 200 Hz screen), paced evenly: when more than 4 % of the last 120 frames land a refresh late it steps to the next divisor (50 fps on a 200 Hz screen, never below 45) and steps back up on trial after 8 s of clear headroom; a number = that fixed rate, no adaptation; `0` uncapped |
 | `cam` | `orbit` `free` or `x,y,z,tx,ty,tz` | camera override (position and look-at target in metres) |
 | `webgl` | `1` | force the WebGL 2 backend |
 | `test` | `1` | automated run: no pointer lock, audio starts without a gesture, `high` preset, GPU timing on |
@@ -226,6 +226,7 @@ one) and take `--uncapped` (vsync and frame limit off).
 * GPU timing comes from WebGPU timestamp queries; if the browser disables them `gpu.n` is 0. The GPU columns do not
   include the main scene pass (with `?noshadow=1` they read about 1 ms): they are the shadow and post passes. The
   frame time (and fps) is the measure of a view's real cost.
+* `stage()` resets the auto cap's pacing to its own rate, so every staged view starts at 66.7 fps and steps down to 50 only if it cannot hold it; `stats().targetFps` is the rate in force.
 * The frame cap renders on every third refresh of the 200 Hz display, timed by the display's frame times, so frame
   intervals are 15 ms, or 20 ms when a frame runs over; an fps between 60 and 66.7 is a mix of the two.
 * Chrome warns "powerPreference is currently ignored on Windows" (crbug 369219127); the harness forces the RTX with
