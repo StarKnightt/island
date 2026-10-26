@@ -151,10 +151,10 @@ export class Ocean {
      * nothing over the sand, the cove nearly glassy
      */
     const damping = (c: Coast, depth: N) => {
-      const lagoon = mix(float(1), float(0.45), c.wb.mul(smoothstep(-300, -150, c.s)));
+      const lagoon = mix(float(1), float(0.6), c.wb.mul(smoothstep(-300, -150, c.s)));
       const W = reefCrestDist(c.along);
       const inReef = smoothstep(105, 175, W).mul(smoothstep(W.add(15), W.sub(25), c.d)).mul(smoothstep(7, 4, depth));
-      return lagoon.mul(mix(float(1), float(0.3), inReef)).mul(smoothstep(0.0, 5.0, depth)).mul(float(1).add(oceanU.storm.mul(0.4))).mul(float(1).sub(c.shelter.mul(0.85)));
+      return lagoon.mul(mix(float(1), float(0.55), inReef)).mul(smoothstep(0.0, 5.0, depth)).mul(float(1).add(oceanU.storm.mul(0.4))).mul(float(1).sub(c.shelter.mul(0.85)));
     };
 
     /** displacement of the open-sea cascades at xz, faded by pixel footprint */
@@ -240,7 +240,8 @@ export class Ocean {
       const lip = bubbleMask(sw.lip, xz);
       const sheetFoam = laceMask(sw.sheetFoam, xz, w.n0, c.nrm, float(1.6), sw.back).mul(onSheet);
       const capsA = smoothstep(mix(float(0.12), float(0.3), oceanU.storm), mix(float(0.5), float(0.95), oceanU.storm), foamH.mul(damp)).mul(1.1);
-      const caps = laceMask(capsA, xz, float(0), vec2(0.6, 0.8), float(0));
+      // (open water only: in a lagoon a metre deep the short chop does not break into caps)
+      const caps = laceMask(capsA.mul(smoothstep(3.0, 10.0, max(ground.negate(), 0))), xz, float(0), vec2(0.6, 0.8), float(0));
       // surf on the reef crest: the swell breaks where the bed comes up off the fore-reef onto the flat; white water
       // just behind the edge, thinning across the flat, each stretch of the crest breaking in its own time
       const depthH = max(ground.negate(), 0);
