@@ -239,7 +239,7 @@ export class Ocean {
       const surfFoam = laceMask(w.foam.mul(oceanU.foamBoost.mul(0.3).add(1)), xz, w.n, c.nrm, drift);
       const lip = bubbleMask(sw.lip, xz);
       const sheetFoam = laceMask(sw.sheetFoam, xz, w.n0, c.nrm, float(1.6), sw.back).mul(onSheet);
-      const capsA = smoothstep(mix(float(0.64), float(0.36), oceanU.storm), float(1.6), foamH.mul(damp)).mul(float(0.6).add(oceanU.storm.mul(1.0)));
+      const capsA = smoothstep(mix(float(0.12), float(0.3), oceanU.storm), mix(float(0.5), float(0.95), oceanU.storm), foamH.mul(damp)).mul(1.1);
       const caps = laceMask(capsA, xz, float(0), vec2(0.6, 0.8), float(0));
       // surf on the reef crest: the swell breaks where the bed comes up off the fore-reef onto the flat; white water
       // just behind the edge, thinning across the flat, each stretch of the crest breaking in its own time

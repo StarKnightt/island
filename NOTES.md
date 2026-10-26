@@ -279,14 +279,17 @@ longest gap between animation frames).
 * **Rain.** The rain haze is a neutral grey-green (a blue-grey one read as frost on the forest) at ~2 km visibility,
   wet leaves darker and greener, a squall raises the FFT sea (`amplitudeU` up to 1.75x: steeper chop, whitecaps,
   slate water), streaks are a 1/50 s exposure, rain cells pass with bursts and lulls.
-* **Sea.** A facet tilted away from the viewer no longer mirrors the environment's ground half (brown troughs in the
-  chop); cliff white water clings to the wall and backwash lace lingers through the set; no shore surf past the
+* **Sea.** Whitecaps: the Jacobian foam history of this sea only reaches 0.2-0.5, so the caps now start there (they
+  began at 0.64-0.75: none ever showed); a trade-wind day shows a scattering, a squall broken streaks. A facet tilted
+  away from the viewer no longer mirrors the environment's ground half (brown troughs in the chop); cliff white water clings to the wall and backwash lace lingers through the set; no shore surf past the
   island tile's edge.
 * **Distant forest.** Crown stand-ins are wider with two octaves of lumps and lit as a canopy facing up (the bubble
   wrap was a sphere's terminator round every crown); open grass is a deeper olive from afar; humid trade-wind haze
   (~1.7e-4 /m: ~16 % at 1 km).
 * **Wind.** Gusts and lulls roll across the island downwind, and the sway runs on two unrelated periods per part.
 * **Night.** Dimmer moonlight on open sand; under the canopy the eye opens up to 6x (the jungle was black).
+* **Boats.** Moored canoes ride the water the sea shows there (the probe damped by depth as the shader damps it):
+  in the shallow cove they keep their waterline instead of heaving through still water.
 * **Harness.** `ready()` waits for the loading screen to leave the page; the game records `ready` itself; `pick()`
   updates the camera first; clips are always 1920x1080 (ffmpeg pads odd sizes). The village spawn-to-jetty walk was
   checked: not stuck.
@@ -305,8 +308,7 @@ longest gap between animation frames).
   frame ~1.2 s. Next: a cheaper lit-material graph (the CSM shadow node is a large share of every build) or fewer
   distinct materials.
 * Payload 129 MB: the jungle floor and understory atlases (2K), the terrain and kit textures (1K) are the bulk.
-* Whitecaps are still sparse in both weathers; the noon glitter seen from the summit is a one-pixel column (the
+* The noon glitter seen from the summit is a one-pixel column (the
   unresolved-slope roughness does not reach it); the beach breaker inside the reef lagoon is small.
 * Rain brightness is flat through the downpour (exposure compensates the deck's small changes).
-* Character (face, hair, outfit, shoes on the beach), boats' waterline and the falls' looping impact are as in
-  round 3.
+* Character (face, hair, outfit, shoes on the beach) and the falls' looping impact are as in round 3.
