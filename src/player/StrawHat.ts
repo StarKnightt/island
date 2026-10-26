@@ -4,7 +4,7 @@
  * hair, then parented to the head bone so it rides every clip. The straw is a plain weave of ~3 mm strips laid in
  * rows round the hat from the crown's top (as a panama is plaited): each strip rounded across its width, the one on
  * top darkening the one it crosses, every strip a slightly different sun-bleached tone, the weave fading to its mean
- * where a pixel covers several strips (no moire at follow distance). A dark grosgrain band round the crown. Wet
+ * where a pixel covers several strips (no moire at follow distance). A dark ribbon band round the crown. Wet
  * straw darkens.
  *
  * `?hat=0` leaves it off.
@@ -160,10 +160,9 @@ export function attachStrawHat(model: THREE.Object3D, head: THREE.SkinnedMesh, h
   // sun-bleached straw, each row of the plait a slightly different tone
   const ringTone = hash(floor(w.y.div(0.007)).add(w.z.mul(331)).add(17));
   const straw = mix(vec3(0.5, 0.37, 0.18), vec3(0.6, 0.47, 0.25), ringTone);
-  // the grosgrain band round the crown's foot, finely ribbed
+  // the ribbon band round the crown's foot
   const band = w.z.equal(1).and(w.w.lessThan(0.024)) as unknown;
-  const ribs = sin(w.x.mul(2400)).mul(0.08).mul(detail).add(0.92);
-  const bandCol = vec3(0.018, 0.016, 0.014).mul(ribs);
+  const bandCol = vec3(0.022, 0.018, 0.015);
   const wetDark = mix(float(1), float(0.6), heroU.wet);
   mat.colorNode = select(band, bandCol, straw.mul(pattern)).mul(wetDark);
   mat.roughnessNode = select(band, float(0.6), mix(float(0.8), float(0.62), round.mul(detail))).mul(mix(float(1), float(0.7), heroU.wet));

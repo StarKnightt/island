@@ -1,6 +1,6 @@
 /**
  * Repaints the Rocketbox Male_Adult_01 body albedo into beach clothes, keeping the scan's folds and weave:
- *   striped polo -> washed olive tee (the stripes closed away by a grey-scale morphological closing, the folds kept)
+ *   striped polo -> sun-faded olive shirt (the stripes closed away by a grey-scale morphological closing, the folds kept)
  *   khaki chinos  -> navy board shorts with a pale side stripe
  *   grey canvas sneakers -> sand-dusted oatmeal canvas
  * Colours avoid the warm-red range the skin shader reads as skin (heroMaterials.ts masks skin from the albedo).
@@ -80,7 +80,7 @@ const hash = (x: number, y: number) => {
 };
 
 const out = Buffer.from(data);
-const TEE = [0.15, 0.155, 0.088]; // washed olive (linear)
+const TEE = [0.2, 0.198, 0.128]; // sun-faded olive (linear)
 const NAVY = [0.022, 0.036, 0.075];
 const CANVAS = [0.50, 0.44, 0.33];
 const SOLE = [0.62, 0.58, 0.50];
@@ -97,7 +97,6 @@ for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     // the polo's dark collar band inside the neck: a little darker fabric
     const collar = L < 0.03 && closed[i] < 0.05 ? 0.82 : 1;
     const k = (collar < 1 ? 0.8 : Math.pow(fold, 1.2)) * n;
-    // the sun has faded the tee unevenly: lighter over the shoulders (top of each panel)
     out[o] = toS(TEE[0] * k); out[o + 1] = toS(TEE[1] * k); out[o + 2] = toS(TEE[2] * k);
     continue;
   }

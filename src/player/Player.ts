@@ -15,6 +15,7 @@ import { Footprints, printU } from './Footprints';
 import { PoseLayer } from './PoseLayer';
 import { attachStrawHat } from './StrawHat';
 import { SandPuffs } from './SandPuffs';
+import { WadeFx } from './WadeFx';
 import { atmo } from '../sky/Atmosphere';
 
 export type Surface = 'sand' | 'wet_sand' | 'grass' | 'dirt' | 'rock' | 'wood' | 'stone' | 'metal' | 'shallow_water' | 'water' | 'leaves';
@@ -77,8 +78,10 @@ export class Player {
     this.root.name = 'player';
     this.shadows.add(this.prints.mesh);
     this.shadows.add(this.puffs.sprite);
+    this.shadows.add(this.wade.group);
   }
   private puffs = new SandPuffs();
+  private wade = new WadeFx();
 
   async load() {
     const g = await loadGLTF('assets/character/hero.glb');
@@ -368,6 +371,7 @@ export class Player {
     (heroU.fill.value as THREE.Color).setRGB(0.55, 0.66, 1.0).multiplyScalar(lightE * 0.3 * night);
     this.clock += dt;
     printU.time.value = this.clock;
+    this.wade.update(dt, this);
     // coming to a stop leaves both feet's prints
     if (this.state === 'ground' && this.speed > 0.6) this.wasMoving = true;
     else if (this.wasMoving && this.state === 'ground' && this.speed < 0.1) {
@@ -398,6 +402,7 @@ export class Player {
   /** a footfall: a print in sand under the planted foot (under both on landing), then the sound */
   private step(e: StepEvent, both = false) {
     this.stampPrints(e.surface, e.speed, both);
+    if (e.surface === 'shallow_water') this.wade.step(this, false);
     this.onStep?.(e);
   }
 
@@ -474,7 +479,10 @@ export class Player {
       this.phase += dt / (c.swim?.duration ?? 1.33) * Math.max(0.6, sp / SWIM);
       // a stroke splash twice a cycle while swimming forward
       const fp = this.phase % 1;
-      if (sp > 0.3 && ((this.lastFootPhase < 0.25 && fp >= 0.25) || (this.lastFootPhase < 0.75 && fp >= 0.75))) this.onStep?.({ surface: 'water', speed: sp, foot: 0, pos: this.pos });
+      if (sp > 0.3 && ((this.lastFootPhase < 0.25 && fp >= 0.25) || (this.lastFootPhase < 0.75 && fp >= 0.75))) {
+        this.onStep?.({ surface: 'water', speed: sp, foot: 0, pos: this.pos });
+        this.wade.step(this, true);
+      }
       this.lastFootPhase = fp;
     } else if (this.state === 'air') {
       // the take-off pose carries the rise, then the airborne loop takes over round the apex and the fall
