@@ -49,8 +49,11 @@ export class TimeOfDay {
   update(dt: number) {
     if (!this.frozen) this.hour = (this.hour + (dt / (this.dayMinutes * 60)) * 24) % 24;
     this.compute();
-    // eye adaptation: faster toward darker than toward brighter, as eyes do (and short enough to follow clouds)
-    const k = this.exposureTarget > this.exposure ? 0.6 : 1.4;
+    // eye adaptation: faster toward darker than toward brighter, as eyes do (and short enough to follow clouds); with
+    // the clock sped up (a time-lapse) it keeps pace with the clock, as a camera's auto exposure does, instead of
+    // lagging hours behind (a white-out after sunrise)
+    const speed = this.frozen ? 1 : Math.max(1, 30 / Math.max(0.05, this.dayMinutes));
+    const k = (this.exposureTarget > this.exposure ? 0.6 : 1.4) * Math.min(speed, 40);
     this.exposure += (this.exposureTarget - this.exposure) * (1 - Math.exp(-dt * k));
   }
 
@@ -99,7 +102,8 @@ export class TimeOfDay {
       sunTransmittanceCPU(this.sunElevation, atmo.mieScatter.value as number, this.sunColor);
       const lum = Math.max(1e-6, this.sunColor.r * 0.2126 + this.sunColor.g * 0.7152 + this.sunColor.b * 0.0722);
       this.light.color.setRGB(this.sunColor.r / lum, this.sunColor.g / lum, this.sunColor.b / lum);
-      this.light.intensity = SUN_E * lum * shade;
+      // (fading out as the disc goes under the horizon, so the hand-over to the moon below is continuous)
+      this.light.intensity = SUN_E * lum * shade * THREE.MathUtils.smoothstep(this.sun.y, -0.035, 0.012);
       // the clouds see the sun (reddened at a low sun) unshadowed by themselves
       (clouds.lightDir.value as THREE.Vector3).copy(this.sun);
       cl.copy(this.sunColor).multiplyScalar(SUN_E * 0.5);
@@ -119,8 +123,11 @@ export class TimeOfDay {
     // meter takes the light on surfaces that face it (walls, trunks, cliffs: ten times what a horizontal one gets),
     // as a photographer keys a golden-hour scene on its lit faces: the shade stays dark and the light stays warm and
     // rich, instead of the whole frame opening up into a flat bright late afternoon
-    const sunH = sunUp ? this.light.intensity * Math.max(0.35, this.sun.y) : this.light.intensity * Math.max(0, this.moon.y);
-    const sky = sunUp ? SUN_E * 0.14 * Math.max(0.02, Math.sin(Math.max(this.sunElevation, 0) + 0.06)) * (1 - this.overcast * 0.45) : 0;
+    const sunH = sunUp ? this.light.intensity * Math.max(0.35 * THREE.MathUtils.smoothstep(this.sunElevation, -0.01, 0.12), this.sun.y) : this.light.intensity * Math.max(0, this.moon.y);
+    // (the sky term carries on below the horizon and fades through the civil twilight: switched on with the sun's
+    // disc it made the meter jump at sunrise, a dip and then a surge of light)
+    const skyF = this.sun.y > 0 ? Math.sin(this.sunElevation) + 0.06 : 0.06 * Math.pow(THREE.MathUtils.smoothstep(this.sun.y, -0.105, 0), 1.5);
+    const sky = SUN_E * 0.14 * skyF * (1 - this.overcast * 0.45);
     const twilight = SUN_E * 0.004 * THREE.MathUtils.smoothstep(this.sun.y, -0.2, 0.02);
     const E = sunH + sky + twilight + 0.0006;
     atmo.lightE.value = E;
@@ -131,7 +138,11 @@ export class TimeOfDay {
     // under a storm overcast the eye does not fully open up: rain stays moody instead of a bright flat day (the grey
     // dome and the deck light the ground about twice as much as the meter's sky term assumes, so the cut is larger
     // than it looks: without it the wet forest and the haze wash out to pale grey)
-    this.exposureTarget = THREE.MathUtils.clamp(0.42 / Math.pow(L, 0.66), 0.15, 16) * (1 - 0.35 * this.overcast);
+    // (a moonless night opens up further than a moonlit one: starlight and the sky glow keep the sand faintly grey and
+    // the palms in silhouette instead of a black screen between moonset and dawn)
+    const moonUp = THREE.MathUtils.smoothstep(this.moon.y, -0.02, 0.15);
+    const maxExp = THREE.MathUtils.lerp(30, 16, moonUp);
+    this.exposureTarget = THREE.MathUtils.clamp(0.42 / Math.pow(L, 0.66), 0.15, maxExp) * (1 - 0.35 * this.overcast);
     void clouds;
   }
 }
