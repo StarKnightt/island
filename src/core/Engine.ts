@@ -74,7 +74,7 @@ export class Engine {
    * Pipelines.isReady before every draw) instead of the frame stalling on a serial compile.
    */
   asyncPipelines = false;
-  readonly builds: { ms: number; mat: string; obj: string; shadow: boolean }[] = [];
+  readonly builds: { at: number; ms: number; mat: string; obj: string; shadow: boolean }[] = [];
   pipelinesPending = 0;
   pipelinesCompiled = 0;
   /** draws skipped in the last rendered frame because their pipeline was still compiling */
@@ -161,7 +161,7 @@ export class Engine {
         const ms = performance.now() - t;
         if (ms > 2) {
           const o = ro as { material: THREE.Material & { isShadowPassMaterial?: boolean }; object: THREE.Object3D };
-          this.builds.push({ ms: Math.round(ms), mat: o.material.name || o.material.type, obj: o.object.name || o.object.type, shadow: !!o.material.isShadowPassMaterial });
+          this.builds.push({ at: Math.round(t), ms: Math.round(ms), mat: o.material.name || o.material.type, obj: o.object.name || o.object.type, shadow: !!o.material.isShadowPassMaterial });
         }
         return r;
       };

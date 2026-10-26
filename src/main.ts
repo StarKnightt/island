@@ -334,7 +334,7 @@ async function boot() {
     const f = engine.frame;
     while (engine.frame <= f) await new Promise((r) => setTimeout(r, 4));
   };
-  const prime = async (label: string, from?: number, to?: number, maxBatches = 4) => {
+  const prime = async (label: string, from?: number, to?: number, maxBatches = 14) => {
     const unculled: THREE.Object3D[] = [];
     const parts: { o: THREE.Object3D; mask: number }[] = [];
     const byMaterial = new Map<string, THREE.Object3D[]>();
@@ -350,7 +350,7 @@ async function boot() {
       (byMaterial.get(key) ?? byMaterial.set(key, []).get(key)!).push(o);
     });
     const groups = [...byMaterial.values()];
-    // (few batches: every priming frame draws the whole island unculled, and the GPU compiles in parallel anyway)
+    // (enough batches that no frame builds for more than a few hundred ms: the loading screen keeps moving)
     const batches = Math.max(1, Math.min(maxBatches, groups.length));
     groups.forEach((g, i) => {
       for (const o of g) o.layers.set(1 + Math.floor((i * batches) / groups.length));
@@ -359,7 +359,8 @@ async function boot() {
     veg.prime = weather.prime = lighthouse.prime = kit.prime = batches + 2;
     const times: string[] = [];
     for (let b = 0; b < batches; b++) {
-      for (const c of viewers()) c.layers.mask = 2 ** (b + 2) - 1;
+      // (only this batch: the earlier ones' pipelines are already with the driver)
+      for (const c of viewers()) c.layers.mask = 1 | (2 ** (b + 1));
       const tb = performance.now(), p0 = engine.pipelinesCompiled + engine.pipelinesPending;
       await frame();
       times.push(`${(performance.now() - tb).toFixed(0)}ms/+${engine.pipelinesCompiled + engine.pipelinesPending - p0}`);

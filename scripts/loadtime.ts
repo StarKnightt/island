@@ -32,6 +32,8 @@ try {
         requestAnimationFrame(tick);
       }
       requestAnimationFrame(tick);
+      window.__long = [];
+      new PerformanceObserver(function (l) { l.getEntries().forEach(function (e) { if (e.duration > 300) window.__long.push([Math.round(e.startTime), Math.round(e.duration)]); }); }).observe({ type: 'longtask', buffered: true });
     })();`);
     const cdp = await ctx.newCDPSession(page);
     await cdp.send('Network.enable');
@@ -48,6 +50,7 @@ try {
     const tl = (await page.evaluate(`window.__island.timeline()`)) as { name: string; ms: number }[];
     const gap = (await page.evaluate(`window.__gap`)) as { max: number; at: number };
     console.log(`${run}: ${Date.now() - t0} ms to ready (wall) | ${tl.map((m) => `${m.name} ${(m.ms / 1000).toFixed(1)}s`).join(' | ')}`);
+    console.log(`  long tasks (start ms, duration ms): ${JSON.stringify(await page.evaluate(`window.__long`))}`);
     console.log(`  ${requests} requests, ${(bytes / 1048576).toFixed(1)} MB over the wire; longest frame gap ${Math.round(gap.max)} ms at ${(gap.at / 1000).toFixed(1)} s`);
     await ctx.close();
   }
