@@ -294,6 +294,11 @@ longest gap between animation frames).
   updates the camera first; clips are always 1920x1080 (ffmpeg pads odd sizes). The village spawn-to-jetty walk was
   checked: not stuck.
 
+Final measurements (16:35-16:50, game closed, GPU lock held; other apps kept the GPU at 5-30 %): uncapped 29-30 / 30
+combinations at >= 60 fps (lowest 69.5 after re-measuring the rain row, which overlapped outside load in the full
+run); capped 64-66.7 fps with p95/p99 15-20 ms (an earlier quiet run at 15:20 held 66.7 fps, p99 15.1 ms in all 30).
+Load: first visit 9.1-10.0 s to the first frame, returning 7.5-8.3 s, 129.1 MB, longest frozen frame 1.0-1.8 s.
+
 ### Gotchas from round 4
 
 * `shareInstancing()` meshes have `isInstancedMesh = false`: three's raycast still works (it is the class method), but
