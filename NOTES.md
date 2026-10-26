@@ -245,3 +245,68 @@ threejs-debug-profiler, threejs-qa-release, threejs-audio, game-audio, threejs-g
 threejs-weather, threejs-precipitation-surfaces, threejs-procedural-vegetation, threejs-shadow-systems,
 threejs-screen-space-ambient-occlusion, threejs-bloom, threejs-exposure-color-grading, threejs-procedural-vfx,
 threejs-camera-direction, threejs-visual-validation, game-feel, playwright-best-practices.
+
+## Round 4: what changed
+
+Measured first (`E:\shots\island\round-04-base\perf\`), then the hard rules, then the look. Final numbers in
+`E:\shots\island\round-04\perf\perf.md`; load times from `scripts/loadtime.ts` (now also bytes, long tasks and the
+longest gap between animation frames).
+
+* **Frame rate.** Two main-thread costs were three.js bookkeeping, not rendering. (1) Shadow passes draw every caster
+  with one shared override material and copy the caster's `alphaTest` onto it; the setter bumps the material version
+  whenever the test turns on or off, so with leaves and trunks interleaved nearly every shadow draw recomputed its
+  full material cache key (a quarter of the frame). `Engine.ts` makes that setter skip the bump on shadow-pass
+  materials (a render object of the override always draws one source material). (2) The vegetation re-culled and
+  re-uploaded every instance list every 20th frame even with a still camera (a 40-80 ms stall whenever the GPU queue
+  was full); it now re-culls only when the camera moves or turns. Result: uncapped lowest 60.9 -> 67.4 fps, 23 -> 29
+  of 30 combinations at >= 70; capped 66.7 fps with p99 15.1 ms everywhere.
+* **Loading.** (1) three r186 puts an instanced mesh's uuid in its render cache key, so every InstancedMesh built its
+  whole node graph again (~15-20 ms each, ~400 of them) for shaders it then de-duplicated. `core/instancing.ts`
+  `shareInstancing()` turns three's instancing off on a mesh, gives it a geometry copy with the matrices as named
+  per-instance attributes `iM0..iM3` over the same array (synced from `instanceMatrix` in `onBeforeRender`), applies
+  them in a `NodeMaterial.setupPosition` hook (position, previous position for TRAA, normal), and the render-object
+  lookup sees one uuid for all of them (`Engine.ts`). 395 -> 165 builds. (2) `tools/halve-glb.ts` halves the largest
+  textures of chosen GLBs by dropping the top mip of their UASTC KTX2 (no re-encode; stacks, cliff kit, boulders,
+  ledge, canopy, young palms, hero) and moves byte-identical atlases shared by several GLBs to `assets/shared/`.
+  (3) Priming in 14 batches, each frame drawing only its own batch. First visit 15.6 -> 9.1 s to the first frame
+  (17.3 -> 10.7 s to ready), returning 13.9 -> 7.5 s, 170.9 -> 129.1 MB, longest frozen frame 4.1 -> 1.2 s.
+* **Day cycle.** The exposure meter's sky term and the sun's light now fade through the horizon instead of switching
+  at sun height -2 degrees, the lit-face metering ramps in over the first degrees after sunrise, a moonless sky lets
+  the exposure open further (readable pre-dawn), eye adaptation keeps pace with a time-lapse clock, and the
+  environment map and the sky LUTs re-render as soon as the sun (or the weather) has moved, not on a real-time
+  cadence (in a 24 s day that cadence lagged half an hour of twilight, then jumped). `timelapse_day`: worst one-frame
+  jump 150 -> 37 luma; dawn ramps over ~10 frames.
+* **Rain.** The rain haze is a neutral grey-green (a blue-grey one read as frost on the forest) at ~2 km visibility,
+  wet leaves darker and greener, a squall raises the FFT sea (`amplitudeU` up to 1.75x: steeper chop, whitecaps,
+  slate water), streaks are a 1/50 s exposure, rain cells pass with bursts and lulls.
+* **Sea.** A facet tilted away from the viewer no longer mirrors the environment's ground half (brown troughs in the
+  chop); cliff white water clings to the wall and backwash lace lingers through the set; no shore surf past the
+  island tile's edge.
+* **Distant forest.** Crown stand-ins are wider with two octaves of lumps and lit as a canopy facing up (the bubble
+  wrap was a sphere's terminator round every crown); open grass is a deeper olive from afar; humid trade-wind haze
+  (~1.7e-4 /m: ~16 % at 1 km).
+* **Wind.** Gusts and lulls roll across the island downwind, and the sway runs on two unrelated periods per part.
+* **Night.** Dimmer moonlight on open sand; under the canopy the eye opens up to 6x (the jungle was black).
+* **Harness.** `ready()` waits for the loading screen to leave the page; the game records `ready` itself; `pick()`
+  updates the camera first; clips are always 1920x1080 (ffmpeg pads odd sizes). The village spawn-to-jetty walk was
+  checked: not stuck.
+
+### Gotchas from round 4
+
+* `shareInstancing()` meshes have `isInstancedMesh = false`: three's raycast still works (it is the class method), but
+  anything that tests `isInstancedMesh` treats them as plain meshes. Their `count` still sets the instance count.
+* A `Material.alphaTest` setter patch (Engine.ts) applies to shadow-pass materials only.
+* The village shot camera stands halfway out along the jetty, where the cove is only 0.2-1 m deep: the pale water
+  there is real shallows, not a missing sea.
+
+### Still weak (round 4)
+
+* Start-up is still ~9 s on a first visit: 165 node builds (~20 ms each) on the main thread, the first priming
+  frame ~1.2 s. Next: a cheaper lit-material graph (the CSM shadow node is a large share of every build) or fewer
+  distinct materials.
+* Payload 129 MB: the jungle floor and understory atlases (2K), the terrain and kit textures (1K) are the bulk.
+* Whitecaps are still sparse in both weathers; the noon glitter seen from the summit is a one-pixel column (the
+  unresolved-slope roughness does not reach it); the beach breaker inside the reef lagoon is small.
+* Rain brightness is flat through the downpour (exposure compensates the deck's small changes).
+* Character (face, hair, outfit, shoes on the beach), boats' waterline and the falls' looping impact are as in
+  round 3.

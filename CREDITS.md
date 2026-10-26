@@ -121,6 +121,13 @@ de-lit and re-graded to one shared basalt palette.
 | Namaqualand Boulder 05 (scan, massing only) | Jenelle van Heerden (modeling), Dario Barresi (photography) | [namaqualand_boulder_05](https://polyhaven.com/a/namaqualand_boulder_05) | low granite whaleback `granite_a` (re-sculpted) |
 | Namaqualand Boulder 06 (scan, massing only) | Greg Zaal (photography), Jenelle van Heerden (modeling) | [namaqualand_boulder_06](https://polyhaven.com/a/namaqualand_boulder_06) | granite loaf boulder `granite_c` (re-sculpted) |
 
+### Shared atlases (`public/assets/shared/`)
+
+No new assets: round 4 moved the texture atlases that several GLBs embedded byte for byte (the rainforest and
+mid-storey trees, the floor plants, the coconut and young coconut palms) into `shared/<hash>.ktx2`, referenced by URI
+from each GLB (`tools/halve-glb.ts --share`). They carry the credits of the sets above. The same tool halved the
+largest textures of some GLBs by dropping their top mip level; nothing was re-encoded.
+
 ## Sound (CC0 1.0)
 
 Recordings from [freesound.org](https://freesound.org) under CC0 1.0 (fetched by `scripts/fetch-audio.ts`, cut into
