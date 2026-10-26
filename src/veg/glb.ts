@@ -235,6 +235,12 @@ export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) 
   let alb: N = base.rgb.mul(vec3(float(1).add(vary.mul(0.3)), float(1).add(vary.mul(0.12)), float(1).sub(vary.mul(0.24))));
   alb = alb.mul(float(1).add(vary2.mul(0.36)));
   alb = alb.mul(U(new THREE.Vector3(...(look.tint ?? [1, 1, 1]))));
+  // (the understory's stem atlas and the floor's stumps and logs are a saturated orange that reads as props in the
+  // shade: pulled toward a dull green-brown, the rotting wood darker)
+  if (src.name === 'understory_stem' || src.name === 'floor_bark' || src.name === 'floor_log') {
+    const luma = alb.dot(vec3(0.3, 0.55, 0.15));
+    alb = mix(vec3(luma).mul(vec3(0.95, 1.0, 0.82)), alb, 0.35).mul(src.name === 'understory_stem' ? 0.8 : 0.65);
+  }
   // wet leaves and bark go darker and a little more saturated
   alb = alb.mul(mix(vec3(1), vec3(0.5, 0.62, 0.46), wetness.rain));
   m.colorNode = vec4(alb.mul(ao.mul(0.8).add(0.2)), base.a);
