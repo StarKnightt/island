@@ -389,6 +389,7 @@ export class Player {
         idle: this.state === 'ground' ? this.clips.idle?.action.getEffectiveWeight() ?? 0 : 0,
         plant: this.plant,
         rootY: this.pos.y,
+        tread: this.state === 'swim' ? this.clips.tread?.action.getEffectiveWeight() ?? 0 : 0,
         ground: (x, z, y) => {
           const g = this.groundAt(x, z, y);
           return { y: g.y, n: g.onSurface ? UP : this.hf.normal(x, z) };

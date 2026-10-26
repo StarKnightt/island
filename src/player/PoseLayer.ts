@@ -5,6 +5,8 @@
  *               slow weight shift from leg to leg (pelvis over the standing leg, the free hip dropping, the spine
  *               keeping the head over the feet), the head drifting a little, blinks
  *   arm swing   in walk, jog and sprint each arm swings against the opposite leg, elbows bending on the forward swing
+ *   treading    the clip holds the arms straight out at the surface: they come down and forward under the water,
+ *               sculling in and out
  *   feet        two-bone leg IK: the feet stay where the clip planted them while the pelvis sways, and on slopes and
  *               steps each foot is set on the ground under it (the pelvis drops for the lower foot), the planted
  *               sole tilted to the ground
@@ -23,6 +25,8 @@ export interface PoseInput {
   ground: (x: number, z: number, y: number) => { y: number; n: THREE.Vector3 };
   /** the height the root stands at (the controller's ground) */
   rootY: number;
+  /** 0..1 how much of the pose is treading water */
+  tread?: number;
 }
 
 interface Leg {
@@ -210,6 +214,25 @@ export class PoseLayer {
         turnWorld(arm.upper, dir, want.normalize(), loco);
         rotateWorld(arm.upper, _q.setFromAxisAngle(right, swing));
         rotateWorld(arm.fore, _q.setFromAxisAngle(right, (Math.max(0, swing) * 0.7 + 0.12) * loco));
+      }
+    }
+
+    // ---- treading water: arms down and forward under the surface, forearms sculling in and out
+    const tread = p.tread ?? 0;
+    if (tread > 0.01) {
+      for (const arm of this.arms) {
+        const out = right.clone().multiplyScalar(arm.side);
+        const scull = Math.sin(t * 2.6 + (arm.side > 0 ? 0 : Math.PI));
+        arm.upper.getWorldPosition(_a);
+        arm.fore.getWorldPosition(_b);
+        const dir = _b.clone().sub(_a).normalize();
+        const want = new THREE.Vector3().addScaledVector(UP, -0.62).addScaledVector(fwd, 0.5).addScaledVector(out, 0.6 + scull * 0.12).normalize();
+        turnWorld(arm.upper, dir, want, tread);
+        arm.fore.getWorldPosition(_a);
+        arm.hand.getWorldPosition(_b);
+        const fdir = _b.clone().sub(_a).normalize();
+        const fwant = new THREE.Vector3().addScaledVector(fwd, 0.8).addScaledVector(out, scull * 0.55).addScaledVector(UP, -0.25).normalize();
+        turnWorld(arm.fore, fdir, fwant, tread);
       }
     }
 
