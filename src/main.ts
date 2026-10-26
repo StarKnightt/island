@@ -394,8 +394,9 @@ async function boot() {
     // from a boat off the north coast, along the 50-80 m sea cliffs
     cliffs: { pos: [-90, 5, -660], target: [-330, 35, -600], fov: 55 },
     // leaning on the gallery rail (the rail itself below the frame), looking east over the island: the waterfall's
-    // valley and the jungle in the middle, the beach and its reef right of centre, the ocean beyond
-    lighthouse: { pos: [LIGHTHOUSE.p[0] + Math.cos(0.66) * 3.0, gy + 1.75, LIGHTHOUSE.p[1] + Math.sin(0.66) * 3.0], target: [173, 66, 69], fov: 52 },
+    // valley and the jungle in the middle, the beach and its reef right of centre, the ocean beyond (tilted up enough
+    // that the near crowns under the tower, whose leaf clumps read as blobs this close, stay out of the frame)
+    lighthouse: { pos: [LIGHTHOUSE.p[0] + Math.cos(0.66) * 3.0, gy + 1.75, LIGHTHOUSE.p[1] + Math.sin(0.66) * 3.0], target: [173, 118, 69], fov: 52 },
   };
   // At sunset the authored views would look away from the sun (the beach faces the sunrise sea), so the beach, the
   // village and the gallery turn into it: palms in silhouette on the beach, the western shore from the jetty's end,

@@ -256,18 +256,21 @@ export function waves(c: Coast): Waves {
   const { n0, tau0 } = waterlinePhase(c);
   // sea cliffs: the wave bursts white at the foot and the backwash spreads lace out from the wall
   const H0 = surfU.height.mul(2.2).mul(setFactor(n0)).mul(surfU.storm.mul(0.8).add(1));
-  const burst = exp(tau0.div(-1.6)).mul(float(1).sub(smoothstep(tau0.mul(3.0).add(3.0), tau0.mul(3.0).add(7.0), c.d)));
+  // (measured from the foot of the rock as drawn: the cliff meshes overhang the baked shoreline by several metres, and
+  // from the shoreline the white water lay hidden under them, leaving the sea to meet the rock flat)
+  const dC = max(c.d.sub(mx_noise_float(vec3(c.along.div(23), 1.7, 3.1)).mul(2.5).add(7.5)), 0);
+  const burst = exp(tau0.div(-1.6)).mul(float(1).sub(smoothstep(tau0.mul(3.0).add(3.0), tau0.mul(3.0).add(7.0), dC)));
   // the white water clinging to the wall: its reach changes along the coast (coves hold more, points less) and
   // pulses with every wave, so it never reads as a strip of constant width
   const reachC = mx_noise_float(vec3(c.along.div(55), 0.4, 6.2)).mul(0.5).add(0.5);
-  const band = float(1).sub(smoothstep(0.8, mix(float(3.0), float(9.0), reachC), c.d)).mul(exp(tau0.div(-2.5)).mul(0.6).add(0.3));
+  const band = float(1).sub(smoothstep(0.5, mix(float(4.0), float(12.0), reachC), dC)).mul(exp(tau0.div(-2.5)).mul(0.65).add(0.5));
   // the backwash carries the white water out from the wall as lace that thins over the rest of the cycle
   // (lace lingers for a whole set: the base of a sea cliff is never clean water between waves)
-  const spread = exp(tau0.div(-11)).mul(0.62).add(0.12).mul(float(1).sub(smoothstep(tau0.mul(2.4).add(6), tau0.mul(2.6).add(16), c.d)));
+  const spread = exp(tau0.div(-11)).mul(0.62).add(0.12).mul(float(1).sub(smoothstep(tau0.mul(2.4).add(6), tau0.mul(2.6).add(16), dC)));
   const alongC = mx_noise_float(vec3(c.along.div(9), n0.mul(0.61), 2.3)).mul(0.35).add(0.85);
   const cliff = c.wc.mul(max(max(burst, band), spread)).mul(alongC).mul(H0.div(0.92).clamp(0.4, 1.4)).mul(float(1).sub(c.shelter));
   foam = max(foam, cliff);
-  aerated = max(aerated, c.wc.mul(float(1).sub(smoothstep(0.5, mix(float(2.5), float(8.0), reachC), c.d))).mul(exp(tau0.div(-2.2)).mul(0.6).add(0.15)));
+  aerated = max(aerated, c.wc.mul(float(1).sub(smoothstep(0.5, mix(float(2.5), float(8.0), reachC), dC))).mul(exp(tau0.div(-2.2)).mul(0.6).add(0.15)));
   return { eta, slope, foam: foam.clamp(0, 1), aerated: aerated.clamp(0, 1), n, f, age, broken, n0, tau0 };
 }
 
