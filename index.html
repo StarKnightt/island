@@ -6,32 +6,115 @@
     <title>Island</title>
     <link rel="icon" href="data:," />
     <meta name="description" content="An open-world tropical island in the browser: beach, jungle, waterfall, fishing village and a lighthouse on the peak." />
+    <link rel="preload" href="/loader/sunrise.avif" as="image" type="image/avif" fetchpriority="high" />
+    <link rel="preload" href="/loader/island-title.woff2" as="font" type="font/woff2" crossorigin />
     <style>
-      html, body { margin: 0; height: 100%; background: #0b1114; overflow: hidden; }
+      @font-face { font-family: "Island Title"; src: url("/loader/island-title.woff2") format("woff2"); font-display: swap; }
+      html, body { margin: 0; height: 100%; background: #0d0a08; overflow: hidden; }
       canvas { display: block; }
       #loading {
-        position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center;
-        background: radial-gradient(120% 90% at 50% 100%, #1c3640 0%, #0d1a20 45%, #070c0f 100%);
-        color: #e9e4d8; font: 500 15px/1.4 ui-sans-serif, system-ui, "Segoe UI", sans-serif; letter-spacing: 0.02em;
-        transition: opacity 0.9s ease;
+        --ivory: #f6efe2; --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+        position: fixed; inset: 0; z-index: 50; overflow: hidden; color: var(--ivory);
+        /* what shows for the few ms before the still arrives: its own colours, so it does not pop in from black */
+        background: radial-gradient(70% 60% at 68% 58%, #9a6a3c 0%, #4a3220 45%, #18110c 100%);
+        font: 400 12px/1.4 "Segoe UI", system-ui, sans-serif;
+        transition: opacity 1.1s cubic-bezier(0.4, 0, 0.2, 1) 0.1s;
       }
-      #loading h1 { font: 300 46px/1 ui-serif, Georgia, "Times New Roman", serif; letter-spacing: 0.28em; margin: 0 0 28px; padding-left: 0.28em; color: #f3ecdc; }
-      #loading .bar { position: relative; width: min(420px, 70vw); height: 2px; background: rgba(255,255,255,0.12); overflow: hidden; border-radius: 2px; }
-      #loading .fill { height: 100%; width: 0%; background: linear-gradient(90deg, #8fd3d1, #f1d6a0); transition: width 0.25s ease; }
-      /* a glint sweeping the bar: a transform animation runs on the compositor, so it keeps moving even while a
+      /* every motion here is a transform or opacity animation: they run on the compositor and keep moving while a
          frame is compiling shaders on the main thread */
-      #loading .bar::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 28%; background: linear-gradient(90deg, transparent, rgba(255,250,235,0.65), transparent); animation: sweep 1.3s linear infinite; will-change: transform; }
-      @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(360%); } }
-      #loading .status { margin-top: 14px; font-size: 13px; color: rgba(233,228,216,0.62); min-height: 1.4em; }
-      #loading .gpu { position: absolute; bottom: 22px; font-size: 11px; color: rgba(233,228,216,0.35); }
+      #loading .frame { position: absolute; inset: 0; transition: transform 1.2s var(--ease-out); }
+      #loading .still {
+        position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 62% 50%;
+        transform-origin: 66% 52%; will-change: transform;
+        animation: still-in 1s ease-out both, drift 28s cubic-bezier(0.45, 0.05, 0.55, 0.95) both;
+      }
+      @keyframes still-in { from { opacity: 0; } }
+      @keyframes drift { from { transform: scale(1.03) translate3d(0.6%, 0.3%, 0); } to { transform: scale(1.1) translate3d(-1.4%, -0.8%, 0); } }
+      #loading .shade {
+        position: absolute; inset: 0;
+        background:
+          linear-gradient(to top, rgba(14, 8, 4, 0.72) 0%, rgba(14, 8, 4, 0.34) 24%, rgba(14, 8, 4, 0) 52%),
+          linear-gradient(to right, rgba(14, 8, 4, 0.38) 0%, rgba(14, 8, 4, 0) 46%),
+          radial-gradient(130% 100% at 62% 46%, rgba(0, 0, 0, 0) 52%, rgba(10, 6, 3, 0.55) 100%);
+      }
+      #loading .grain {
+        position: absolute; inset: -60px; opacity: 0.075; pointer-events: none; will-change: transform;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.5 0 0 0 0 0.5 1.4 0 0 0 -0.2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        animation: grain 0.8s steps(5) infinite;
+      }
+      @keyframes grain {
+        0% { transform: translate3d(0, 0, 0); } 20% { transform: translate3d(-23px, 17px, 0); } 40% { transform: translate3d(31px, -9px, 0); }
+        60% { transform: translate3d(-12px, -29px, 0); } 80% { transform: translate3d(19px, 26px, 0); } 100% { transform: translate3d(0, 0, 0); }
+      }
+      #loading .card {
+        position: absolute; left: clamp(28px, 7.2vw, 140px); bottom: clamp(40px, 11.5vh, 132px); max-width: calc(100% - 56px);
+        transition: opacity 0.45s var(--ease-out), transform 0.45s var(--ease-out);
+      }
+      #loading .card > * { animation: rise 1.1s var(--ease-out) both; }
+      #loading .card > :nth-child(2) { animation-delay: 0.12s; }
+      #loading .card > :nth-child(3) { animation-delay: 0.24s; }
+      #loading .card > :nth-child(4) { animation-delay: 0.3s; }
+      @keyframes rise { from { opacity: 0; transform: translate3d(0, 8px, 0); } }
+      #loading h1 {
+        margin: 0; font: 400 clamp(46px, 6vw, 108px)/1 "Island Title", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        letter-spacing: 0.4em; margin-right: -0.4em; text-transform: uppercase;
+        text-shadow: 0 2px 30px rgba(30, 14, 4, 0.35);
+      }
+      #loading .line {
+        margin: clamp(14px, 1.6vw, 22px) 0 0; font: 400 clamp(15px, 1.15vw, 19px)/1.4 "Island Title", "Palatino Linotype", Georgia, serif;
+        letter-spacing: 0.06em; color: rgba(246, 239, 226, 0.86); text-shadow: 0 1px 14px rgba(30, 14, 4, 0.5);
+      }
+      #loading .progress {
+        position: relative; width: clamp(220px, 24vw, 380px); height: 1px; margin-top: clamp(30px, 4.4vh, 48px);
+        background: rgba(246, 239, 226, 0.2); overflow: hidden;
+      }
+      #loading .fill {
+        position: absolute; inset: 0; transform: scaleX(0); transform-origin: 0 50%;
+        background: linear-gradient(90deg, rgba(246, 239, 226, 0.55), #f6efe2 70%, #ffd9a0);
+        transition: transform 0.6s var(--ease-out);
+      }
+      /* a soft light travelling along the line, so it visibly moves even when a stage takes a while */
+      #loading .progress::after {
+        content: ""; position: absolute; inset: 0; will-change: transform;
+        background: linear-gradient(90deg, transparent 0%, rgba(255, 236, 205, 0.95) 7%, transparent 14%);
+        animation: sweep 2.6s linear infinite;
+      }
+      @keyframes sweep { from { transform: translate3d(-14%, 0, 0); } to { transform: translate3d(100%, 0, 0); } }
+      #loading .status {
+        margin-top: 12px; min-height: 1.4em; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+        font-variant-numeric: tabular-nums; color: rgba(246, 239, 226, 0.7); text-shadow: 0 1px 8px rgba(20, 10, 4, 0.6);
+      }
+      #loading .gpu {
+        position: absolute; right: clamp(28px, 7.2vw, 140px); bottom: clamp(40px, 11.5vh, 132px); margin-bottom: 1px;
+        font-size: 11px; letter-spacing: 0.04em; color: rgba(246, 239, 226, 0.4); text-align: right; max-width: 40vw;
+      }
+      /* the hand-off: the words leave first, then the still eases forward and dissolves into the live first frame */
       #loading.done { opacity: 0; pointer-events: none; }
+      #loading.done .card, #loading.done .gpu { opacity: 0; transform: translate3d(0, -6px, 0); transition: opacity 0.45s var(--ease-out), transform 0.45s var(--ease-out); }
+      #loading.done .frame { transform: scale(1.035); }
+      @media (max-width: 640px) { #loading .gpu { display: none; } }
+      @media (prefers-reduced-motion: reduce) {
+        #loading .still { animation: still-in 1s ease-out both; transform: scale(1.04); }
+        #loading .grain { animation: none; }
+        #loading .card > * { animation-name: fade; }
+        #loading .progress::after { animation: breathe 2.4s ease-in-out infinite alternate; background: rgba(255, 236, 205, 0.5); }
+        #loading.done .frame, #loading.done .card, #loading.done .gpu { transform: none; }
+      }
+      @keyframes fade { from { opacity: 0; } }
+      @keyframes breathe { from { opacity: 0; } to { opacity: 1; } }
     </style>
   </head>
   <body>
     <div id="loading">
-      <h1>ISLAND</h1>
-      <div class="bar"><div class="fill" id="load-fill"></div></div>
-      <div class="status" id="load-status">Starting</div>
+      <div class="frame"><img class="still" src="/loader/sunrise.avif" alt="" width="1920" height="1080" fetchpriority="high" /></div>
+      <div class="shade"></div>
+      <div class="grain"></div>
+      <div class="card">
+        <h1>Island</h1>
+        <p class="line">From the reef to the lighthouse, on foot.</p>
+        <div class="progress" id="load-bar" role="progressbar" aria-label="Loading the island" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="fill" id="load-fill"></div></div>
+        <div class="status" id="load-status">Setting out</div>
+      </div>
       <div class="gpu" id="load-gpu"></div>
     </div>
     <div id="app"></div>

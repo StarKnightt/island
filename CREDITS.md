@@ -1,7 +1,8 @@
 # Credits
 
 Every third-party asset in this repository, with its author, source and license. All of them allow public use and
-redistribution in a public repository: CC0 1.0 (public domain dedication) or MIT. Files in `public/assets/` are
+redistribution in a public repository: CC0 1.0 (public domain dedication), MIT, or the SIL Open Font License 1.1
+(the one font). Files in `public/assets/` are
 optimized derivatives (resized, KTX2 / Ogg / meshopt re-encoded, albedo-normalized, tinted); the raw downloads are
 not in the repository (they live in `E:\tmp\island\raw\`).
 
@@ -9,6 +10,12 @@ Everything else (the island's geography and heightmap, the terrain, sky, atmosph
 waterfall shaders, the procedural palms, trees, bushes and grass, the village and lighthouse buildings, boats, nets,
 the palm-frond, banana-leaf, palm-bark and grass texture atlases, the loading screen and HUD) is original work made
 for this project.
+
+## Font
+
+| Asset | Author | License | Source | Used for |
+|---|---|---|---|---|
+| Marcellus | Brian J. Bonislawsky (Astigmatic) | SIL OFL 1.1 (`public/loader/Marcellus-OFL.txt`) | [github.com/google/fonts/tree/main/ofl/marcellus](https://github.com/google/fonts/tree/main/ofl/marcellus) | the title on the loading screen and the HUD's place names (`public/loader/island-title.woff2`: subset to ASCII, converted to WOFF2 with fontTools and renamed "Island Title", since "Marcellus" is a Reserved Font Name) |
 
 ## Character and animation
 

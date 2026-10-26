@@ -447,7 +447,7 @@ async function boot() {
   ctx.timeline = timeline;
   // the island so far compiles while the plants and the rock kit are still streaming in
   // (the bar keeps following the downloads meanwhile)
-  await prime('Preparing shaders');
+  await prime('Catching the light');
   mark('island primed');
   loading.status('Growing the jungle');
   await Promise.all([plantsReady, kitReady]);
@@ -455,7 +455,7 @@ async function boot() {
   veg.update(camera, 60, true);
   mark('scene ready');
   assetBar = false;
-  await prime('Preparing plant shaders', 0.75, 0.8, 2);
+  await prime('Dressing the palms', 0.75, 0.8, 2);
   rocksReady.then(() => (veg.prime = Math.max(veg.prime, 3)));
   // the driver's threads finish the pipelines while ordinary frames run
   const t0 = performance.now();
@@ -471,7 +471,7 @@ async function boot() {
   };
   while (engine.pipelinesPending > 0 && performance.now() - t0 < 120000) {
     const total = engine.pipelinesCompiled + engine.pipelinesPending;
-    loading.status(`Compiling shaders ${engine.pipelinesCompiled} / ${total}`);
+    loading.status(`Settling the tide ${engine.pipelinesCompiled} / ${total}`);
     loading.progress(0.8 + (0.18 * engine.pipelinesCompiled) / Math.max(1, total));
     if (!lifting && engine.pipelinesPending <= p0 * 0.3) await lift();
     await frame();

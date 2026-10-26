@@ -123,6 +123,15 @@ public/assets/            game assets (KTX2 textures, meshopt GLBs, Ogg audio)
   props stream in parallel (placeholders are flat target colours, swapped without recompiling); the loading screen
   stays up until the first frame (which compiles the shaders) has been presented; audio loads on first interaction.
   `__island.timeline()` and `scripts/loadtime.ts` measure it.
+* Loading screen (index.html CSS, `ui/Loading.ts`): a title card over a still of the beach at sunrise rendered by the
+  game (`public/loader/sunrise.avif`, 102 KB, the `beach` shot camera at 06:33, graded a touch softer), with the title
+  in Marcellus (OFL, subset to ASCII: `public/loader/island-title.woff2`, 8.5 KB, renamed "Island Title" as the OFL asks of a modified copy; the HUD's place names use it too). Both
+  are preloaded from index.html, so the card paints before the bundle runs. Every motion (the slow drift of the still,
+  the grain, the light on the progress line, the fill as `scaleX`) is a transform or opacity animation on the
+  compositor; `done()` lets the words go first and dissolves the still into the live frame in 1.2 s. Reduced motion:
+  no drift, grain or travelling light; the line breathes in opacity instead. The grain must stay plain alpha:
+  `mix-blend-mode: overlay` on that full-screen animated layer cost ~1.5 s of load (first frame 13.0 s against
+  11.4-12.2 s) on this PC with a game sharing the GPU. `scripts/loader.ts` captures it.
 
 ## Decisions worth knowing
 
@@ -192,7 +201,7 @@ public/assets/            game assets (KTX2 textures, meshopt GLBs, Ogg audio)
   handrail; swim buoyancy and pose, contact shadows, turn smoothing, jump anticipation.
 * **Loading**: per-material numbers are uniforms and every instanced mesh is past the uniform-buffer limit
   (`core/instancing.ts`), so materials share shaders (248 -> 106 pipelines); the loading screen primes a batch of
-  materials per frame with real progress ("Preparing shaders k / 30") and a compositor-driven glint, so it never
+  materials per frame with real progress ("Catching the light k / 14") and a compositor-driven glint, so it never
   freezes.
 * **Performance**: plants, cliffs and rocks are lit by the sun only (`core/lighting.ts`; the village lamps light the
   ground, the sea and the village); the environment map is re-rendered only when the light changes; the frame cap

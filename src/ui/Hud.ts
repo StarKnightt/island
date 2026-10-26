@@ -27,7 +27,7 @@ export class Hud {
     const css = document.createElement('style');
     css.textContent = `
       #hud { position: fixed; inset: 0; pointer-events: none; z-index: 20; font: 500 13px/1.4 ui-sans-serif, system-ui, "Segoe UI", sans-serif; color: #f4efe3; text-shadow: 0 1px 6px rgba(0,0,0,0.45); }
-      #hud .place { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); font: 300 30px/1 ui-serif, Georgia, serif; letter-spacing: 0.22em; opacity: 0; transition: opacity 1.2s ease; text-transform: uppercase; }
+      #hud .place { position: absolute; left: 50%; top: 12%; transform: translateX(-50%); font: 400 30px/1 "Island Title", ui-serif, Georgia, serif; letter-spacing: 0.3em; opacity: 0; transition: opacity 1.2s ease; text-transform: uppercase; }
       #hud .clock { position: absolute; right: 26px; bottom: 22px; font-size: 12px; letter-spacing: 0.08em; opacity: 0.75; }
       #hud .hint { position: absolute; left: 26px; bottom: 22px; font-size: 12px; opacity: 0.8; transition: opacity 1.5s ease; max-width: 60ch; }
       #hud .badge { position: absolute; left: 50%; top: 22px; transform: translateX(-50%); font-size: 11px; letter-spacing: 0.25em; opacity: 0; transition: opacity 0.4s; }

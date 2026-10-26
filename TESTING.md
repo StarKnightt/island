@@ -202,7 +202,9 @@ Output: `E:\shots\island\<round>\clips\<name>\frame_0000.png ...` (`.jpg` for th
 the ground there), `pnpm tsx scripts/session.ts --steps steps.mjs` (one page load, then a steps module stages and
 captures as it likes; see its header) and `pnpm tsx scripts/loadtime.ts` (load timeline of a first visit and a
 returning visit in one persistent Chrome profile, with the bytes over the wire, the main thread's long tasks and the
-longest gap between animation frames, i.e. how long the loading screen could have stood still). look, poses and session keep a persistent profile
+longest gap between animation frames, i.e. how long the loading screen could have stood still), and
+`pnpm tsx scripts/loader.ts` (the loading screen mid-load, through the crossfade and live, then reduced-motion and
+phone-width loads, into `E:\shots\island\loader\`). look, poses and session keep a persistent profile
 (`E:\tmp\island\chrome-dev`, so Chrome's compiled shaders survive and a page loads in seconds; `--fresh` for a new
 one) and take `--uncapped` (vsync and frame limit off).
 
@@ -212,8 +214,10 @@ one) and take `--uncapped` (vsync and frame limit off).
   modules on demand and its first load is slower.
 * Load time on this PC (production build): the world data, character and every texture and model are in by ~4-5 s;
   the loading screen then builds every shader of the whole island (drawn once with culling off, so nothing compiles
-  with a hitch later in play), a batch of materials per frame: the status reads `Preparing shaders k / 14` and the bar
-  steps forward after each batch, with a glint sweeping it all the time. Most of that time is three.js building node
+  with a hitch later in play), a batch of materials per frame. The status names the stages in the world's words: the
+  shader stages read `Catching the light k / 14` (the island's materials), `Dressing the palms k / 2` (the plants) and
+  `Settling the tide n / m` (pipelines the driver is still compiling). The progress line steps forward after each
+  batch, with a light travelling along it all the time, and the screen crossfades into the first live frame. Most of that time is three.js building node
   materials on the main thread, not the driver, so a returning visit is only a few seconds faster. The real numbers
   are in NOTES.md and the round report (`pnpm tsx scripts/loadtime.ts`). Later `stage()` calls take ~1-2 s.
 * `ready()` (and so `stage()`) resolves only once the loading screen has left the page, and the game records its own
