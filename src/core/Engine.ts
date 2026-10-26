@@ -74,6 +74,7 @@ export class Engine {
    * Pipelines.isReady before every draw) instead of the frame stalling on a serial compile.
    */
   asyncPipelines = false;
+  readonly builds: { ms: number; mat: string; obj: string; shadow: boolean }[] = [];
   pipelinesPending = 0;
   pipelinesCompiled = 0;
   /** draws skipped in the last rendered frame because their pipeline was still compiling */
@@ -134,6 +135,37 @@ export class Engine {
       },
     };
     pipes.updateForRender = (ro) => void pipes.getForRender(ro, this.asyncPipelines ? sink : null);
+    // shared-instancing meshes (core/instancing.ts) look up their render objects under one uuid, so meshes of one
+    // material share a node build
+    const objects = (this.renderer as unknown as { _objects?: { get(o: THREE.Object3D, ...rest: unknown[]): unknown } })._objects;
+    if (objects) {
+      const get = objects.get.bind(objects);
+      objects.get = (o, ...rest) => {
+        if (!o.userData.sharedInstancing) return get(o, ...rest);
+        const uuid = o.uuid;
+        o.uuid = 'shared-instancing';
+        try {
+          return get(o, ...rest);
+        } finally {
+          o.uuid = uuid;
+        }
+      };
+    }
+    // (automated runs: the time each node material takes to build into shaders, for __island.ctx.engine.builds)
+    const nodes = (this.renderer as unknown as { _nodes?: { getForRender(ro: unknown): unknown } })._nodes;
+    if (params.test && nodes) {
+      const get = nodes.getForRender.bind(nodes);
+      nodes.getForRender = (ro) => {
+        const t = performance.now();
+        const r = get(ro);
+        const ms = performance.now() - t;
+        if (ms > 2) {
+          const o = ro as { material: THREE.Material & { isShadowPassMaterial?: boolean }; object: THREE.Object3D };
+          this.builds.push({ ms: Math.round(ms), mat: o.material.name || o.material.type, obj: o.object.name || o.object.type, shadow: !!o.material.isShadowPassMaterial });
+        }
+        return r;
+      };
+    }
     const isReady = pipes.isReady.bind(pipes);
     pipes.isReady = (ro) => {
       const ready = isReady(ro);

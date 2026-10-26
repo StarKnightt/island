@@ -31,7 +31,7 @@ function inSightline(x: number, z: number) {
   return false;
 }
 import { sunLit } from '../core/lighting';
-import { SHARED_INSTANCES } from '../core/instancing';
+import { SHARED_INSTANCES, shareInstancing } from '../core/instancing';
 
 /**
  * A rock to scatter: its mesh (base at the ground line), a low-poly copy for the distance (else one is made), radius
@@ -235,6 +235,7 @@ export class Vegetation {
         const mat = part.material ?? (part.part === 'leaf' && name_isBush(sp.name) ? this.mats.bushleaf : this.mats[part.part]);
         const mesh = new THREE.InstancedMesh(g, mat, cap);
         mesh.instanceMatrix = matrix;
+        shareInstancing(mesh);
         mesh.count = 0;
         mesh.frustumCulled = false;
         mesh.castShadow = lod.shadow;
