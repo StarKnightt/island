@@ -381,10 +381,14 @@ export class Village {
       const b = this.boats[i];
       if (b.moored) {
         const d = b.probe >= 0 ? probe(b.probe) : [0, 0, 0];
-        // riding the swell, about 8 cm down (the keel is 0.28 m under the hull's origin)
-        const heave = d[1] * 0.85 + Math.sin(t * 1.1 + i * 1.7) * 0.02 + 0.2;
-        const roll = Math.sin(t * 0.9 + i * 2.1) * 0.04 + d[0] * 0.03;
-        const pitch = Math.sin(t * 0.7 + i) * 0.02 + d[2] * 0.02;
+        // riding the water the sea shows here: the open-sea probe damped by the depth as the shader damps it
+        // (Ocean.surfaceAt), so a hull in the shallow cove keeps its waterline instead of heaving through still water
+        const depth = Math.max(0, -this.hf.height(b.x, b.z));
+        const damp = THREE.MathUtils.smoothstep(depth, 0, 5) * 0.7;
+        // about 8 cm down (the keel is 0.28 m under the hull's origin), short rolls and pitches of a few centimetres
+        const heave = d[1] * damp + Math.sin(t * 1.7 + i * 1.7) * 0.012 + 0.2;
+        const roll = Math.sin(t * 2.1 + i * 2.1) * 0.025 + Math.sin(t * 0.9 + i) * 0.012 + d[0] * 0.03 * damp;
+        const pitch = Math.sin(t * 1.6 + i) * 0.012 + d[2] * 0.02 * damp;
         q.setFromEuler(new THREE.Euler(pitch, b.rot + Math.sin(t * 0.15 + i) * 0.04, roll));
         m.compose(V(b.x, heave, b.z), q, V(1, 1, 1));
       } else m.copy(this.boatBase[i]);
