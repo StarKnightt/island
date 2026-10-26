@@ -186,7 +186,7 @@ export function installHarness(ctx: Ctx) {
      * Returns the player, the footsteps of this frame and whether any pipeline was still compiling (a mesh whose
      * pipeline is not ready is not drawn).
      */
-    shotFrame(o: { cam: { pos: number[]; target: number[]; fov?: number }; walk: number | null; mode?: 'walk' | 'run'; dt?: number }) {
+    shotFrame(o: { cam: { pos: number[]; target: number[]; fov?: number } | 'follow'; snap?: number; walk: number | null; mode?: 'walk' | 'run'; dt?: number }) {
       const p = ctx.player?.obj;
       if (p && !stepHooked) {
         stepHooked = true;
@@ -196,13 +196,19 @@ export function installHarness(ctx: Ctx) {
           stepLog.push({ surface: e.surface, foot: e.foot, pos: e.pos.toArray().map((v: number) => +v.toFixed(2)) });
         };
       }
-      api.setCamera(o.cam);
+      // 'follow': the game's own third-person camera, as in play (`snap`: first put it behind that heading)
+      if (o.cam !== 'follow') api.setCamera(o.cam);
+      else if (ctx.cameraRig && (ctx.cameraRig.mode !== 'follow' || o.snap !== undefined)) {
+        ctx.cameraRig.set('follow');
+        if (o.snap !== undefined) ctx.cameraRig.snapBehind(o.snap);
+      }
       if (ctx.input) ctx.input.scripted = o.walk === null ? null : { t: 1, intent: { moveX: 0, moveY: 1, walk: (o.mode ?? 'walk') === 'walk', worldYaw: o.walk } };
       stepLog.length = 0;
       const pending = engine.pipelinesPending;
       engine.stepOnce(o.dt ?? 1 / 60);
       const s = p ? { pos: p.pos.toArray().map((v: number) => +v.toFixed(3)), heading: +p.heading.toFixed(4), speed: +p.speed.toFixed(3) } : null;
-      return { frame: engine.frame, player: s, steps: stepLog.slice(), pending: Math.max(pending, engine.pipelinesPending) };
+      const cam = engine.camera.position.toArray().map((v: number) => +v.toFixed(3));
+      return { frame: engine.frame, player: s, cam, steps: stepLog.slice(), pending: Math.max(pending, engine.pipelinesPending) };
     },
     /** debug: read back a few texels of a named render target */
     async readRT(name: string, x = 0, y = 0, w = 4, h = 4) {

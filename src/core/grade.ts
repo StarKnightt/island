@@ -15,7 +15,7 @@ export const grade = {
   contrast: uniform(1.06),
   lift: uniform(new THREE.Vector3(0.0, 0.0, 0.0)),
   gain: uniform(new THREE.Vector3(1.0, 1.0, 1.0)),
-  vignette: uniform(0.2),
+  vignette: uniform(params.clean ? 0 : 0.2),
   aoStrength: uniform(0.75),
   /** set per frame by updateViewExposure */
   bloomStrength: uniform(0.04),

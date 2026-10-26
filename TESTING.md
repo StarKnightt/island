@@ -43,6 +43,7 @@ All optional, combine freely: `http://127.0.0.1:5231/?spot=cliffs&tod=sunset&fre
 | `webgl` | `1` | force the WebGL 2 backend |
 | `test` | `1` | automated run: no pointer lock, audio starts without a gesture, `high` preset, GPU timing on |
 | `capture` | `1` | trailer capture (`pnpm record`): `test` plus no HUD, muted, frozen time of day, clear weather, a seeded `Math.random` |
+| `clean` | `1` | with `capture=1` only: no vignette (the picture exactly as rendered and tone mapped) |
 | `nopost` `noao` `notaa` `noshadow` | `1` | diagnostics: disable post-processing, ambient occlusion, temporal AA, sun shadows |
 | `skip` | comma list of `terrain` `ocean` `oceansim` `river` `village` `lighthouse` `veg` `canopy` | diagnostics: leave those systems out |
 
@@ -92,7 +93,7 @@ Every call is synchronous unless marked async and returns plain JSON-able values
 | `__island.player()` | `{ pos, heading, state, speed, surface, waterDepth, weights }`: state is `ground`, `air`, `swim`; `weights` are the active animation clips |
 | `__island.act(action, seconds = 3, yaw?)` | drive the character: `walk`, `run`, `sprint`, `jump`, `swim`, `idle`, for `seconds`, heading `yaw` (radians; forward is `(sin yaw, -cos yaw)` in x/z) |
 | `__island.manual(on)` / `__island.step(n = 1, dt = 1/30)` | deterministic stepping for motion clips: with `manual(true)` the loop stops and `step` advances and renders `n` fixed frames |
-| `__island.shotStart(worldTime, seed, exposure = 1)` / `__island.placePlayer(x, z, yaw)` / `__island.shotFrame({ cam, walk, mode?, dt? })` | trailer capture in manual mode: start a shot at a fixed world time and random seed with an exposure grade; put the player down standing; one frame with the camera at the pose `cam`, the player walking toward world heading `walk` (`null`: standing), exactly `dt` (default 1/60) s of world and one render; returns `{ frame, player, steps, pending }` (footsteps of that frame, pipelines still compiling) |
+| `__island.shotStart(worldTime, seed, exposure = 1)` / `__island.placePlayer(x, z, yaw)` / `__island.shotFrame({ cam, walk, mode?, dt? })` | trailer capture in manual mode: start a shot at a fixed world time and random seed with an exposure grade; put the player down standing; one frame with the camera at the pose `cam` (or `'follow'`: the game's own follow camera, `snap: yaw` first puts it behind that heading), the player walking toward world heading `walk` (`null`: standing), exactly `dt` (default 1/60) s of world and one render; returns `{ frame, player, cam, steps, pending }` (`cam`: the camera position) (footsteps of that frame, pipelines still compiling) |
 | `__island.fps(cap)` | change the frame cap at run time (`'auto'`, a number, `0`) |
 | `__island.quality()` / `__island.info()` | the active preset knobs / renderer counters `{ drawCalls, triangles, geometries, textures, terrainNodes }` |
 | `__island.ctx` | the live game objects (for the curious; not a stable API) |
@@ -200,19 +201,23 @@ Output: `E:\shots\island\<round>\clips\<name>\frame_0000.png ...` (`.jpg` for th
 ### `pnpm record`: the trailer
 
 ```bash
-pnpm record --preview                # one 1920x1080 frame per shot -> E:\shots\island\trailer-preview\
-pnpm record --motion village         # one shot at 60 fps -> E:\tmp\island\trailer-motion\ (+ mp4, ms per frame)
-pnpm record                          # every shot, the sound, the encode -> E:\shots\island\trailer.mp4
+pnpm record --preview                # one 1920x1080 frame per beat -> E:\shots\island\trailer-preview\gp_<n>_<beat>.png
+pnpm record --seconds 10             # only the first 10 s -> E:\shots\island\trailer-preview\gameplay_edit_first10s.mp4
+pnpm record                          # every beat, the sound, the encode -> E:\shots\island\gameplay_edit.mp4
 ```
 
-Six scripted shots (about 40 s: beach at sunrise, the jungle trail at noon, the village shore at sunset, a drone off
-the jetty, a crane up the lighthouse, the island at golden hour with a fade to black), defined at the top of
-`scripts/record.ts`. Every frame is stepped by exactly 1/60 s through `shotFrame` and read back with a CDP screenshot,
-so the result is smooth however slow the capture; each shot starts from a fixed world time and seed after 1.5 s of
-uncaptured warm-up at its first pose. Frames go to `E:\tmp\island\trailer\<n>_<shot>\` (PNG, deleted after a good
-encode; `--keep` keeps them; `shot.json` keeps the footsteps and timing). The sound is the game's ambience loops per
-shot with 1 s crossfades over the cuts plus his footsteps, normalised to -16 LUFS. Other flags: `--shots a,b`,
-`--encode-only`, `--audio-only`, `--at <s>` (preview time), `--dev`. About 125 ms a frame on the RTX 4060.
+The gameplay trailer (about 29 s), defined at the top of `scripts/record.ts`: the opening dive from the whole island
+down to him on the village beach at sunset (an exact camera rig), then straight cuts of play filmed by the game's own
+follow camera (`shotFrame({ cam: 'follow' })`, its own lag, easing and collision), the character steered toward
+waypoints like a player steers him, and a hard cut to black with 0.5 s of black held. The page runs with
+`?capture=1&clean=1` (`clean`: no vignette); nothing is graded, dissolved or faded on top. Every frame is stepped by
+exactly 1/60 s through `shotFrame` and read back with a CDP screenshot; each beat starts from a fixed world time and
+seed after 1.5 s of uncaptured warm-up (on the gameplay beats he already walks through it and the camera settles
+behind him). Frames go to `E:\tmp\island\gameplay\<n>_<beat>\` (PNG, deleted after a good encode; `--keep` keeps them;
+`shot.json` keeps the footsteps and timing). The sound is the game's ambience loops per beat with 0.16 s crossfades
+on the cuts plus his footsteps, normalised to -16 LUFS, cut with the picture. Every encode also writes a 12-frame
+contact sheet next to the mp4. Other flags: `--shots a,b`, `--encode-only`, `--audio-only`, `--at <s>` (preview
+time), `--dev`. About 110 ms a frame on the RTX 4060.
 
 ### Development captures
 

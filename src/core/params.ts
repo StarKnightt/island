@@ -37,6 +37,8 @@ const capture = flag('capture');
 
 export const params = {
   capture,
+  /** capture only (`?capture=1&clean=1`): no vignette, the picture exactly as rendered and tone mapped */
+  clean: capture && flag('clean'),
   spot: str('spot'),
   tod: parseTod(str('tod')),
   freeze: flag('freeze') || capture,
