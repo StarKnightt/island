@@ -101,20 +101,26 @@ const SHOTS: Shot[] = [
     layers: [{ file: 'amb_jungle', db: -6 }, { file: 'amb_birds', db: -12 }, { file: 'amb_wind', db: -20 }],
   },
   {
-    // sunset in the village, in the manner of the ocean-drive trailer's street tracking: the camera swoops in low and
-    // close behind him on the seaward side (7.5 m off and 2 m up, closing to 4.2 m and 1.3 m), orbits 100 degrees
-    // round behind him to the landward side and ends on the sun over the sea with the jetty ahead of him, zooming
-    // from 54 to 46 degrees. He stays backlit, so his face never reads; the hillside's round crowns stay behind us
-    name: 'village', tod: 17.42, spot: 'village', dur: 10, xin: 0.8, ease: 0.35, previewAt: 6,
-    rig: ({ u, s, subj, dir }) => {
-      // (the speed ramp: most of the move early, then a long settle)
-      const k = 1 - Math.pow(1 - u, 2.2);
-      const phi = THREE.MathUtils.degToRad(THREE.MathUtils.lerp(70, -30, k));
-      const r = THREE.MathUtils.lerp(7.5, 4.2, k);
-      const pos = subj.clone().add(new THREE.Vector3(Math.cos(phi) * r, THREE.MathUtils.lerp(2.0, 1.3, k), Math.sin(phi) * r));
+    // sunset in the village, on the rhythm measured from the ocean-drive trailer (its opening dive and the runner
+    // tracking shot, 10 fps optical flow): a dive that accelerates to a peak at 1.3 s (13 m off and 7.5 m up down to
+    // 4.4 m and 1.35 m), a near hold, then a re-accelerating 90-degree orbit round behind him toward the sun and the
+    // jetty, closing to 3.8 m and zooming from 52 to 45 degrees, still moving at 40 % speed into the next shot.
+    // He stays backlit, so his face never reads; the hillside's round crowns stay behind the camera
+    name: 'village', tod: 17.42, spot: 'village', dur: 10, xin: 0.8, ease: 0, previewAt: 6,
+    rig: ({ x, subj, dir }) => {
+      const { lerp, smootherstep, degToRad } = THREE.MathUtils;
+      const t = x * 10;
+      const dive = smootherstep(t, 0, 2.6);
+      // the orbit's speed: up to full over its first 18 %, then easing to 40 % at the end (integrated, normalized)
+      const ramp = (q: number) => (q < 0.18 ? (q * q / 2 - 0.2 * q * q * q) / 0.18 : (0.0162 - 0.2 * 0.005832) / 0.18 + (q - 0.3 * q * q) - (0.18 - 0.3 * 0.0324));
+      const orbit = t < 3.1 ? 0 : ramp(Math.min(1, (t - 3.1) / 6.9)) / ramp(1);
+      const phi = degToRad(lerp(lerp(80, 60, dive), -30, orbit));
+      const r = lerp(lerp(13, 4.4, dive), 3.8, orbit);
+      const y = lerp(lerp(7.5, 1.35, dive), 1.25, orbit);
+      const pos = subj.clone().add(new THREE.Vector3(Math.cos(phi) * r, y, Math.sin(phi) * r));
       // (lead room ahead of him; aimed a little above his head so the sky and the treeline keep the upper half)
-      const target = subj.clone().add(new THREE.Vector3(0, THREE.MathUtils.lerp(1.9, 1.5, s), 0)).addScaledVector(dir, THREE.MathUtils.lerp(3.5, 1.8, s));
-      return { pos, target, fov: THREE.MathUtils.lerp(54, 46, k) };
+      const target = subj.clone().add(new THREE.Vector3(0, lerp(2.2, 1.5, dive), 0)).addScaledVector(dir, lerp(3.0, 1.8, orbit));
+      return { pos, target, fov: lerp(52, 45, orbit) };
     },
     walk: { from: [-412, 337.5], path: [[-418, 338.3], [-424, 339.2], [-430, 340]], startAt: -0.4 },
     layers: [
