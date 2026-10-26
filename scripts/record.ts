@@ -101,18 +101,20 @@ const SHOTS: Shot[] = [
     layers: [{ file: 'amb_jungle', db: -6 }, { file: 'amb_birds', db: -12 }, { file: 'amb_wind', db: -20 }],
   },
   {
-    // sunset in the village: an orbit round him as he walks the shore, always facing west into the low sun. It opens
-    // behind him on the seaward side (the huts, the main jetty and its canoes against the sky), swings 80 degrees
-    // round behind him to the landward side and settles on the sun over the sea with the jetty ahead of him,
-    // closing from 11 to 9.5 m and zooming from 52 to 44 degrees (the hillside's round crowns stay behind the camera)
-    name: 'village', tod: 17.42, spot: 'village', dur: 10, xin: 0.8, ease: 0.85, previewAt: 6,
+    // sunset in the village, in the manner of the ocean-drive trailer's street tracking: the camera swoops in low and
+    // close behind him on the seaward side (7.5 m off and 2 m up, closing to 4.2 m and 1.3 m), orbits 100 degrees
+    // round behind him to the landward side and ends on the sun over the sea with the jetty ahead of him, zooming
+    // from 54 to 46 degrees. He stays backlit, so his face never reads; the hillside's round crowns stay behind us
+    name: 'village', tod: 17.42, spot: 'village', dur: 10, xin: 0.8, ease: 0.35, previewAt: 6,
     rig: ({ u, s, subj, dir }) => {
-      const phi = THREE.MathUtils.degToRad(THREE.MathUtils.lerp(55, -25, u));
-      const r = THREE.MathUtils.lerp(11, 9.5, u);
-      const pos = subj.clone().add(new THREE.Vector3(Math.cos(phi) * r, 2.2, Math.sin(phi) * r));
-      // (lead room ahead of him; aimed above his head so the sky and the treeline keep the upper half)
-      const target = subj.clone().add(new THREE.Vector3(0, THREE.MathUtils.lerp(2.4, 1.9, s), 0)).addScaledVector(dir, THREE.MathUtils.lerp(6, 3, s));
-      return { pos, target, fov: THREE.MathUtils.lerp(52, 44, u) };
+      // (the speed ramp: most of the move early, then a long settle)
+      const k = 1 - Math.pow(1 - u, 2.2);
+      const phi = THREE.MathUtils.degToRad(THREE.MathUtils.lerp(70, -30, k));
+      const r = THREE.MathUtils.lerp(7.5, 4.2, k);
+      const pos = subj.clone().add(new THREE.Vector3(Math.cos(phi) * r, THREE.MathUtils.lerp(2.0, 1.3, k), Math.sin(phi) * r));
+      // (lead room ahead of him; aimed a little above his head so the sky and the treeline keep the upper half)
+      const target = subj.clone().add(new THREE.Vector3(0, THREE.MathUtils.lerp(1.9, 1.5, s), 0)).addScaledVector(dir, THREE.MathUtils.lerp(3.5, 1.8, s));
+      return { pos, target, fov: THREE.MathUtils.lerp(54, 46, k) };
     },
     walk: { from: [-412, 337.5], path: [[-418, 338.3], [-424, 339.2], [-430, 340]], startAt: -0.4 },
     layers: [
