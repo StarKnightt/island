@@ -49,7 +49,8 @@ export const atmo = {
    * at noon (visibility ~35 km), ridges 1-2 km out pale by 10-20 %, a coast 5 km out by ~40 %, the sea horizon soft
    */
   haze: uniform(8e-5),
-  mistColor: uniform(new THREE.Color(0.57, 0.6, 0.63)),
+  // (rain haze over a green island is a neutral, faintly green grey: a blue-grey one read as frost on the forest)
+  mistColor: uniform(new THREE.Color(0.6, 0.62, 0.58)),
   /** 0..1 overcast: flattens the sky toward grey */
   overcast: uniform(0),
   /** night factor for the stars, moon light */

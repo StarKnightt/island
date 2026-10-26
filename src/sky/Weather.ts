@@ -161,8 +161,8 @@ export class Weather {
     clouds.thickness.value = THREE.MathUtils.lerp(0.2, 1.0, c);
     atmo.overcast.value = THREE.MathUtils.smoothstep(c, 0.3, 1.0) * 0.95;
     // (the aerosol, rain droplets included, is set by TimeOfDay from the hour and the cover)
-    // a tropical downpour: visibility down to about a kilometre and a half, every layer of distance paler
-    atmo.mist.value = this.rain * 2.4e-3;
+    // a tropical downpour: visibility down to about two kilometres, every layer of distance paler
+    atmo.mist.value = this.rain * 1.9e-3;
     clouds.rain.value = this.rain;
     wetness.rain.value = this.wet;
     wetness.intensity.value = this.rain;
@@ -181,7 +181,7 @@ export class Weather {
 
   /**
    * Rain: drops falling with the wind in a box that follows the camera, each drawn as the streak a camera sees in a
-   * 1/30 s exposure: along its own motion on screen (slanted downwind, short when it falls toward the lens), about a
+   * 1/50 s exposure: along its own motion on screen (slanted downwind, short when it falls toward the lens), about a
    * pixel and a half wide at any distance, a little darker than the overcast sky behind it, so streaks show against
    * dark trees and rock and vanish against the bright sky.
    */
@@ -211,7 +211,7 @@ export class Weather {
     const vv = cameraViewMatrix.mul(vec4(vel, 0)).xy;
     const dist = length(p.sub(cameraPosition));
     m.rotationNode = atan(vv.x.negate(), vv.y);
-    m.scaleNode = vec2(max(float(0.005), dist.mul(0.0015)), length(vv).mul(g2.mul(0.6).add(0.7).mul(1 / 30)).max(0.03));
+    m.scaleNode = vec2(max(float(0.005), dist.mul(0.0015)), length(vv).mul(g2.mul(0.6).add(0.7).mul(1 / 50)).max(0.03));
     const fade = smoothstep(0.7, 2.5, dist).mul(smoothstep(21, 12, dist));
     const keep = smoothstep(seed.z.sub(0.02), seed.z, rainU.intensity);
     const a = fade.mul(keep).mul(g3.mul(0.5).add(0.6)).mul(0.34).mul(smoothstep(0.0, 0.15, rainU.intensity));

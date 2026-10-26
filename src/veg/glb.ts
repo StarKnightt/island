@@ -180,9 +180,15 @@ function windFrom(look: PlantLook) {
   const strength = wetness.wind.mul(0.85).add(0.1);
   // a squall: crowns stream downwind and the leaves thrash
   const storm = TSLTyped.smoothstep(0.45, 0.9, wetness.wind);
-  // a slow gust front crossing the island, the plant's own sway, and every part a little out of step
-  const gust = sin(t.mul(0.33).add(phase.mul(6.28)).add(positionWorld.x.mul(0.012)).add(positionWorld.z.mul(0.007))).mul(0.5).add(0.5);
-  const sway = sin(t.mul(0.9).add(phase.mul(12.0)).add(part.mul(2.2))).mul(0.45).add(gust.mul(0.85));
+  // gusts and lulls rolling across the island downwind (two fronts of different speed and size), and the plant's own
+  // sway on two unrelated periods with every part out of step: irregular, never one metronome per plant
+  const along = positionWorld.x.mul(wd.x).add(positionWorld.z.mul(wd.y));
+  const g1 = sin(t.mul(0.41).sub(along.mul(0.021)).add(phase.mul(1.3))).mul(0.5).add(0.5);
+  const g2 = sin(t.mul(0.17).sub(along.mul(0.006)).add(1.7)).mul(0.5).add(0.5);
+  const gust = g1.mul(g2.mul(0.7).add(0.3));
+  const sway = sin(t.mul(0.9).add(phase.mul(12.0)).add(part.mul(2.2))).mul(0.3)
+    .add(sin(t.mul(1.47).add(phase.mul(5.0)).add(part.mul(4.1))).mul(0.18))
+    .add(gust.mul(0.95));
   const lean = storm.mul(gust.mul(0.6).add(0.9)).mul(TSLTyped.uniform(look.storm ?? 1));
   // (a uniform, not a constant: every species then shares one shader, see plantMaterial)
   const amt = bend.mul(bend).mul(strength.mul(sway).add(lean)).mul(TSLTyped.uniform(look.height * look.sway));
@@ -230,7 +236,7 @@ export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) 
   alb = alb.mul(float(1).add(vary2.mul(0.36)));
   alb = alb.mul(U(new THREE.Vector3(...(look.tint ?? [1, 1, 1]))));
   // wet leaves and bark go darker and a little more saturated
-  alb = alb.mul(mix(vec3(1), vec3(0.56, 0.6, 0.56), wetness.rain));
+  alb = alb.mul(mix(vec3(1), vec3(0.5, 0.62, 0.46), wetness.rain));
   m.colorNode = vec4(alb.mul(ao.mul(0.8).add(0.2)), base.a);
   const orm = src.roughnessMap ?? src.metalnessMap ?? src.aoMap;
   // leaves keep a floor: a mirror-smooth card per leaf glints like a lamp in the sun (wet leaves shine a little more)

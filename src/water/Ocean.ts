@@ -239,7 +239,7 @@ export class Ocean {
       const surfFoam = laceMask(w.foam.mul(oceanU.foamBoost.mul(0.3).add(1)), xz, w.n, c.nrm, drift);
       const lip = bubbleMask(sw.lip, xz);
       const sheetFoam = laceMask(sw.sheetFoam, xz, w.n0, c.nrm, float(1.6), sw.back).mul(onSheet);
-      const capsA = smoothstep(mix(float(0.75), float(0.4), oceanU.storm), float(1.6), foamH.mul(damp)).mul(float(0.55).add(oceanU.storm.mul(0.9)));
+      const capsA = smoothstep(mix(float(0.64), float(0.36), oceanU.storm), float(1.6), foamH.mul(damp)).mul(float(0.6).add(oceanU.storm.mul(1.0)));
       const caps = laceMask(capsA, xz, float(0), vec2(0.6, 0.8), float(0));
       // surf on the reef crest: the swell breaks where the bed comes up off the fore-reef onto the flat; white water
       // just behind the edge, thinning across the flat, each stretch of the crest breaking in its own time
@@ -273,7 +273,7 @@ export class Ocean {
       // in suspension scatters blue-green (turquoise); past the reef drop-off clear ocean water is navy; bubbles pale
       const lagoon = smoothstep(14, 4, max(ground.negate(), 0));
       // (a squall stirs the sea to slate grey-green)
-      const deep = mix(mix(vec3(0.0026, 0.0145, 0.032), vec3(0.008, 0.075, 0.085), lagoon), vec3(0.0085, 0.0135, 0.0135), oceanU.storm.mul(0.7));
+      const deep = mix(mix(vec3(0.0026, 0.0145, 0.032), vec3(0.008, 0.075, 0.085), lagoon), vec3(0.011, 0.017, 0.014), oceanU.storm.mul(0.85));
       const inscat = deep.mul(float(1).sub(exp(path.mul(mix(float(-0.12), float(-0.3), lagoon)))));
       const body = mix(inscat, vec3(0.22, 0.33, 0.32), aer.mul(0.55));
 
@@ -298,7 +298,12 @@ export class Ocean {
       const alpha = sqrt(alpha0.mul(alpha0).add(lost.mul(2)));
       const rough = mix(sqrt(alpha), float(0.75), foam);
       const dbg = vec3(w.foam, c.wc, smoothstep(0, 20, c.d));
-      return { N0, NdotV, foam, bed, body, rough, sparkle, contrast, cover, dbg };
+      // a facet tilted away from the viewer mirrors the ground half of the environment (a brown bounce meant for trunks
+      // and undersides): on the sea that ray meets more sea and sky, so the shading normal leans back up until the
+      // reflection stays above the horizon (the steep storm chop showed sand-coloured troughs)
+      const rY = N0.y.mul(NdotV).mul(2).sub(V.y);
+      const Nr = normalize(mix(N0, vec3(0, 1, 0), smoothstep(0.08, -0.1, rY).mul(0.75)));
+      return { N0, Nr, NdotV, foam, bed, body, rough, sparkle, contrast, cover, dbg };
     })();
 
     m.glint.sparkle = shade.sparkle;
@@ -308,7 +313,7 @@ export class Ocean {
     m.colorNode = vec4(mix(shade.body, foamCol, shade.foam), 1);
     m.roughnessNode = shade.rough;
     m.metalnessNode = float(0);
-    m.normalNode = transformNormalToView(shade.N0);
+    m.normalNode = transformNormalToView(shade.Nr);
     // the light from the bed comes through; the Fresnel share of the surface reflects the sky instead (by night the
     // bed, lit by the moon or a lamp through the water, stays dim: dark water, not shallows glowing cyan)
     const F = float(0.02).add(float(0.98).mul(pow(float(1).sub(shade.NdotV), 5)));
@@ -322,6 +327,8 @@ export class Ocean {
     oceanU.time.value = t;
     surfU.time.value = t;
     surfU.storm.value = oceanU.storm.value as number;
+    // a squall's wind raises the sea: steeper, folding crests (whitecaps from the foam history) and a rougher chop
+    this.sim.amplitudeU.value = THREE.MathUtils.lerp(OCEAN.amplitude, OCEAN.amplitude * 1.75, oceanU.storm.value as number);
     this.sim.update(renderer, t, dt);
     const s = this.followStep;
     this.followXU.value = Math.round(camera.position.x / s) * s;
