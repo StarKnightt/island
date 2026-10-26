@@ -57,6 +57,8 @@ interface Shot {
   rig?: (p: { x: number; u: number; s: number; subj: THREE.Vector3; dir: THREE.Vector3 }) => { pos: THREE.Vector3; target: THREE.Vector3; fov: number };
   /** the speed ramp: 0 = constant speed, 1 = a full cubic ease-in/out (a near hold, a fast middle, a settle) */
   ease: number;
+  /** travel on the trailer rhythm (RUSH) instead of `ease` */
+  rush?: boolean;
   /** aim partly at the character: target = mix(path target, his spring-followed position + height, weight) */
   track?: { weight: number; height: number };
   walk?: Walk;
@@ -79,8 +81,10 @@ const SHOTS: Shot[] = [
   {
     // low over the wet sand at sunrise, the sea and the sun ahead, waves rolling in; he walks in from the left while
     // the camera pushes in toward the sun (3.6 m of dolly and a zoom from 52 to 44 degrees on one ramp)
-    name: 'beach', tod: 6.55, spot: 'beach', dur: 6, xin: 0, ease: 0.75, previewAt: 4,
+    // (opened by a dive from 24 m over the back of the beach down to the wet sand, on the trailer rhythm)
+    name: 'beach', tod: 6.55, spot: 'beach', dur: 6, xin: 0, ease: 0.75, rush: true, previewAt: 4,
     keys: [
+      { pos: [588.9, 24, 95.7], target: [628, 0, 60], fov: 56 },
       { pos: [611.5, 1.0, 76], target: [642.6, 3, 48.8], fov: 52 },
       { pos: [613.2, 1.25, 72.8], target: [643, 3.6, 49.5], fov: 44 },
     ],
@@ -91,8 +95,10 @@ const SHOTS: Shot[] = [
   {
     // noon in the rainforest: he walks away from us down the sun-flecked trail; the camera holds, picks him up and
     // tracks 7 m along the trail behind him while it zooms in from 56 to 47 degrees, the aim on his spring
-    name: 'jungle', tod: 12.8, spot: 'jungle', dur: 6, xin: 0.8, ease: 0.8, previewAt: 3, exposure: 1.6,
+    // (opened by a crane down from 5 m behind him into the follow, on the trailer rhythm)
+    name: 'jungle', tod: 12.8, spot: 'jungle', dur: 6, xin: 0.8, ease: 0.8, rush: true, previewAt: 3, exposure: 1.6,
     keys: [
+      { pos: [361.4, 5.0, -67.6], target: [330, 1.0, -58.8], fov: 60, ground: true },
       { pos: [355.6, 1.9, -66.0], target: [325, 2.6, -57.5], fov: 56, ground: true },
       { pos: [348.6, 2.1, -64.3], target: [316, 2.6, -55], fov: 47, ground: true },
     ],
@@ -134,7 +140,7 @@ const SHOTS: Shot[] = [
   {
     // a drone rising off the end of the main jetty from 3 to 22 m, back and up on one curve, widening from 46 to 56
     // degrees: the moored canoes riding the swell, then the village beyond
-    name: 'jetty', tod: 17.42, spot: 'village', dur: 6, xin: 0, ease: 0.85, previewAt: 3,
+    name: 'jetty', tod: 17.42, spot: 'village', dur: 6, xin: 0, ease: 0.85, rush: true, previewAt: 3,
     keys: [
       { pos: [-436, 3.0, 396], target: [-456, 1.2, 368], fov: 46 },
       { pos: [-430, 10, 404], target: [-457, 1, 362], fov: 50 },
@@ -146,7 +152,7 @@ const SHOTS: Shot[] = [
     // a pull-back reveal: tight on the gallery and the lantern at the left edge, the camera backs away and up from
     // 7 to 18 m off the tower while the lens widens from 40 to 52 degrees, opening onto the island and the sun on
     // the western sea (the tower keeps its place in the frame and shrinks)
-    name: 'lighthouse', tod: 17.42, spot: 'lighthouse', dur: 7, xin: 0.8, ease: 0.85, previewAt: 6,
+    name: 'lighthouse', tod: 17.42, spot: 'lighthouse', dur: 7, xin: 0.8, ease: 0.85, rush: true, previewAt: 6,
     keys: [
       { pos: lh(7, 4.4, GALLERY + 3), target: lhAim(lh(7, 4.4, GALLERY + 3), 700, GALLERY - 110), fov: 40 },
       { pos: lh(12, 7.5, GALLERY + 5), target: lhAim(lh(12, 7.5, GALLERY + 5), 700, GALLERY - 116), fov: 46 },
@@ -157,7 +163,7 @@ const SHOTS: Shot[] = [
   {
     // the whole island in the golden hour from the sea: a slow zoom out from 32 to 44 degrees with a little drift
     // back, settling into a hold as the picture fades to black
-    name: 'final', tod: 17.3, spot: 'village', dur: 5, xin: 0.8, ease: 0.7, previewAt: 2,
+    name: 'final', tod: 17.3, spot: 'village', dur: 5, xin: 0.8, ease: 0.7, rush: true, previewAt: 2,
     keys: [
       { pos: [-995, 109, 615], target: [-150, 40, -80], fov: 32 },
       { pos: [-1015, 113, 635], target: [-150, 41, -80], fov: 44 },
@@ -189,6 +195,18 @@ const cubic = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2,
 const smooth = (x: number) => x * x * (3 - 2 * x);
 const ramp = (x: number, k: number) => (1 - k) * x + k * cubic(x);
 const aimRamp = (x: number, k: number) => (1 - k) * x + k * smooth(x);
+// the rhythm measured from the ocean-drive trailer (10 fps optical flow of its opening dive and runner shot): the
+// camera accelerates to its peak about a third of the way in, then settles but still moves at about a third of that
+// speed into the cut, never coming to rest
+const RUSH = (() => {
+  const n = 512, c = new Float64Array(n + 1);
+  const v = (x: number) => (x < 0.35 ? 0.05 + 0.95 * smooth(x / 0.35) : 1 - 0.65 * smooth((x - 0.35) / 0.65));
+  for (let i = 1; i <= n; i++) c[i] = c[i - 1] + (v((i - 1) / n) + v(i / n)) / 2;
+  return (x: number) => {
+    const f = THREE.MathUtils.clamp(x, 0, 1) * n, i = Math.min(n - 1, Math.floor(f));
+    return (c[i] + (c[i + 1] - c[i]) * (f - i)) / c[n];
+  };
+})();
 
 /** a shot's camera as a function of shot time and the followed subject: arc-length Catmull-Rom paths through the
  *  keys (or the shot's rig), travelled on the speed ramp */
@@ -201,7 +219,8 @@ function cameraPath(shot: Shot, keys: Key[], i: number) {
   const fovs = keys.map((k) => k.fov ?? 55);
   return (t: number, subj: THREE.Vector3, dir: THREE.Vector3) => {
     const x = THREE.MathUtils.clamp((t - t0) / (t1 - t0), 0, 1);
-    const u = ramp(x, shot.ease), s = aimRamp(x, shot.ease);
+    // (on the rush the aim runs a little ahead of the travel, so the view turns into the move)
+    const u = shot.rush ? RUSH(x) : ramp(x, shot.ease), s = shot.rush ? RUSH(Math.min(1, x + 0.04)) : aimRamp(x, shot.ease);
     if (shot.rig) return shot.rig({ x, u, s, subj, dir });
     const f = u * (fovs.length - 1), j = Math.min(fovs.length - 2, Math.floor(f));
     const target = tgt!.getPointAt(s);
@@ -482,7 +501,8 @@ function encode(wav: string) {
       parts.push(`${acc}[v${i}]xfade=transition=fade:duration=${s.xin}:offset=${(D - s.xin).toFixed(4)}${out}`);
       D += len - s.xin;
     } else {
-      parts.push(`${acc}[v${i}]concat=n=2:v=1:a=0${out}`);
+      // (concat leaves its own time base, which the next xfade refuses: back to frame-count time at 60 fps)
+      parts.push(`${acc}[v${i}]concat=n=2:v=1:a=0,settb=1/${FPS},setpts=N${out}`);
       D += len;
     }
     acc = out;
@@ -490,7 +510,7 @@ function encode(wav: string) {
   parts.push(`${acc}fade=t=out:st=${(D - FADE_OUT).toFixed(4)}:d=${FADE_OUT},format=yuv420p[vout]`);
   const nIn = SHOTS.length;
   ff([...inputs, '-i', wav, '-filter_complex', parts.join(';'), '-map', '[vout]', '-map', `${nIn}:a`,
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', '19', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-r', String(FPS), '-g', '120',
+    '-c:v', 'libx264', '-preset', 'slow', '-crf', '20', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-r', String(FPS), '-g', '120',
     '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', '-shortest', OUT], 'encode');
   console.log(`video: ${D.toFixed(3)} s -> ${OUT} (${(statSync(OUT).size / 1e6).toFixed(1)} MB)`);
 }
