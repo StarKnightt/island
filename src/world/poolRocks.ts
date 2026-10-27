@@ -47,10 +47,10 @@ export function planPoolRocks(hf: Heightfield): Rock[] {
   };
   // the waterfall spot (player and shot camera stand at the outflow) and the trail up the escarpment stay open
   const keepOpen = (x: number, z: number, rad: number) => Math.hypot(x - 186, z + 41) < 3.5 + rad;
-  const put = (piece: string, x: number, z: number, s: number, opts: { lean?: number; sink?: number; minGap?: number } = {}) => {
+  const put = (piece: string, x: number, z: number, s: number, opts: { lean?: number; sink?: number; minGap?: number; force?: boolean; y?: number } = {}) => {
     const [above, buried, fx, fz] = SIZE[piece];
     const rad = Math.max(fx, fz) * 0.5 * s;
-    if (fallsClear(x, z, rad) || keepOpen(x, z, rad)) return false;
+    if (!opts.force && (fallsClear(x, z, rad) || keepOpen(x, z, rad))) return false;
     // no two boulders inside each other (cobbles may lie among them)
     const big = !piece.startsWith('pebbles');
     if (big) for (const o of out) if (o.big && Math.hypot(o.x - x, o.z - z) < (o.r + rad) * (opts.minGap ?? 0.62)) return false;
@@ -63,7 +63,7 @@ export function planPoolRocks(hf: Heightfield): Rock[] {
       hMin = Math.min(hMin, hf.height(x + lx * c + lz * sn, z - lx * sn + lz * c));
     }
     const hC = hf.height(x, z);
-    const y = Math.min(hC, hMin + 0.7 * buried * s) - (opts.sink ?? 0.06) * above * s;
+    const y = opts.y ?? Math.min(hC, hMin + 0.7 * buried * s) - (opts.sink ?? 0.06) * above * s;
     // tipped part way to the slope
     hf.normal(x, z, n, Math.max(0.8, rad));
     n.lerp(up, 1 - (opts.lean ?? 0.55)).normalize();
@@ -136,6 +136,15 @@ export function planPoolRocks(hf: Heightfield): Rock[] {
     }
     if (r.next() < 0.3) put(r.pick(['basalt_a', 'basalt_b']), s.x + nx * r.range(-1.5, 1.5), s.z + nz * r.range(-1.5, 1.5), r.range(0.6, 1.0), { lean: 0.5, sink: 0.15 });
     for (let j = 0; j < 2; j++) put('pebbles_a', s.x + nx * r.range(-s.w * 0.5, s.w * 0.5), s.z + nz * r.range(-s.w * 0.5, s.w * 0.5), r.range(1.4, 2.6), { lean: 0.9, sink: 0.25 });
+  }
+  // ---- the lip: blocks standing up out of the crest, at the crest a metre back from the edge, set at the crest's height (their footprints hang over the drop, where
+  // the usual settling would sink them down the face behind the sheet; placed last, so the rocks
+  // before them keep their draws), so the top of the falls is not one
+  // straight line of rock and the water comes over between them in tongues
+  for (const [u, piece, sc] of [[-0.42, 'basalt_c', 0.9], [-0.12, 'basalt_b', 0.85], [0.2, 'basalt_c', 0.75], [0.47, 'basalt_b', 1.0]] as [number, string, number][]) {
+    const back = r.range(0.25, 0.6);
+    const X = path.lx + path.nx * u * path.W - path.fx * back, Z = path.lz + path.nz * u * path.W - path.fz * back;
+    put(piece, X, Z, sc * r.range(1.6, 1.9), { lean: 0, force: true, minGap: 0.3, y: path.top - 0.1 });
   }
   return out;
 }
