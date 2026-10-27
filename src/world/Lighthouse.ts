@@ -243,6 +243,8 @@ export class Lighthouse {
     bm.transparent = true;
     bm.depthWrite = false;
     bm.blending = THREE.AdditiveBlending;
+    // (unfogged: the scene fog on an additive cone adds the haze colour over its whole silhouette, a pale wedge)
+    bm.fog = false;
     bm.side = THREE.DoubleSide;
     // The cone is only a bound: the light is the haze it scatters along the view ray, from the ray's closest approach
     // to the beam's axis (a gaussian a few degrees wide), so the beam is a soft shaft with no edge where the mesh is.
@@ -263,10 +265,10 @@ export class Lighthouse {
     const profile = exp(sep.mul(sep).div(r.mul(r)).mul(-4));
     const sinV = sqrt(den).max(0.2);
     const phase = float(1).add(pow(max(b.negate(), 0), 12).mul(4));
-    const fade = exp(tAx.div(-520)).mul(smoothstep(0, 6, tAx));
+    const fade = exp(tAx.div(-380)).mul(smoothstep(0, 6, tAx));
     const k = profile.div(r.mul(sinV)).mul(phase).mul(fade).mul(side).min(2);
     // (tropical night air is humid: the beams read even on a clear night, more in haze and rain)
-    bm.colorNode = vec4(vec3(1.0, 0.86, 0.62).mul(k).mul(0.9).mul(lighthouseU.on).mul(float(0.9).add(min(atmo.mist.mul(14000), 8))), 1);
+    bm.colorNode = vec4(vec3(1.0, 0.86, 0.62).mul(k).mul(0.55).mul(lighthouseU.on).mul(float(0.9).add(min(atmo.mist.mul(14000), 8))), 1);
     this.beam = new THREE.Mesh(cone, bm);
     const beam2 = new THREE.Mesh(cone, bm);
     beam2.rotation.y = Math.PI;

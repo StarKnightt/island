@@ -91,7 +91,7 @@ export class Spray {
     // so a haze hangs at the foot of the wall between bursts)
     const mist = seed(10.3).lessThan(0.38);
     const tRaw = ph.tau0.sub(seed(1.7).mul(0.7));
-    const life = select(mist, float(5.5).add(seed(2.3).mul(3.5)), float(2.2).add(seed(2.3).mul(1.6)));
+    const life = select(mist, float(5.5).add(seed(2.3).mul(3.5)), float(3.0).add(seed(2.3).mul(2.2)));
     const t = select(mist.and(tRaw.lessThan(0)), tRaw.add(surfU.period), tRaw);
     const u = t.div(life);
     const alive = t.greaterThan(0).and(u.lessThan(1)).and(seed(9.1).lessThan(hit.mul(0.9).add(0.1)));
@@ -100,13 +100,14 @@ export class Spray {
     // (a third of the burst is the sheet thrown straight up the wall, the rest a plume leaning out to sea)
     const sheet = seed(4.9).lessThan(0.35).and(seed(10.3).greaterThanEqual(0.38));
     const v0up = select(mist, float(1).add(seed(3.1).mul(3)), select(sheet, float(10).add(seed(3.1).mul(14)), float(5).add(seed(3.1).mul(11)))).mul(hit.clamp(0.3, 1.4));
-    const v0out = select(sheet, float(0.2).add(seed(4.3).mul(0.8)), float(0.6).add(seed(4.3).mul(2.4)));
+    // (out from the wall as they climb: the drawn faces lean out over the foot, and a sheet hugging the line rose inside the rock)
+    const v0out = select(sheet, float(1.2).add(seed(4.3).mul(1.4)), float(1.6).add(seed(4.3).mul(2.8)));
     const v0al = seed(5.9).sub(0.5).mul(4);
     const tt = max(t, 0);
     const reach = float(1).sub(exp(tt.mul(k).negate())).div(k);
     const wd = wetness.windDir.mul(wetness.wind.mul(3).add(0.8));
     const up = v0up.mul(reach).sub(select(mist, float(0.02), float(9.81 * 0.35)).mul(tt.mul(tt)));
-    const horiz = out.mul(v0out.mul(reach).add(select(sheet, float(0.3), float(0.8)))).add(along.mul(v0al.mul(reach).add(seed(6.6).sub(0.5).mul(5)))).add(wd.mul(tt));
+    const horiz = out.mul(v0out.mul(reach).add(select(sheet, float(1.4), float(1.8)))).add(along.mul(v0al.mul(reach).add(seed(6.6).sub(0.5).mul(5)))).add(wd.mul(tt));
     const p = vec3(exz.x, 0.25, exz.y).add(vec3(horiz.x, max(up, 0.2), horiz.y));
     m.positionNode = p;
     const size = mix(float(1.6), select(mist, float(8.5), select(sheet, float(7.5), float(6.0))), pow(u.clamp(0, 1), 0.5)).mul(seed(7.7).mul(0.6).add(0.7)).mul(hit.clamp(0.4, 1.2));
@@ -119,7 +120,7 @@ export class Spray {
     const sunL = vec3(sprayU.sun).mul(fwd.add(0.32)).mul(cloudShadow(p));
     const col = varying(sunL.mul(0.9).add(particleSky().mul(2.6)).mul(0.85));
     const dist = length(p.sub(cameraPosition));
-    const fade = varying(pow(float(1).sub(u.clamp(0, 1)), 1.4).mul(smoothstep(0.0, 0.08, u)).mul(smoothstep(2, 8, dist)).mul(select(alive, select(mist, float(0.3), float(0.8)), float(0))));
+    const fade = varying(pow(float(1).sub(u.clamp(0, 1)), 1.4).mul(smoothstep(0.0, 0.08, u)).mul(smoothstep(2, 8, dist)).mul(select(alive, select(mist, float(0.3), float(0.95)), float(0))));
     const tex = varying(vec2(seed(8.2), seed(8.9)));
     // per pixel: a soft, lumpy puff, faded where it meets rock or water
     const r = length(uv().sub(0.5)).mul(2);

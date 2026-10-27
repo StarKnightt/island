@@ -261,8 +261,8 @@ export class River {
     // (a Lambert surface under a sky of radiance L gives back albedo x L; the gorge hides about half of the sky)
     // (the grey-white of the sky gap, not the zenith's blue: in the afternoon shade the foam and the body under a blue
     // sky term turned the whole pool navy)
-    const skyE = varying(whiteSky()).mul(mix(float(0.75), float(1.0), foam));
-    const diffuse = mix(jade.mul(float(1).sub(T)).mul(vec3(1.1, 1.35, 1.05)), vec3(0.85, 0.88, 0.86), foam);
+    const skyE = varying(whiteSky()).mul(mix(float(0.85), float(2.2), foam));
+    const diffuse = mix(jade.mul(float(1).sub(T)).mul(vec3(1.2, 1.6, 1.15)), vec3(0.85, 0.88, 0.86), foam);
     m.colorNode = vec4(diffuse, 1);
     m.roughnessNode = mix(float(0.05), float(0.75), foam);
     m.metalnessNode = float(0);

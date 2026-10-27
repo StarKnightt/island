@@ -257,9 +257,9 @@ export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) 
   // trunks in the forest shade are dark, low in contrast and green with damp and algae toward their feet)
   if (src.name === 'canopy_bark') {
     const luma = alb.dot(vec3(0.3, 0.55, 0.15));
-    const flat = mix(vec3(luma.mul(0.55).add(0.05)), alb, 0.55);
+    const flat = mix(vec3(luma.mul(0.5).add(0.04)), alb, 0.4);
     const foot = TSLTyped.smoothstep(5.0, 0.6, positionLocal.y);
-    alb = flat.mul(0.62).mul(mix(vec3(1), vec3(0.72, 0.95, 0.55), foot.mul(0.7)));
+    alb = flat.mul(0.5).mul(mix(vec3(1), vec3(0.72, 0.95, 0.55), foot.mul(0.7)));
   }
   // (stems and stalks in the atlases are a saturated orange that the warm afternoon sun turns into props: anything
   // that orange is pulled to a dull brown-olive; leaves and the litter keep their colours)

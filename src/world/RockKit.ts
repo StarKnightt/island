@@ -514,8 +514,8 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
     });
     return r;
   })();
-  const crack = smoothstep(0.1, 0.0, frac.z).mul(frac.w);
-  alb = alb.mul(mix(float(1), frac.x.mul(0.4).add(0.8), frac.w)).mul(float(1).sub(crack.mul(0.6)));
+  const crack = smoothstep(0.07, 0.0, frac.z).mul(frac.w);
+  alb = alb.mul(mix(float(1), frac.x.mul(0.16).add(0.92), frac.w)).mul(float(1).sub(crack.mul(0.55)));
   const gorge = smoothstep(42, 18, dPool).mul(smoothstep(rockU.pool.y.sub(8), rockU.pool.y.add(2), p.y));
   // (the plunge throws spray over the walls round it, a dozen metres up)
   const plunge = smoothstep(24, 7, length(p.xz.sub(rockU.impact.xz))).mul(smoothstep(rockU.pool.y.add(18), rockU.pool.y.add(4), p.y));
@@ -546,8 +546,8 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
   const nV: N = src.normalMap ? normalMap(texture(src.normalMap, U), vec2(1.7)) : normalWorldGeometry;
   const nW = src.normalMap ? cameraWorldMatrix.mul(vec4(nV, 0)).xyz : nV;
   const tang = select(useX, vec3(0, 0, 1), vec3(1, 0, 0));
-  const facet = tang.mul(frac.x.sub(0.5).mul(1.2)).add(vec3(0, 1, 0).mul(frac.y.sub(0.42).mul(1.1)));
-  const nF = normalize(mix(nW, nG, frac.w.mul(0.45)).add(facet.mul(frac.w)));
+  const facet = tang.mul(frac.x.sub(0.5).mul(0.6)).add(vec3(0, 1, 0).mul(frac.y.sub(0.42).mul(0.55)));
+  const nF = normalize(mix(nW, nG, frac.w.mul(0.2)).add(facet.mul(frac.w)));
   const nW2 = normalize(nF.add(vec3(0, 1, 0).mul(lip.mul(1.5).sub(under.mul(1.0)))));
   m.normalNode = normalize(cameraViewMatrix.mul(vec4(nW2, 0)).xyz);
   return m;

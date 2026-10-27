@@ -372,7 +372,7 @@ export const DAWN_H = 40;
  * line of sight meets leaves, and the damp air between them is lit green by the light through the crowns. The haze
  * stands in for the layers of foliage too far to draw (Vegetation shortens its reach under the canopy).
  */
-const jungleTau = (d: N) => atmo.underCanopy.mul(max(d.sub(7), 0).mul(0.024)).min(1.5);
+const jungleTau = (d: N) => atmo.underCanopy.mul(max(d.sub(7), 0).mul(0.019)).min(1.4);
 
 export function aerialFogNode() {
   const factor = Fn(() => {
@@ -411,7 +411,7 @@ export function aerialFogNode() {
     const d = length(positionView);
     const tJ = jungleTau(d);
     const tA = atmo.mieScatter.mul(1.11).add(1.1e-5).add(atmo.haze).mul(d).add(atmo.night.mul(1.1e-3).mul(d).min(0.45));
-    const green = vec3(0.03, 0.05, 0.026).mul(atmo.lightE.mul(1 / Math.PI));
+    const green = vec3(0.016, 0.03, 0.014).mul(atmo.lightE.mul(1 / Math.PI));
     return mix(air, green, tJ.div(tJ.add(tA).add(1e-4)));
   })();
   return fog(colorN, factor);
