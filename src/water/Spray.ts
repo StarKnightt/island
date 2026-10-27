@@ -119,12 +119,15 @@ export class Spray {
     const sunL = vec3(sprayU.sun).mul(fwd.add(0.32)).mul(cloudShadow(p));
     const col = varying(sunL.mul(0.9).add(particleSky().mul(2.6)).mul(0.85));
     const dist = length(p.sub(cameraPosition));
-    const fade = varying(pow(float(1).sub(u.clamp(0, 1)), 1.4).mul(smoothstep(0.0, 0.08, u)).mul(smoothstep(2, 8, dist)).mul(select(alive, select(mist, float(0.32), float(0.85)), float(0))));
+    const fade = varying(pow(float(1).sub(u.clamp(0, 1)), 1.4).mul(smoothstep(0.0, 0.08, u)).mul(smoothstep(2, 8, dist)).mul(select(alive, select(mist, float(0.32), float(1.0)), float(0))));
     const tex = varying(vec2(seed(8.2), seed(8.9)));
     // per pixel: a soft, lumpy puff, faded where it meets rock or water
     const r = length(uv().sub(0.5)).mul(2);
     const lump = texture(laceTex, uv().mul(0.22).add(tex)).b;
-    const puff = smoothstep(1.0, 0.0, r).pow(1.6).mul(lump.mul(1.4).sub(0.1).clamp(0.2, 1.2));
+    // (chunky: the lumps cut deep into each puff, so a burst reads as torn white water, not soft round discs)
+    // (the mist it leaves stays soft: hard-edged, its big puffs read as discs)
+    const puff = select(mist, smoothstep(1.0, 0.0, r).pow(2.2).mul(lump.mul(1.4).sub(0.1).clamp(0.2, 1.2)),
+      smoothstep(1.0, 0.15, r).pow(1.3).mul(lump.mul(2.2).sub(0.55).clamp(0.0, 1.3)));
     const soft = smoothstep(0.0, 1.6, sceneViewDepth(screenUV).sub(positionView.z.negate()));
     const a = select(sprayU.debug.greaterThan(1.5), puff.mul(fade), select(sprayU.debug.greaterThan(0.5), puff, puff.mul(fade).mul(soft)));
     m.colorNode = vec4(col, a);

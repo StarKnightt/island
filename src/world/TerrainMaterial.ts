@@ -6,6 +6,7 @@
  * until they stream in, swapped without recompiling the shader.
  */
 import * as THREE from 'three/webgpu';
+import * as TSL from 'three/tsl';
 import {
   abs, float, max, mix, mx_noise_float, mx_fractal_noise_float, normalize, positionWorld, pow, smoothstep, texture,
   transformNormalToView, uniform, vec2, vec3, vec4, exp, int, Fn, fract, floor, hash, dFdx, dFdy, cross, dot, sign,
@@ -173,10 +174,12 @@ export function createTerrainMaterial(hf: Heightfield) {
       // across the ground, over damp dark soil, greenish algae and paler dry-leaf patches a few metres across
       const cr = Math.cos(1.1), sr = Math.sin(1.1);
       const uvB = vec2(xz.x.mul(cr).sub(xz.y.mul(sr)), xz.x.mul(sr).add(xz.y.mul(cr))).div(SCALE[i] * 1.43).add(0.53);
-      const drift = smoothstep(-0.22, 0.22, mx_noise_float(vec3(xz.mul(1 / 7.5), 7.7)));
+      // (patterns metres across: worked out per vertex, the terrain's are a metre or less apart near the camera)
+      const fl: N = TSL.varying(vec3(mx_noise_float(vec3(xz.mul(1 / 7.5), 7.7)), mx_noise_float(vec3(xz.mul(1 / 4.2), 11.3)), mx_noise_float(vec3(xz.mul(1 / 12), 3.9))));
+      const drift = smoothstep(-0.22, 0.22, fl.x);
       tA = mix(tA, sampleA(i, uvB), drift);
       tN = mix(tN, sampleN(i, uvB), drift);
-      const pn = mx_noise_float(vec3(xz.mul(1 / 4.2), 11.3)), pm = mx_noise_float(vec3(xz.mul(1 / 12), 3.9));
+      const pn = fl.y, pm = fl.z;
       const tint = mix(vec3(1), vec3(0.55, 0.52, 0.48), smoothstep(0.15, 0.55, pn))
         .mul(mix(vec3(1), vec3(0.78, 0.95, 0.62), smoothstep(0.25, 0.7, pm)))
         .mul(mix(vec3(1), vec3(1.2, 1.1, 0.95), smoothstep(-0.3, -0.7, pn)));
@@ -267,7 +270,7 @@ export function createTerrainMaterial(hf: Heightfield) {
   m.normalNode = transformNormalToView(finalN);
   // the forest floor sees a little of the sky through the crowns (plus the green light through the leaves), not all
   // of it: lit like open ground, it is paler than the crowns above it and under an overcast reads as snow
-  m.aoNode = mix(float(1), ao, 0.7).mul(float(1).sub(forest.mul(0.52)));
+  m.aoNode = mix(float(1), ao, 0.7).mul(float(1).sub(forest.mul(0.42)));
 
   /** stream the real layers in and swap them under the compiled shader */
   const loadLayers = async () => {

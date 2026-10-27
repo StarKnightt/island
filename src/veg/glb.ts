@@ -20,6 +20,7 @@ import { wetness } from '../world/weatherUniforms';
 import { atmo } from '../sky/Atmosphere';
 import { cloudShadow } from '../sky/Sky';
 import { sunLit } from '../core/lighting';
+import { laceTex } from '../water/surf';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const { normalViewGeometry } = TSLTyped as any;
@@ -219,7 +220,7 @@ function nearFade(): N {
  */
 export function nightFill(alb: N): N {
   const up = normalWorld.y.mul(0.4).add(0.6).clamp(0.2, 1);
-  return alb.mul(vec3(0.0013, 0.0024, 0.0058).mul(atmo.night.mul(float(1).sub(atmo.overcast)).mul(5))).mul(up);
+  return alb.mul(vec3(0.0013, 0.0024, 0.0058).mul(atmo.night.mul(float(1).sub(atmo.overcast)).mul(8))).mul(up);
 }
 
 /** a node material for a helper plant part: its textures, AO from COLOR_0, wind, wet darkening, backlit leaves, and
@@ -250,10 +251,17 @@ export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) 
     const luma = alb.dot(vec3(0.3, 0.55, 0.15));
     alb = mix(vec3(luma).mul(vec3(0.92, 1.0, 0.84)), alb, 0.18).mul(src.name === 'understory_stem' ? 0.75 : 0.62);
   }
+  // (stems and stalks in the atlases are a saturated orange that the warm afternoon sun turns into props: anything
+  // that orange is pulled to a dull brown-olive; leaves and the litter keep their colours)
+  if (src.name !== 'floor_litter') {
+    const orange = TSLTyped.smoothstep(1.3, 1.9, alb.x.div(alb.y.max(0.005))).mul(TSLTyped.smoothstep(0.9, 1.4, alb.y.div(alb.z.max(0.005))));
+    const lumO = alb.dot(vec3(0.3, 0.55, 0.15));
+    alb = mix(alb, vec3(lumO).mul(vec3(1.0, 0.98, 0.82)).mul(0.85), orange.mul(0.75));
+  }
   // the leaf litter: one atlas for the whole forest floor, so each patch gets its own fall of leaves (fresher and
   // browner, greyer and older, darker where it lies damp) and drifts a few metres across shift the whole floor's hue
   if (src.name === 'floor_litter') {
-    const drift = TSLTyped.mx_noise_float(vec3(positionWorld.xz.mul(1 / 6.5), 4.4));
+    const drift = TSLTyped.varying(TSLTyped.mx_noise_float(vec3(positionWorld.xz.mul(1 / 6.5), 4.4)));
     const luma = alb.dot(vec3(0.3, 0.55, 0.15));
     const old = mix(alb, vec3(luma).mul(vec3(1.0, 0.97, 0.88)), TSLTyped.smoothstep(-0.4, 0.4, vary2.add(drift.mul(0.6))).mul(0.7));
     const tone = mix(vec3(0.62, 0.6, 0.56), vec3(1.12, 1.05, 0.9), TSLTyped.smoothstep(-0.5, 0.5, vary.add(drift.mul(0.5))));
@@ -266,8 +274,9 @@ export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) 
     // seen from the gallery the simplified crowns' cards (a few big ones standing in for many) read as single leaves
     // two metres across: past ~50 m every card is broken into leaf-sized lumps, gaps and shade
     const farW = TSLTyped.smoothstep(40, 85, TSLTyped.length(positionWorld.sub(TSLTyped.cameraPosition)));
-    const n1 = TSLTyped.mx_noise_float(positionWorld.mul(2.3));
-    const n2 = TSLTyped.mx_noise_float(positionWorld.mul(5.3).add(3.1));
+    // (a texture, not procedural noise: this runs on every leaf of the forest, in the shadow passes too)
+    const q = positionWorld.xz.add(positionWorld.y.mul(0.37));
+    const n1 = texture(laceTex, q.mul(0.12)).b.sub(0.5).mul(2), n2 = texture(laceTex, q.mul(0.37).add(0.43)).b.sub(0.5).mul(2);
     alb = alb.mul(mix(float(1), TSLTyped.smoothstep(-0.6, 0.5, n1.add(n2.mul(0.6))).mul(0.6).add(0.4), farW));
     alpha = alpha.mul(float(1).sub(TSLTyped.step(n2.add(n1.mul(0.4)), -0.42).mul(farW)));
   }

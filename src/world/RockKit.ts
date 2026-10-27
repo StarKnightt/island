@@ -447,14 +447,25 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
   const up = normalWorldGeometry.y;
   // (every pattern a few metres or more across is worked out per vertex: the meshes have vertices every 0.3-1.5 m)
   // broad lighter and darker reaches over a face, rust-brown and greenish bands across it
-  const big = varying(mx_noise_float(vec3(p.x.add(p.z).mul(1 / 46), p.y.mul(1 / 31), 1.7)));
-  const band = varying(mx_noise_float(vec3(p.y.mul(1 / 7.5), p.x.sub(p.z).mul(1 / 70), 4.3)));
+  // (packed four to a varying: the vertex stage has sixteen slots and the lighting takes most of them)
+  const along = p.x.mul(0.62).add(p.z.mul(0.78));
+  const ybN = mx_noise_float(vec3(p.xz.mul(1 / 17), 5.2));
+  const vA: N = varying(vec4(
+    mx_noise_float(vec3(p.x.add(p.z).mul(1 / 46), p.y.mul(1 / 31), 1.7)),
+    mx_noise_float(vec3(p.y.mul(1 / 7.5), p.x.sub(p.z).mul(1 / 70), 4.3)),
+    mx_noise_float(vec3(along.mul(0.21), p.y.mul(0.012), 7.7)),
+    mx_noise_float(vec3(p.xz.mul(0.045), 2.1))));
+  const vB: N = varying(vec4(
+    mx_noise_float(p.mul(0.16)),
+    ybN,
+    mx_noise_float(vec3(along.mul(0.09), p.y.add(ybN.mul(2.6)).mul(0.21), 9.4)),
+    mx_noise_float(vec3(along.mul(0.05), p.y.mul(0.11), 2.6))));
+  const big = vA.x, band = vA.y;
   let alb: N = base.mul(float(1).add(big.mul(0.26)));
   alb = mix(alb, alb.mul(vec3(1.32, 0.98, 0.72)), smoothstep(0.25, 0.7, band).mul(0.55));
   alb = mix(alb, alb.mul(vec3(0.92, 1.08, 0.95)), smoothstep(-0.3, -0.7, band).mul(0.5));
   // runoff stains: narrow across, long down the face
-  const along = p.x.mul(0.62).add(p.z.mul(0.78));
-  const stain = smoothstep(0.35, 0.8, varying(mx_noise_float(vec3(along.mul(0.21), p.y.mul(0.012), 7.7))).mul(0.5).add(0.5));
+  const stain = smoothstep(0.35, 0.8, vA.z.mul(0.5).add(0.5));
   alb = alb.mul(float(1).sub(stain.mul(0.5)));
   // crisp detail finer than the stretched scan: narrow runnels down the face, thin bedding lines across it, grit in
   // between, so the broad scan lumps read as fractured, weathered rock and not as smooth wax
@@ -467,14 +478,14 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
   // along the face and wandering in height, and vertical cooling joints between them, so the scan's broad lumps read
   // as fractured basalt and not as melted wax
   const sheer = smoothstep(0.8, 0.35, up.abs());
-  const yb = p.y.add(varying(mx_noise_float(vec3(p.xz.mul(1 / 17), 5.2))).mul(2.6));
-  const sf = fract(yb.div(1.55));
-  const ledgeOn = smoothstep(-0.15, 0.3, mx_noise_float(vec3(along.mul(0.09), yb.mul(0.21), 9.4))).mul(sheer);
+  const yb = p.y.add(vB.y.mul(2.6));
+  const sf = fract(yb.div(2.3));
+  const ledgeOn = smoothstep(-0.3, 0.2, vB.z).mul(sheer);
   const lip = smoothstep(0.8, 0.9, sf).mul(smoothstep(1.0, 0.93, sf)).mul(ledgeOn);
-  const under = smoothstep(0.0, 0.03, sf).mul(smoothstep(0.2, 0.05, sf)).mul(ledgeOn);
-  const jx = fract(along.div(2.7).add(mx_noise_float(vec3(along.mul(0.05), p.y.mul(0.11), 2.6)).mul(0.6)));
-  const joint = smoothstep(0.07, 0.0, jx.sub(0.5).abs()).mul(sheer).mul(smoothstep(-0.2, 0.4, mx_noise_float(vec3(along.mul(0.2), p.y.mul(0.3), 6.6))));
-  alb = alb.mul(float(1).sub(under.mul(0.6))).mul(float(1).add(lip.mul(0.25))).mul(float(1).sub(joint.mul(0.5)));
+  const under = smoothstep(0.0, 0.03, sf).mul(smoothstep(0.26, 0.06, sf)).mul(ledgeOn);
+  const jx = fract(along.div(2.7).add(vB.w.mul(0.6)));
+  const joint = smoothstep(0.07, 0.0, jx.sub(0.5).abs()).mul(sheer).mul(smoothstep(-0.2, 0.4, vB.w.mul(1.7).sub(vA.z.mul(0.8))));
+  alb = alb.mul(float(1).sub(under.mul(0.72))).mul(float(1).add(lip.mul(0.3))).mul(float(1).sub(joint.mul(0.5)));
   // the waterfall: everything within reach of its spray is wet; the gorge is mossy
   const dFalls = length(p.xz.sub(rockU.falls.xz));
   const dPool = length(p.xz.sub(rockU.pool.xz));
@@ -483,10 +494,10 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
   const plunge = smoothstep(24, 7, length(p.xz.sub(rockU.impact.xz))).mul(smoothstep(rockU.pool.y.add(18), rockU.pool.y.add(4), p.y));
   const fallsWet = max(max(smoothstep(13, 4, dFalls), plunge), smoothstep(24, 10, dPool).mul(smoothstep(rockU.pool.y.add(9), rockU.pool.y, p.y)).mul(0.8));
   // the spray zone at the foot of the sea cliffs (higher where they are exposed), dark and glistening
-  const sprayTop = float(4.5).add(varying(mx_noise_float(vec3(p.xz.mul(0.045), 2.1))).mul(2.2));
+  const sprayTop = float(4.5).add(vA.w.mul(2.2));
   const spray = smoothstep(sprayTop, sprayTop.mul(0.25), p.y);
   // moss and turf on ledges and the cliff cap; in the gorge on everything but the sheer faces
-  const patch = smoothstep(-0.25, 0.35, varying(mx_noise_float(p.mul(0.16))));
+  const patch = smoothstep(-0.25, 0.35, vB.x);
   const fine = mx_noise_float(p.mul(0.9)).mul(0.5).add(0.5);
   const ledge = smoothstep(0.42, 0.8, up).mul(patch).mul(float(1).sub(spray));
   const gorgeMoss = gorge.mul(smoothstep(-0.25, 0.35, up)).mul(smoothstep(0.1, 0.7, patch.add(fine.mul(0.4))));
@@ -507,7 +518,7 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
   // (the scan's normals pushed harder, then the ledges' lips tilted up and their undercuts down, in world space)
   const nV: N = src.normalMap ? normalMap(texture(src.normalMap, U), vec2(1.7)) : normalWorldGeometry;
   const nW = src.normalMap ? cameraWorldMatrix.mul(vec4(nV, 0)).xyz : nV;
-  const nW2 = normalize(nW.add(vec3(0, 1, 0).mul(lip.mul(0.9).sub(under.mul(0.7)))));
+  const nW2 = normalize(nW.add(vec3(0, 1, 0).mul(lip.mul(1.5).sub(under.mul(1.0)))));
   m.normalNode = normalize(cameraViewMatrix.mul(vec4(nW2, 0)).xyz);
   return m;
 }

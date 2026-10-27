@@ -412,6 +412,9 @@ export class River {
     const clumps = mx_noise_float(vec3(across.mul(2.6), tau.mul(5.2), 2.2)).mul(aer);
     // fine strands: narrow across, long along the flow
     const fine = mx_noise_float(vec3(across.mul(13), tau.mul(1.6), 5.9));
+    const fine2 = mx_noise_float(vec3(across.mul(29), tau.mul(3.4), 8.3));
+    // (thin bright ridges where the noise crosses zero: the white threads of aerated water)
+    const ridges = clamp(float(1).sub(fine.abs().mul(2.2)), 0, 1).mul(0.6).add(clamp(float(1).sub(fine2.abs().mul(2.5)), 0, 1).mul(0.4));
     const dens = float(0.5).add(fine.mul(0.14)).add(s1.mul(0.3)).add(s2.mul(0.16)).add(lumps.mul(aer).mul(0.32)).add(surge.mul(0.16)).add(clumps.mul(0.22));
     if (veil) {
       // the veil: separate clumps and strands in front of the body, more of them lower down
@@ -423,7 +426,7 @@ export class River {
     }
     // colour: the glassy tongue is green-dark water; the body's thick strands white with a bright core, the thin water
     // between them and at the sides grey (the wet rock shows through), the clumps in front whitest
-    const strands = clamp(smoothstep(0.15, 0.7, dens).add(core.mul(0.6)).add(clumps.mul(0.3)).sub(fine.abs().mul(0.25).mul(aer)), 0, 1);
+    const strands = clamp(smoothstep(0.15, 0.7, dens).add(core.mul(0.6)).add(clumps.mul(0.3)).add(ridges.sub(0.45).mul(0.7).mul(aer)), 0, 1);
     const white = mix(vec3(0.42, 0.46, 0.45), vec3(0.93, 0.95, 0.95), veil ? float(0.95) : strands);
     const glassy = vec3(0.07, 0.11, 0.09);
     // (a low sun reaches the falls only through the gaps in the jungle and over the gorge's rim)
@@ -445,7 +448,7 @@ export class River {
     // relief: the streaks and lumps as bumps across the sheet, on the side facing the eye (the custom normal skips
     // the built-in back-face flip: the sheet's geometric normal faces the cliff, and the sunset behind it would light
     // the face the camera sees)
-    const bump = s1.mul(0.5).add(lumps.mul(0.4)).add(s2.mul(0.2)).add(clumps.mul(0.6));
+    const bump = s1.mul(0.5).add(lumps.mul(0.4)).add(s2.mul(0.2)).add(clumps.mul(0.6)).add(ridges.mul(0.35));
     const nG = normalWorldGeometry.mul(faceDirection);
     m.normalNode = transformNormalToView(normalize(vec3(nG.x.add(bump.mul(this.fallDir.y)), nG.y, nG.z.sub(bump.mul(this.fallDir.x)))));
     return m;
@@ -554,6 +557,67 @@ export class River {
     };
     make(preset === 'low' ? 80 : 210, false);
     make(preset === 'low' ? 48 : 110, true);
+    this.buildBoil(W, heightAt);
+  }
+
+  /**
+   * The churn where the falls land: a low open drum of white water round the plunge, flaring as it rises, cut by
+   * noise into clumps that boil up and outward and fall apart a few metres up. It hides the line where the sheet meets
+   * the pool and gives the foot of the falls the solid white mass the sprites alone could not.
+   */
+  private buildBoil(W: number, heightAt: (xz: N) => N) {
+    const c = this.impact, fd = this.fallDir;
+    const H = 3.6, segs = 40, rows = 8;
+    const pos: number[] = [], uvs: number[] = [], idx: number[] = [];
+    const ax = -fd.y, az = fd.x;
+    for (let j = 0; j <= rows; j++) {
+      const v = j / rows;
+      for (let i = 0; i <= segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        // (an ellipse as wide as the falling water, shallower front to back, flaring as it rises)
+        const ra = W * 0.62 * (1 + v * 0.35), rf = W * 0.32 * (1 + v * 0.5);
+        const ca = Math.cos(a) * ra, cf = Math.sin(a) * rf;
+        pos.push(c.x + ax * ca + fd.x * (cf + 0.6), c.y - 0.3 + v * H, c.z + az * ca + fd.y * (cf + 0.6));
+        uvs.push(i / segs, v);
+      }
+    }
+    for (let j = 0; j < rows; j++) for (let i = 0; i < segs; i++) {
+      const a = j * (segs + 1) + i, b = a + 1, d = a + segs + 1, e = d + 1;
+      idx.push(a, d, b, b, d, e);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    g.setIndex(idx);
+    const m = new THREE.MeshBasicNodeMaterial();
+    m.transparent = true;
+    m.depthWrite = false;
+    m.side = THREE.DoubleSide;
+    m.forceSinglePass = true;
+    m.mrtNode = effectMRT();
+    m.fog = false;
+    const t = riverU.time, U = uv(), p = positionWorld;
+    const around = U.x.mul(W * 4.2);
+    // clumps rising and spreading out of the boil, two scales, the surges of the plunge in their strength
+    const n1 = mx_noise_float(vec3(around.mul(0.75), U.y.mul(H * 0.75).sub(t.mul(1.5)), t.mul(0.45)));
+    const n2 = mx_noise_float(vec3(around.mul(2.2), U.y.mul(H * 2.2).sub(t.mul(2.9)), t.mul(0.9).add(4.2)));
+    const surge = sin(t.mul(1.37)).mul(sin(t.mul(0.53).add(1.1))).mul(0.12).add(0.08);
+    const body = n1.mul(0.6).add(n2.mul(0.3)).add(surge).add(float(0.5).sub(U.y.mul(1.05)));
+    const V = normalize(cameraPosition.sub(p));
+    const L = atmo.sunDir.normalize();
+    const fwdS = pow(max(L.negate().dot(V), 0), 5).mul(1.8);
+    const lit = varying(vec3(sprayU.sun).mul(fwdS.add(0.35)).mul(cloudShadow(p)).mul(this.gorgeSun(p, heightAt)).mul(0.9).add(particleSky().mul(2.8)).mul(0.85));
+    // (the clumps' undersides and the gaps between them in their own shade)
+    const shade = smoothstep(-0.1, 0.5, body).mul(0.4).add(0.6);
+    const soft = smoothstep(0.0, 0.8, sceneViewDepth(screenUV).sub(positionView.z.negate())).mul(smoothstep(c.y - 0.35, c.y + 0.25, p.y));
+    const a = smoothstep(-0.12, 0.4, body).mul(smoothstep(1.0, 0.55, U.y)).mul(soft).mul(0.9);
+    m.colorNode = vec4(lit.mul(shade), a);
+    m.opacityNode = a;
+    const mesh = new THREE.Mesh(g, m);
+    mesh.renderOrder = 12.8;
+    mesh.frustumCulled = false;
+    mesh.name = 'falls_boil';
+    this.group.add(mesh);
   }
 
   update(t: number) {
