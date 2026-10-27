@@ -390,8 +390,10 @@ export function aerialFogNode() {
   const colorN = Fn(() => {
     const v = normalize(positionWorld.sub(cameraPosition));
     const dir = vec3(v.x, max(v.y, 0.02), v.z).normalize();
-    // (with the night sky's own glow: Sky.ts)
-    const sky = skyRadiance(dir).add(vec3(0.0013, 0.0024, 0.0058).mul(atmo.night));
+    // (the moonlit night haze over the land glows with the night sky's own light, Sky.ts; the far sea keeps the dark
+    // of the clear air out there, or the night sea turned the sky's colour)
+    const nearLand = smoothstep(2500, 700, length(positionView));
+    const sky = skyRadiance(dir).add(vec3(0.0013, 0.0024, 0.0058).mul(atmo.night).mul(nearLand));
     // under an overcast the haze is the grey of the overcast sky's horizon (Sky.ts: about a fifth of the dome
     // overhead, scaled from the clear sky 15 degrees up in this direction)
     const lumRef = skyRadiance(normalize(vec3(v.x, 0.27, v.z))).dot(vec3(0.2126, 0.7152, 0.0722));
