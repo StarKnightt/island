@@ -413,7 +413,9 @@ export class River {
     // the lip is not a weir: the water comes over it in lobes, thick where the rock is low and parted where a ledge
     // stands up, so the top of the falls is a ragged line of tongues with dark rock between them that closes a few
     // metres down as the lobes spread
-    const lobe = mx_noise_float(vec3(across.mul(0.62), riverU.time.mul(0.05), 6.6)).add(mx_noise_float(vec3(across.mul(1.7), 2.1, 3.3)).mul(0.35));
+    // (per vertex: it only varies across the sheet, whose 26 columns resolve it; two noises per pixel over the whole
+    // falls cost the waterfall view a frame or so a second)
+    const lobe = varying(mx_noise_float(vec3(across.mul(0.62), riverU.time.mul(0.05), 6.6)).add(mx_noise_float(vec3(across.mul(1.7), 2.1, 3.3)).mul(0.35)));
     const start = float(0.012).add(max(lobe.negate().add(0.15), 0).mul(0.16));
     const lipCut = smoothstep(start, start.add(0.03), U.y).mul(mix(smoothstep(-0.5, -0.1, lobe), float(1), smoothstep(0.06, 0.32, U.y)));
     // aeration: glassy over the lip, white within a few metres (sooner in the thick lobes), breaking up toward the plunge

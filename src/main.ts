@@ -453,7 +453,7 @@ async function boot() {
   ctx.timeline = timeline;
   // the island so far compiles while the plants and the rock kit are still streaming in
   // (the bar keeps following the downloads meanwhile)
-  await prime('Catching the light');
+  await prime('Catching the light', undefined, undefined, Number(new URLSearchParams(location.search).get('primeb')) || 14);
   mark('island primed');
   loading.status('Growing the jungle');
   await Promise.all([plantsReady, kitReady]);

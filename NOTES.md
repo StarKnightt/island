@@ -494,3 +494,31 @@ jungle/waterfall runs `perf-ab-*`.
 * `look.ts --eval` runs a plain expression: no top-level `await` (return the promise; Playwright waits for it).
 * Several source files are CRLF: scripted string replacements must match `\r\n` or edit line by line.
 * Reading a full 1920x1080 PNG into the agent can hang; compare downscaled JPEGs (ffmpeg hstack) instead.
+
+## Round 7 (small releases against round 6's open gaps)
+
+Captures in `E:\shots\island\round-07\` (`before\` = round-06 master, `after\`, `compare\`); interleaved perf in
+`round-07\perf-ab-*`.
+
+* **Night village.** The moonlit night haze over the land glows ~2.6x brighter (only with the moon up and a clear
+  sky, and only within ~2.5 km: `nearLand`), so each ridge of the backdrop steps back a paler blue-grey and the palms
+  stand out against it; the far sea keeps its dark.
+* **Cliff spray.** Part of the burst particles (40 % of the non-mist ones, on waves with `hit` > 0.35) are a tall
+  column: 22-34 m/s up with light drag, 1.7-2.5 s, 10 m puffs with the soft mist profile so they merge into one
+  plume. Same particle count. They reach about a third of the way up the 50-80 m walls on the strong hits.
+* **Waterfall.** Four basalt blocks stand on the crest (poolRocks, placed last so the rim's other rocks keep their
+  random draws; given the crest's height explicitly: the usual settling on the lowest footprint corner sank them
+  20 m down the face behind the sheet), breaking the straight lip. The sheet itself starts in lobes (`lipCut`),
+  and the pool's foam covers more round the plunge.
+* **Jungle.** The trail (`dirt`, the laterite scan) is pressed toward its mean colour, its normals halved, the tile
+  3.8 m (was 2.8), darker under the forest: packed earth, not gravel. The rainforest bark's white lichen blotches
+  are pulled down to the bark tone.
+* **Rock fracture cells** are a 2x2 branch-free search with jitter 0.5 (was 3x3 with branches): the same look, a
+  smaller node graph to build at load and less per-pixel work.
+* **Loading.** `?primeb=n` sets the number of shader-priming batches for A/B load measurements.
+
+### Gotchas from round 7
+
+* From below (the waterfall shot), anything set back from a crest hides behind its edge: lip props stand on it.
+* Don't `pnpm build` while a harness job runs from the same folder: the preview serves `dist\` and the next page load
+  picks up the new build mid-run.
