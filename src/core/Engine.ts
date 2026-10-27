@@ -56,7 +56,8 @@ export class Engine {
   private wall: number[] = [];
   private cpu: number[] = [];
   private gpu: number[] = [];
-  private gpuFrames = new Map<number, number>();
+  private gpuPasses = new Map<string, [number, number]>();
+  private gpuDone = -1;
   private resolving = false;
   adapterInfo: { vendor?: string; architecture?: string; device?: string; description?: string } = {};
   /** integer number of display refreshes per rendered frame (frame cap), 0 = uncapped */
@@ -493,24 +494,46 @@ export class Engine {
     if (this.resolving) return;
     const backend = this.renderer.backend as unknown as { trackTimestamp?: boolean; timestampQueryPool?: Record<string, GpuPool | null> };
     if (!backend.trackTimestamp) return;
+    // three's pools hold 2048 queries (~50 frames here; WebGPU allows 4096): with the GPU busy a resolve comes back
+    // over 100 frames later, the pool fills and the passes late in a frame (the scene) went untimed
+    const pools = backend.timestampQueryPool;
+    for (const key of ['render', 'compute']) {
+      const pool = pools?.[key] as unknown as { maxQueries: number; device: GPUDevice; dispose(): void; constructor: new (d: GPUDevice, t: string, n: number) => GpuPool } | null;
+      if (pool && pool.maxQueries < 4096) {
+        pools![key] = new pool.constructor(pool.device, key, 4096);
+        pool.dispose();
+      }
+    }
     this.resolving = true;
     Promise.all([this.renderer.resolveTimestampsAsync('render'), this.renderer.resolveTimestampsAsync('compute')]).then(() => {
-      const totals = new Map<number, number>();
+      // a frame's passes can arrive over two resolves (the scene pass after the shadow passes): collect them per
+      // pass and count a frame only once later frames have arrived
+      let newest = 0;
       for (const key of ['render', 'compute']) {
         const pool = backend.timestampQueryPool?.[key];
         if (!pool) continue;
         for (const [uid, ms] of pool.timestamps) {
-          const cut = uid.lastIndexOf(':f');
-          const f = Number(uid.slice(cut + 2));
-          totals.set(f, (totals.get(f) ?? 0) + ms);
+          const f = Number(uid.slice(uid.lastIndexOf(':f') + 2));
+          if (f <= this.gpuDone) continue;
+          this.gpuPasses.set(key + uid, [f, ms]);
+          newest = Math.max(newest, f);
         }
       }
-      for (const [f, ms] of totals) {
-        if (this.gpuFrames.has(f)) continue;
-        this.gpuFrames.set(f, ms);
-        this.push(this.gpu, ms);
+      const totals = new Map<number, [number, number]>();
+      for (const [k, [f, ms]] of this.gpuPasses) {
+        if (f > newest - 8) continue;
+        const t = totals.get(f) ?? [0, 0];
+        totals.set(f, [t[0] + ms, t[1] + 1]);
+        this.gpuPasses.delete(k);
       }
-      if (this.gpuFrames.size > 2000) this.gpuFrames.clear();
+      // (a frame with only a few passes back is a fragment, not a frame: not counted)
+      let most = 0;
+      for (const [, n] of totals.values()) most = Math.max(most, n);
+      for (const f of [...totals.keys()].sort((x, y) => x - y)) {
+        const [ms, n] = totals.get(f)!;
+        if (n >= most / 2) this.push(this.gpu, ms);
+        this.gpuDone = Math.max(this.gpuDone, f);
+      }
       this.resolving = false;
     }, () => (this.resolving = false));
   }
