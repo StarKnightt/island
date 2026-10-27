@@ -128,7 +128,8 @@ export async function loadVariants(url: string, merge: Record<string, string> = 
   return out;
 }
 
-export const glbU = { time: TSLTyped.uniform(0), sunColor: TSLTyped.uniform(new THREE.Color(1, 1, 1)) };
+/** viewPos: the player's camera (the shadow passes' cameraPosition is the light's) */
+export const glbU = { time: TSLTyped.uniform(0), sunColor: TSLTyped.uniform(new THREE.Color(1, 1, 1)), viewPos: TSLTyped.uniform(new THREE.Vector3()) };
 
 /** the island's forest density (mask0 alpha) and heights, for how much open sky a leaf sees (set before plants load) */
 let skyMaps: { mask0: THREE.Texture; height: THREE.Texture; half: number; size: number } | null = null;
@@ -273,10 +274,24 @@ export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) 
   if (leaf && src.name === 'canopy_leaf') {
     // seen from the gallery the simplified crowns' cards (a few big ones standing in for many) read as single leaves
     // two metres across: past ~50 m every card is broken into leaf-sized lumps, gaps and shade
-    const farW = TSLTyped.smoothstep(40, 85, TSLTyped.length(positionWorld.sub(TSLTyped.cameraPosition)));
+    const farW = TSLTyped.smoothstep(40, 85, TSLTyped.length(positionWorld.sub(glbU.viewPos)));
     // (a texture, not procedural noise: this runs on every leaf of the forest, in the shadow passes too)
+    // (and only where it shows: the near leaves of the jungle skip both taps; explicit gradients, as a texture
+    // sample inside a branch needs them)
     const q = positionWorld.xz.add(positionWorld.y.mul(0.37));
-    const n1 = texture(laceTex, q.mul(0.12)).b.sub(0.5).mul(2), n2 = texture(laceTex, q.mul(0.37).add(0.43)).b.sub(0.5).mul(2);
+    const qa = q.mul(0.12), qb = q.mul(0.37).add(0.43);
+    const qdx = TSLTyped.dFdx(q), qdy = TSLTyped.dFdy(q);
+    const taps = TSLTyped.Fn(() => {
+      const r = TSLTyped.vec2(0.5, 0.5).toVar();
+      TSLTyped.If(farW.greaterThan(0), () => {
+        r.assign(TSLTyped.vec2(
+          texture(laceTex, qa).grad(qdx.mul(0.12), qdy.mul(0.12)).b,
+          texture(laceTex, qb).grad(qdx.mul(0.37), qdy.mul(0.37)).b,
+        ));
+      });
+      return r;
+    })();
+    const n1 = taps.x.sub(0.5).mul(2), n2 = taps.y.sub(0.5).mul(2);
     alb = alb.mul(mix(float(1), TSLTyped.smoothstep(-0.6, 0.5, n1.add(n2.mul(0.6))).mul(0.6).add(0.4), farW));
     alpha = alpha.mul(float(1).sub(TSLTyped.step(n2.add(n1.mul(0.4)), -0.42).mul(farW)));
   }

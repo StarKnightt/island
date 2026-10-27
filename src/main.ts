@@ -280,6 +280,7 @@ async function boot() {
     veg.update(camera, 60);
     kit.update(camera);
     vegU.time.value = t;
+    vegU.viewPos.value.setFromMatrixPosition(engine.camera.matrixWorld);
     river.update(t);
     village.update(t, (i) => ocean.sim.probe(i), tod.night);
     lighthouse.update(dt, tod.night);

@@ -21,18 +21,19 @@ try {
     // steady state: stage a spot, walk, then profile a few seconds of frames
     await L.page.waitForFunction(`window.__island && typeof window.__island.ready === 'function'`, null, { timeout: 120000, polling: 50 });
     await L.page.evaluate(`window.__island.ready()`);
-    await L.page.evaluate(`window.__island.stage({ spot: '${steady}', tod: 'noon', weather: 'clear', camera: 'follow', worldTime: null, settleMs: 1500 })`);
+    await L.page.evaluate(`window.__island.stage({ spot: '${steady}', tod: '${a.get('tod','noon')}', weather: '${a.get('tod','noon')==='rain'?'rain':'clear'}', camera: 'follow', worldTime: null, settleMs: 1500 })`);
     await L.page.evaluate(`window.__island.act('walk', 8)`);
     await L.page.waitForTimeout(1000);
     await cdp.send('Profiler.start');
-    await L.page.waitForTimeout(3000);
+    await L.page.waitForTimeout(Number(a.get('seconds', '3')) * 1000);
+    console.log('stats', JSON.stringify(await L.page.evaluate(`(() => { const s = window.__island.stats(); return { fps: s.fps, cpu: s.cpu.avg, draws: s.drawCalls }; })()`)));
   } else {
     await cdp.send('Profiler.start');
     await L.page.waitForFunction(`window.__island && typeof window.__island.ready === 'function'`, null, { timeout: 120000, polling: 50 });
     await L.page.evaluate(`window.__island.ready()`);
   }
   const { profile } = await cdp.send('Profiler.stop') as { profile: { nodes: { id: number; callFrame: { functionName: string; url: string; lineNumber: number }; children?: number[] }[]; samples: number[]; timeDeltas: number[] } };
-  writeFileSync('E:/tmp/island/start.cpuprofile', JSON.stringify(profile));
+  writeFileSync(a.get('out', 'E:/tmp/island/start.cpuprofile'), JSON.stringify(profile));
   const self = new Map<number, number>();
   for (let i = 0; i < profile.samples.length; i++) self.set(profile.samples[i], (self.get(profile.samples[i]) ?? 0) + (profile.timeDeltas[i] ?? 0) / 1000);
   const byId = new Map(profile.nodes.map((n) => [n.id, n]));
