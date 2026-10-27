@@ -27,7 +27,7 @@ const LAYERS = ['sand_dry', 'sand_wet', 'jungle', 'grass', 'dirt', 'rock', 'moss
 /** linear target albedos, for the stand-in colours */
 const TARGET = [[0.5, 0.44, 0.34], [0.25, 0.215, 0.165], [0.085, 0.065, 0.04], [0.085, 0.13, 0.035], [0.2, 0.11, 0.06], [0.055, 0.052, 0.05], [0.075, 0.085, 0.05], [0.34, 0.29, 0.21]];
 /** world metres per texture repeat */
-const SCALE = [3.4, 3.6, 3.7, 2.2, 3.8, 4.8, 3.4, 3.8];
+const SCALE = [3.4, 3.6, 3.4, 2.2, 3.8, 4.8, 3.4, 3.8];
 const ROUGH = [0.9, 0.55, 0.92, 0.95, 0.9, 0.82, 0.85, 0.75];
 
 const toSrgb = (c: number) => (c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
@@ -47,13 +47,15 @@ export function createTerrainMaterial(hf: Heightfield) {
   const normalPh = placeholderArray(ROUGH.map((r) => [0.5, 0.5, r, 1]), false);
   const albedoNodes: N[] = [];
   const normalNodes: N[] = [];
-  const sampleA = (layer: number, uvL: N) => {
-    const t = texture(albedoPh, uvL).depth(int(layer));
+  const sampleA = (layer: number, uvL: N, bias?: N) => {
+    const t0 = texture(albedoPh, uvL).depth(int(layer));
+    const t = bias ? t0.bias(bias) : t0;
     albedoNodes.push(t);
     return t;
   };
-  const sampleN = (layer: number, uvL: N) => {
-    const t = texture(normalPh, uvL).depth(int(layer));
+  const sampleN = (layer: number, uvL: N, bias?: N) => {
+    const t0 = texture(normalPh, uvL).depth(int(layer));
+    const t = bias ? t0.bias(bias) : t0;
     normalNodes.push(t);
     return t;
   };
@@ -143,8 +145,11 @@ export function createTerrainMaterial(hf: Heightfield) {
   let rockBig: N = vec4(0.5), wRock: N = float(0);
   for (let i = 0; i < LAYERS.length; i++) {
     const uvL = xz.div(SCALE[i]).add(i * 0.37);
-    let tA = sampleA(i, uvL);
-    let tN = sampleN(i, uvL);
+    // (the trail's laterite pebbles under the forest a couple of mips blurrier, so they smear into packed earth; the
+    // litter a mip blurrier: in a sun fleck its small dry leaves at full detail read as gravel)
+    const bias = i === 4 ? forest.mul(2.5) : i === 2 ? float(1.1) : undefined;
+    let tA = sampleA(i, uvL, bias);
+    let tN = sampleN(i, uvL, bias);
     if (i === 5 || i === 6) {
       const sx = p.zy.div(SCALE[i]), sz = p.xy.div(SCALE[i]);
       tA = tA.mul(twn.y).add(sampleA(i, sx).mul(twn.x)).add(sampleA(i, sz).mul(twn.z));
@@ -187,7 +192,7 @@ export function createTerrainMaterial(hf: Heightfield) {
       // browner and duller; and with the high-frequency speckle damped it reads as leaves, not gravel)
       const lumJ = tA.rgb.dot(vec3(0.3, 0.55, 0.15));
       const dull = mix(vec3(lumJ), tA.rgb, 0.62).mul(vec3(0.92, 0.98, 1.0));
-      tA = vec4(mix(vec3(lumJ.mul(0.4).add(0.03)), dull, 0.78).mul(tint), tA.a);
+      tA = vec4(mix(vec3(lumJ.mul(0.4).add(0.03)), dull, 0.62).mul(tint), tA.a);
       tN = vec4(mix(vec2(0.5), tN.xy, 0.7), tN.z, tN.w);
     }
     if (i === 4) {
