@@ -182,11 +182,13 @@ records motion clips and `pnpm record` the trailer. [TESTING.md](TESTING.md) cov
 - **Browsers and hardware.** Built and measured in Chrome on Windows with an RTX 4060. Other browsers, GPUs and
   phones were not measured.
 - **The WebGL 2 fallback** has a still sea, because the ocean simulation needs WebGPU compute.
-- **The cliffs.** The white water stays on the surface, with no spray bursting up the wall, and the large lumps of
-  rock read soft close up.
-- **The waterfall.** The pool in front shows little foam and a reflected stripe of the falls, and the splash reads as
-  soft puffs.
-- **The jungle** uses one leaf-litter texture, and some sunlit trunks look warm orange in the afternoon.
+- **The cliffs.** The spray at their foot stays low; it rarely bursts high up the wall. Close up the rock's large
+  lumps still read rounded under the fine fractures.
+- **The waterfall** is best at noon: in the afternoon shade the pool is dark and the foam at the foot faint, and the
+  lip at the top is a straight cut.
+- **The jungle** uses one leaf-litter texture, and under the canopy the far forest is a green haze rather than
+  modelled layers of leaves.
+- **At night** the forest behind the village is a dark mass with little moonlit detail.
 - **The lighthouse view.** The nearest tree crowns under the gallery are still clumps of leaves; the authored shots
   keep them out of frame.
 - **Rain** keeps the same brightness through a downpour.
