@@ -9,8 +9,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-  float, length, max, min, mix, mx_noise_float, normalMap, normalWorldGeometry, positionWorld, smoothstep, texture,
-  uniform, uv, varying, vec3, vec4, type N,
+  cameraViewMatrix, cameraWorldMatrix, float, fract, length, max, min, mix, mx_noise_float, normalize, normalMap,
+  normalWorldGeometry, positionWorld, smoothstep, texture, uniform, uv, varying, vec2, vec3, vec4, type N,
 } from '../core/tsl';
 import { loadGLTF } from '../core/Assets';
 import { toFloatGeometry } from '../veg/glb';
@@ -463,12 +463,24 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
   const bed = smoothstep(0.1, 0.0, mx_noise_float(vec3(p.y.mul(0.55), along.mul(0.04), 8.1)).abs());
   const grit = mx_noise_float(p.mul(2.7)).mul(0.5).add(0.5);
   alb = alb.mul(float(1).sub(runnel.mul(0.45))).mul(float(1).sub(bed.mul(0.3))).mul(grit.mul(0.36).add(0.82));
+  // lava-flow strata on the walls: every metre or two a ledge, a sun-catching lip over a shadowed undercut, broken
+  // along the face and wandering in height, and vertical cooling joints between them, so the scan's broad lumps read
+  // as fractured basalt and not as melted wax
+  const sheer = smoothstep(0.8, 0.35, up.abs());
+  const yb = p.y.add(varying(mx_noise_float(vec3(p.xz.mul(1 / 17), 5.2))).mul(2.6));
+  const sf = fract(yb.div(1.55));
+  const ledgeOn = smoothstep(-0.15, 0.3, mx_noise_float(vec3(along.mul(0.09), yb.mul(0.21), 9.4))).mul(sheer);
+  const lip = smoothstep(0.8, 0.9, sf).mul(smoothstep(1.0, 0.93, sf)).mul(ledgeOn);
+  const under = smoothstep(0.0, 0.03, sf).mul(smoothstep(0.2, 0.05, sf)).mul(ledgeOn);
+  const jx = fract(along.div(2.7).add(mx_noise_float(vec3(along.mul(0.05), p.y.mul(0.11), 2.6)).mul(0.6)));
+  const joint = smoothstep(0.07, 0.0, jx.sub(0.5).abs()).mul(sheer).mul(smoothstep(-0.2, 0.4, mx_noise_float(vec3(along.mul(0.2), p.y.mul(0.3), 6.6))));
+  alb = alb.mul(float(1).sub(under.mul(0.6))).mul(float(1).add(lip.mul(0.25))).mul(float(1).sub(joint.mul(0.5)));
   // the waterfall: everything within reach of its spray is wet; the gorge is mossy
   const dFalls = length(p.xz.sub(rockU.falls.xz));
   const dPool = length(p.xz.sub(rockU.pool.xz));
   const gorge = smoothstep(42, 18, dPool).mul(smoothstep(rockU.pool.y.sub(8), rockU.pool.y.add(2), p.y));
   // (the plunge throws spray over the walls round it, a dozen metres up)
-  const plunge = smoothstep(18, 6, length(p.xz.sub(rockU.impact.xz))).mul(smoothstep(rockU.pool.y.add(14), rockU.pool.y.add(3), p.y));
+  const plunge = smoothstep(24, 7, length(p.xz.sub(rockU.impact.xz))).mul(smoothstep(rockU.pool.y.add(18), rockU.pool.y.add(4), p.y));
   const fallsWet = max(max(smoothstep(13, 4, dFalls), plunge), smoothstep(24, 10, dPool).mul(smoothstep(rockU.pool.y.add(9), rockU.pool.y, p.y)).mul(0.8));
   // the spray zone at the foot of the sea cliffs (higher where they are exposed), dark and glistening
   const sprayTop = float(4.5).add(varying(mx_noise_float(vec3(p.xz.mul(0.045), 2.1))).mul(2.2));
@@ -486,13 +498,17 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
   const soaked = max(spray, fallsWet).clamp(0, 1);
   const wet = max(soaked, wetness.rain.mul(0.85)).clamp(0, 1);
   // (soaked rock under a running film is near black)
-  alb = alb.mul(mix(float(1), float(0.48), wet)).mul(mix(float(1), float(0.72), soaked));
+  alb = alb.mul(mix(float(1), float(0.48), wet)).mul(mix(float(1), float(0.58), soaked));
   m.colorNode = vec4(alb, 1);
   const wetRough = mix(min(orm.g, float(0.48)), min(orm.g, float(0.17)), soaked.div(wet.max(0.001)));
   m.roughnessNode = mix(orm.g.max(0.62).mul(float(1).sub(green.mul(0.1))), wetRough, wet.mul(float(1).sub(green.mul(0.5))));
   m.metalnessNode = float(0);
   m.aoNode = orm.r;
-  if (src.normalMap) m.normalNode = normalMap(texture(src.normalMap, U));
+  // (the scan's normals pushed harder, then the ledges' lips tilted up and their undercuts down, in world space)
+  const nV: N = src.normalMap ? normalMap(texture(src.normalMap, U), vec2(1.7)) : normalWorldGeometry;
+  const nW = src.normalMap ? cameraWorldMatrix.mul(vec4(nV, 0)).xyz : nV;
+  const nW2 = normalize(nW.add(vec3(0, 1, 0).mul(lip.mul(0.9).sub(under.mul(0.7)))));
+  m.normalNode = normalize(cameraViewMatrix.mul(vec4(nW2, 0)).xyz);
   return m;
 }
 

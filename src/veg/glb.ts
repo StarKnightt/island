@@ -213,6 +213,15 @@ function nearFade(): N {
   return TSLTyped.step(ign, keep);
 }
 
+/**
+ * The moonlit sky's light on foliage at night (the glow Sky.ts gives the dark sky), stronger on the faces turned up:
+ * the forest behind the village was one flat black wall; with it the crowns separate from each other and the sky.
+ */
+export function nightFill(alb: N): N {
+  const up = normalWorld.y.mul(0.4).add(0.6).clamp(0.2, 1);
+  return alb.mul(vec3(0.0013, 0.0024, 0.0058).mul(atmo.night.mul(float(1).sub(atmo.overcast)).mul(5))).mul(up);
+}
+
 /** a node material for a helper plant part: its textures, AO from COLOR_0, wind, wet darkening, backlit leaves, and
  *  the sheen of the sky only where the plant sees it */
 export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) {
@@ -239,11 +248,30 @@ export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) 
   // shade: pulled toward a dull green-brown, the rotting wood darker)
   if (src.name === 'understory_stem' || src.name === 'floor_bark' || src.name === 'floor_log') {
     const luma = alb.dot(vec3(0.3, 0.55, 0.15));
-    alb = mix(vec3(luma).mul(vec3(0.95, 1.0, 0.82)), alb, 0.35).mul(src.name === 'understory_stem' ? 0.8 : 0.65);
+    alb = mix(vec3(luma).mul(vec3(0.92, 1.0, 0.84)), alb, 0.18).mul(src.name === 'understory_stem' ? 0.75 : 0.62);
+  }
+  // the leaf litter: one atlas for the whole forest floor, so each patch gets its own fall of leaves (fresher and
+  // browner, greyer and older, darker where it lies damp) and drifts a few metres across shift the whole floor's hue
+  if (src.name === 'floor_litter') {
+    const drift = TSLTyped.mx_noise_float(vec3(positionWorld.xz.mul(1 / 6.5), 4.4));
+    const luma = alb.dot(vec3(0.3, 0.55, 0.15));
+    const old = mix(alb, vec3(luma).mul(vec3(1.0, 0.97, 0.88)), TSLTyped.smoothstep(-0.4, 0.4, vary2.add(drift.mul(0.6))).mul(0.7));
+    const tone = mix(vec3(0.62, 0.6, 0.56), vec3(1.12, 1.05, 0.9), TSLTyped.smoothstep(-0.5, 0.5, vary.add(drift.mul(0.5))));
+    alb = old.mul(tone).mul(mix(vec3(1), vec3(0.85, 1.0, 0.75), TSLTyped.smoothstep(0.3, 0.7, drift).mul(0.6)));
   }
   // wet leaves and bark go darker and a little more saturated
   alb = alb.mul(mix(vec3(1), vec3(0.5, 0.62, 0.46), wetness.rain));
-  m.colorNode = vec4(alb.mul(ao.mul(0.8).add(0.2)), base.a);
+  let alpha: N = base.a;
+  if (leaf && src.name === 'canopy_leaf') {
+    // seen from the gallery the simplified crowns' cards (a few big ones standing in for many) read as single leaves
+    // two metres across: past ~50 m every card is broken into leaf-sized lumps, gaps and shade
+    const farW = TSLTyped.smoothstep(40, 85, TSLTyped.length(positionWorld.sub(TSLTyped.cameraPosition)));
+    const n1 = TSLTyped.mx_noise_float(positionWorld.mul(2.3));
+    const n2 = TSLTyped.mx_noise_float(positionWorld.mul(5.3).add(3.1));
+    alb = alb.mul(mix(float(1), TSLTyped.smoothstep(-0.6, 0.5, n1.add(n2.mul(0.6))).mul(0.6).add(0.4), farW));
+    alpha = alpha.mul(float(1).sub(TSLTyped.step(n2.add(n1.mul(0.4)), -0.42).mul(farW)));
+  }
+  m.colorNode = vec4(alb.mul(ao.mul(0.8).add(0.2)), alpha);
   const orm = src.roughnessMap ?? src.metalnessMap ?? src.aoMap;
   // leaves keep a floor: a mirror-smooth card per leaf glints like a lamp in the sun (wet leaves shine a little more)
   const rough0: N = (orm ? texture(orm, uv()).g.mul(U(src.roughness)) : U(src.roughness)).max(leaf ? 0.58 : 0.3);
@@ -263,8 +291,9 @@ export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) 
     const sunDir = normalize(atmo.sunDir);
     const back = pow(clamp(dot(positionViewDirection.negate(), sunDir.negate()).negate(), 0, 1), 3);
     const facing = clamp(dot(normalWorld, sunDir).negate().add(0.6), 0, 1);
-    m.emissiveNode = alb.mul(vec3(glbU.sunColor)).mul(back.mul(facing).mul(U(look.translucent * 0.07))).mul(cloudShadow(positionWorld)).mul(ao);
-  }
+    m.emissiveNode = alb.mul(vec3(glbU.sunColor)).mul(back.mul(facing).mul(U(look.translucent * 0.07))).mul(cloudShadow(positionWorld)).mul(ao)
+      .add(nightFill(alb.mul(ao)));
+  } else if (leaf) m.emissiveNode = nightFill(alb.mul(ao));
   m.positionNode = Fn(() => positionLocal.add(windFrom(look)))();
   return m;
 }
@@ -361,6 +390,7 @@ export function crownMaterial(green: [number, number, number], look: PlantLook) 
   const hue = vec3(float(1).add(vary2.mul(0.34)), float(1).add(vary2.mul(0.1)), float(1).sub(vary2.mul(0.3)));
   const alb = vec3(TSLTyped.uniform(new THREE.Vector3(...green))).mul(hue).mul(float(1).add(vary.mul(0.5))).mul(n1.mul(0.3).add(1)).mul(mix(float(1), float(0.68), wetness.rain));
   m.colorNode = vec4(alb.mul(col.x), 1);
+  m.emissiveNode = nightFill(alb.mul(col.x));
   // leaf clumps tilt the normal; the gaps between clumps read as shadow
   // (and the crown's own shape only half shows: lit as a canopy of leaf clumps facing up, not as a sphere with a
   // terminator round it, which turned a forest seen from the gallery into bubble wrap)

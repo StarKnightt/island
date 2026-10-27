@@ -17,6 +17,7 @@ let probe: THREE.Mesh | null = null;
 let mainCamera: THREE.Camera | null = null;
 let occluded = false;
 let seen = 1;
+let wanted = false;
 const camPos = new THREE.Vector3();
 
 export function initSunProbe(scene: THREE.Scene) {
@@ -35,6 +36,13 @@ export function initSunProbe(scene: THREE.Scene) {
     if (camera === mainCamera && probe) occluded = (renderer as unknown as THREE.WebGPURenderer).isOccluded(probe);
   };
   scene.add(probe);
+  // drawn in the view's own pass only: in every shadow cascade (and any other pass of the scene) its query made three
+  // create and destroy a query set and a resolve buffer each frame, about a millisecond of the main thread
+  const prev = scene.onBeforeRender;
+  scene.onBeforeRender = function (this: THREE.Scene, ...args: Parameters<THREE.Scene['onBeforeRender']>) {
+    if (probe) probe.visible = wanted && args[2] === mainCamera;
+    prev.apply(this, args);
+  };
 }
 
 /** how visible the sun's disc was in the last frames, 0..1 */
@@ -47,8 +55,8 @@ export function updateSunProbe(camera: THREE.Camera | null, sun: THREE.Vector3, 
   camera.getWorldPosition(camPos);
   probe.position.copy(camPos).addScaledVector(sun, DIST);
   probe.scale.setScalar(DIST * Math.tan(RADIUS));
-  probe.visible = sun.y > -0.05;
-  const target = probe.visible && !occluded ? 1 : 0;
+  wanted = sun.y > -0.05;
+  const target = wanted && !occluded ? 1 : 0;
   seen += (target - seen) * (1 - Math.exp(-Math.min(dt, 0.1) * 4));
   return seen;
 }

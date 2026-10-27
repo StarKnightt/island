@@ -207,7 +207,7 @@ export class River {
     const spread = down.mul(0.42).add(this.impactW * 0.45 + 1.5);
     const plume = exp(down.mul(-0.11)).mul(smoothstep(spread, spread.mul(0.25), abs(rc)));
     // (past the boil a thin scatter of drifting foam over the whole pool, thinning toward its banks)
-    const cover = max(max(plume.mul(0.95), float(1).sub(smoothstep(0.5, 13, rImp)).pow(1.2)), exp(rImp.mul(-0.035)).mul(0.8));
+    const cover = max(max(plume.mul(1.05), float(1).sub(smoothstep(0.5, 15, rImp)).pow(1.1)), exp(rImp.mul(-0.03)).mul(0.9));
     const drift = fd.mul(t.mul(0.5));
     const l1 = texture(laceTex, q.sub(drift).div(6.5));
     const l2 = texture(laceTex, q.sub(drift.mul(1.5)).div(2.4).add(0.37));
@@ -218,11 +218,12 @@ export class River {
     const r2 = texture(laceTex, q.sub(dirR.mul(ph2.mul(7))).div(4.2).add(0.5)).r;
     const radial = r1.mul(float(1).sub(abs(ph1.mul(2).sub(1)))).add(r2.mul(float(1).sub(abs(ph2.mul(2).sub(1)))));
     const pat = mix(l1.r.mul(0.6).add(l2.a.mul(0.4)), radial, smoothstep(1.5, 5.0, rImp).mul(0.55));
-    let foam: N = smoothstep(0, 0.16, pat.sub(float(1.04).sub(cover.mul(mix(float(0.85), float(1.25), l1.b)).mul(1.12))));
+    let foam: N = smoothstep(0, 0.16, pat.sub(float(0.98).sub(cover.mul(mix(float(0.85), float(1.25), l1.b)).mul(1.2))));
     // the boil itself, as wide as the falling water, churning with bubbles
     const rCore = length(vec2(ra, max(abs(rc).sub(this.impactW * 0.3), 0)));
     const churn = texture(laceTex, q.div(1.6).add(vec2(t.mul(0.9), t.mul(-0.7)))).g;
-    foam = max(foam, smoothstep(4.5, 0.8, rCore).mul(churn.mul(0.5).add(0.65))).clamp(0, 1);
+    const churn2 = texture(laceTex, q.div(3.3).sub(vec2(t.mul(0.55), t.mul(0.8))).add(0.27)).r;
+    foam = max(foam, smoothstep(6.5, 1.0, rCore).mul(churn.mul(0.35).add(churn2.mul(0.3)).add(0.6))).clamp(0, 1);
     // ---- what the calm water mirrors
     const R = reflect(V.negate(), N0);
     const d0 = q.sub(C);
@@ -242,22 +243,9 @@ export class River {
     const cloud = cloudShadow(p);
     const lightE = atmo.lightE.mul(1 / Math.PI);
     const surround = vec3(0.045, 0.06, 0.04).mul(lightE).mul(mix(float(0.7), float(1), cloud));
-    let mirror: N = mix(surround, viewportSharedTexture(uvH).rgb.mul(0.9), wMirror.mul(poolDbg.mirror));
-    // the falls in the mirror: where the reflected ray crosses the plane of the falling water
-    const lip = vec2(this.fallsLip.x, this.fallsLip.y);
-    const den = dot(R.xz, fd);
-    const tf = dot(lip.add(fd.mul(3.4)).sub(q), fd).div(select(abs(den).lessThan(1e-3), float(1e-3), den));
-    const Hf = p.add(R.mul(tf));
-    const fallsH = this.fallsTop - this.poolCenter.y;
-    const ff = clamp(float(this.fallsTop).sub(Hf.y).div(fallsH), 0, 1);
-    const halfW = ff.pow(1.4).mul(0.35).add(1).mul(this.fallsW * 0.5);
-    const acrossF = abs(dot(Hf.xz.sub(lip), ac));
-    const streak = texture(laceTex, vec2(dot(Hf.xz.sub(lip), ac).div(3.1), Hf.y.add(t.mul(7)).div(13))).b;
-    const inFalls = smoothstep(halfW, halfW.sub(0.9), acrossF).mul(smoothstep(this.fallsTop + 0.4, this.fallsTop - 0.6, Hf.y))
-      .mul(select(tf.greaterThan(0).and(tf.lessThan(tc)), float(1), float(0)));
-    const fallsRad = vec3(0.78, 0.8, 0.8).mul(lightE).mul(mix(float(0.2), float(0.5), streak)).mul(this.fallsShade);
-    // (the chop round the plunge scatters it: a clear image only on the calmer water)
-    mirror = mix(mirror, fallsRad, inFalls.mul(float(0.45).sub(agit.mul(0.4))));
+    // (the falls are not mirrored: the pool in front of a falls this size is never calm enough to hold its image,
+    // and a clean white stripe on the water gave the trick away)
+    const mirror: N = mix(surround, viewportSharedTexture(uvH).rgb.mul(0.9), wMirror.mul(poolDbg.mirror));
     // ---- light: the sun on the jade body and the foam comes from the lighting model; the sky (most of it hidden by
     // the gorge) is added here, as are the bed seen through the water and the mirror
     // (a Lambert surface under a sky of radiance L gives back albedo x L; the gorge hides about half of the sky)
@@ -346,11 +334,6 @@ export class River {
   readonly impact = new THREE.Vector3();
   private fallDir = new THREE.Vector2(1, 0);
   private impactW = 8;
-  /** the lip, the top of the water and its width (the pool mirrors the falls), how much sun reaches their middle */
-  private fallsLip = new THREE.Vector2();
-  private fallsTop = 0;
-  private fallsW = 8;
-  private fallsShade: N = float(1);
 
   /**
    * The falls: two sheets on the ballistic path from the lip (leaving it at ~1.6 m/s, falling ~20 m in 2 s), widening
@@ -366,11 +349,6 @@ export class River {
     this.impact.set(lx + fx * outEnd, bottom, lz + fz * outEnd);
     this.fallDir.set(fx, fz);
     this.impactW = W * 1.4;
-    this.fallsLip.set(lx, lz);
-    this.fallsTop = path.top;
-    this.fallsW = W;
-    const mid = vec3(lx + fx * outEnd * 0.6, (path.top + bottom) / 2, lz + fz * outEnd * 0.6);
-    this.fallsShade = varying(this.gorgeSun(mid, this.occluder()).mul(0.75).add(0.25));
     const sheet = (offset: number, widen: number, name: string, veil: boolean) => {
       const rows = 40, cols = 26;
       const pos: number[] = [], uvs: number[] = [], idx: number[] = [];
@@ -430,19 +408,23 @@ export class River {
     let alpha: N;
     // thickness of the water here: strands and lumps over a body that pulses as surges come over the lip
     const surge = mx_noise_float(vec3(across.mul(0.18), tau.mul(0.55), 8.8));
-    const dens = float(0.5).add(s1.mul(0.3)).add(s2.mul(0.16)).add(lumps.mul(aer).mul(0.32)).add(surge.mul(0.16));
+    // clumps of aerated water a metre or two across, tumbling down with it and stretching as it accelerates
+    const clumps = mx_noise_float(vec3(across.mul(2.6), tau.mul(5.2), 2.2)).mul(aer);
+    // fine strands: narrow across, long along the flow
+    const fine = mx_noise_float(vec3(across.mul(13), tau.mul(1.6), 5.9));
+    const dens = float(0.5).add(fine.mul(0.14)).add(s1.mul(0.3)).add(s2.mul(0.16)).add(lumps.mul(aer).mul(0.32)).add(surge.mul(0.16)).add(clumps.mul(0.22));
     if (veil) {
       // the veil: separate clumps and strands in front of the body, more of them lower down
-      const clump = smoothstep(0.3, 0.75, lumps.mul(0.6).add(s1.mul(0.3)).add(U.y.mul(0.4)));
+      const clump = smoothstep(0.3, 0.7, lumps.mul(0.5).add(s1.mul(0.25)).add(clumps.mul(0.45)).add(U.y.mul(0.45)));
       alpha = clump.mul(fray).mul(aer).mul(0.9).mul(smoothstep(1.0, 0.86, U.y));
     } else {
       // (a falls this size is a thick white column: see-through only over the lip and at its frayed sides)
-      alpha = clamp(mix(float(0.55), dens.mul(1.4).add(0.45).add(core.mul(0.55)), aer), 0, 1).mul(fray).mul(smoothstep(1.0, 0.9, U.y));
+      alpha = clamp(mix(float(0.6), dens.mul(1.5).add(0.55).add(core.mul(0.7)), aer), 0, 1).mul(fray).mul(smoothstep(1.0, 0.93, U.y));
     }
     // colour: the glassy tongue is green-dark water; the body's thick strands white with a bright core, the thin water
     // between them and at the sides grey (the wet rock shows through), the clumps in front whitest
-    const strands = clamp(smoothstep(0.2, 0.8, dens).add(core.mul(0.5)), 0, 1);
-    const white = mix(vec3(0.36, 0.41, 0.4), vec3(0.86, 0.88, 0.88), veil ? float(0.9) : strands);
+    const strands = clamp(smoothstep(0.15, 0.7, dens).add(core.mul(0.6)).add(clumps.mul(0.3)).sub(fine.abs().mul(0.25).mul(aer)), 0, 1);
+    const white = mix(vec3(0.42, 0.46, 0.45), vec3(0.93, 0.95, 0.95), veil ? float(0.95) : strands);
     const glassy = vec3(0.07, 0.11, 0.09);
     // (a low sun reaches the falls only through the gaps in the jungle and over the gorge's rim)
     const inSun = varying(this.gorgeSun(positionWorld, this.occluder()));
@@ -456,11 +438,14 @@ export class River {
     const fwd = pow(max(dot(atmo.sunDir.normalize().negate(), V), 0), 4);
     // (only the thin, frayed water lets the sun through; the thick body is lit from the front like snow; none of it
     // where the escarpment behind the falls hides a low sun)
-    m.emissiveNode = vec3(0.9, 0.95, 0.95).mul(fwd.mul(0.012).mul(pow(float(1).sub(alpha.mul(0.85)), 2))).mul(atmo.lightE).mul(cloudShadow(positionWorld)).mul(inSun);
+    // (white water is lit by the sky it sees and by the light it scatters inside itself: the thick body glows
+    // white in the gorge's shade instead of turning the blue-grey of a lit card)
+    const skyLift = varying(particleSky()).mul(col).mul(alpha.mul(0.55));
+    m.emissiveNode = skyLift.add(vec3(0.9, 0.95, 0.95).mul(fwd.mul(0.012).mul(pow(float(1).sub(alpha.mul(0.85)), 2))).mul(atmo.lightE).mul(cloudShadow(positionWorld)).mul(inSun));
     // relief: the streaks and lumps as bumps across the sheet, on the side facing the eye (the custom normal skips
     // the built-in back-face flip: the sheet's geometric normal faces the cliff, and the sunset behind it would light
     // the face the camera sees)
-    const bump = s1.mul(0.5).add(lumps.mul(0.4)).add(s2.mul(0.2));
+    const bump = s1.mul(0.5).add(lumps.mul(0.4)).add(s2.mul(0.2)).add(clumps.mul(0.6));
     const nG = normalWorldGeometry.mul(faceDirection);
     m.normalNode = transformNormalToView(normalize(vec3(nG.x.add(bump.mul(this.fallDir.y)), nG.y, nG.z.sub(bump.mul(this.fallDir.x)))));
     return m;
@@ -499,7 +484,9 @@ export class River {
       const id = float(instanceIndex);
       const seed = (k: number) => hash(id.mul(k).add(mist ? 31.7 : 3.3));
       // the mist: most of it a low cloud hanging round the plunge, a third a veil drifting out low over the pool
-      const veil = seed(3.9).lessThan(0.36);
+      const veil = seed(3.9).lessThan(0.3);
+      // (and a third a dense cloud hugging the plunge, greying the foot of the falls)
+      const low = seed(3.9).greaterThanEqual(0.3).and(seed(3.9).lessThan(0.66));
       const life = mist ? select(veil, float(8).add(seed(2.1).mul(4)), float(5).add(seed(2.1).mul(3))) : float(0.9).add(seed(2.1).mul(0.9));
       const age = fract(t.div(life).add(seed(1.3)));
       const tt = age.mul(life);
@@ -514,8 +501,8 @@ export class River {
       let p: N;
       if (mist) {
         // rises a little, spreads, drifts downstream (out over the pool) and with the wind
-        const rise = float(1).sub(exp(tt.mul(-0.5))).mul(select(veil, float(1.2).add(sc(5.5).mul(2.2)), float(2).add(sc(5.5).mul(4.5))));
-        const out = tt.mul(select(veil, float(1.0).add(sc(6.1).mul(0.9)), float(0.15).add(sc(6.1).mul(0.45))));
+        const rise = float(1).sub(exp(tt.mul(-0.5))).mul(select(veil, float(1.2).add(sc(5.5).mul(2.2)), select(low, float(0.5).add(sc(5.5).mul(1.6)), float(2).add(sc(5.5).mul(4.5)))));
+        const out = tt.mul(select(veil, float(1.0).add(sc(6.1).mul(0.9)), select(low, float(0.1).add(sc(6.1).mul(0.5)), float(0.15).add(sc(6.1).mul(0.45)))));
         const side = sc(6.9).sub(0.5).mul(tt).mul(select(veil, float(1.3), float(0.7)));
         const wd = wetness.windDir.mul(wetness.wind.mul(1.6).add(0.2)).mul(tt);
         p = base.add(vec3(fd.x, 0, fd.y).mul(out)).add(vec3(ax, 0, az).mul(side)).add(vec3(wd.x, rise, wd.y));
@@ -533,7 +520,7 @@ export class River {
       }
       m.positionNode = p;
       const size = mist
-        ? mix(select(veil, float(5), float(3.5)), select(veil, float(10.5), float(8.5)), pow(age, 0.55)).mul(sc(8.8).mul(0.4).add(0.8))
+        ? mix(select(veil, float(5), select(low, float(4.5), float(3.5))), select(veil, float(10.5), select(low, float(9.5), float(8.5))), pow(age, 0.55)).mul(sc(8.8).mul(0.4).add(0.8))
         : mix(float(1.6), float(5.6), pow(age, 0.5)).mul(sc(8.8).mul(0.5).add(0.75));
       m.scaleNode = vec2(size, size);
       // lit per particle: forward scattering toward the eye when backlit, the sky, the cloud shadows, and the gorge's
@@ -547,7 +534,7 @@ export class River {
       // the plunge surges and slackens with the lumps of water coming over the lip: some splashes strong, some weak,
       // and the whole curtain breathing on two unrelated periods
       const surge = sin(t.mul(1.37)).mul(sin(t.mul(0.53).add(1.1))).mul(0.3).add(0.85);
-      const strength = mist ? select(veil, float(0.2), float(0.45)) : sc(10.3).mul(0.6).add(0.7).mul(surge).mul(0.8);
+      const strength = mist ? select(veil, float(0.22), select(low, float(0.6), float(0.45))) : sc(10.3).mul(0.6).add(0.7).mul(surge).mul(0.8);
       const fade = varying(smoothstep(0.0, mist ? 0.12 : 0.05, age).mul(pow(float(1).sub(age), mist ? 1.2 : 1.6)).mul(smoothstep(1.5, 6, length(p.sub(cameraPosition)))).mul(strength));
       const tex = varying(vec2(sc(9.2), sc(9.7)));
       const r = length(uv().sub(0.5)).mul(2);
@@ -565,8 +552,8 @@ export class River {
       sprite.name = mist ? 'falls_mist' : 'falls_splash';
       this.group.add(sprite);
     };
-    make(preset === 'low' ? 70 : 170, false);
-    make(preset === 'low' ? 36 : 72, true);
+    make(preset === 'low' ? 80 : 210, false);
+    make(preset === 'low' ? 48 : 110, true);
   }
 
   update(t: number) {

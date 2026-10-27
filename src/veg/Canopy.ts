@@ -20,6 +20,7 @@ import { heightLookup } from '../world/Terrain';
 import { wetness } from '../world/weatherUniforms';
 import { sunLit } from '../core/lighting';
 import { atmo } from '../sky/Atmosphere';
+import { nightFill } from './glb';
 
 export const canopyU = { near: uniform(285), band: uniform(60) };
 
@@ -128,6 +129,7 @@ export function buildCanopy(hf: Heightfield, renderer: THREE.WebGPURenderer) {
   const gz = field(p.xz.add(vec2(0, texel))).g.mul(RELIEF_SPAN).sub(c0).div(texel);
   m.normalNode = transformNormalToView(normalize(vNormal.add(vec3(gx.negate(), 0, gz.negate()).mul(0.85))));
   m.roughnessNode = float(0.75);
+  m.emissiveNode = nightFill(mix(vec3(0.03, 0.07, 0.018), vec3(0.06, 0.105, 0.022), here.a));
   m.metalnessNode = float(0);
   // crowns are leaf volumes that mostly mirror one another: under an overcast little of the bright sky's sheen
   // (glb.ts skyVisibility, the same for the far trees)

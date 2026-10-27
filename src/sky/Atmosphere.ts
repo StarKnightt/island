@@ -380,13 +380,17 @@ export function aerialFogNode() {
     const rainW = mix(float(0.45), float(1.0), smoothstep(200, 2200, d));
     const rain = atmo.mist.mul(exp(h0.add(h1).mul(-0.5).div(260))).mul(rainW);
     const mist = atmo.dawnMist.mul(avgExp(DAWN_H));
-    const tau = haze.add(rain).add(mist).mul(d);
+    // the damp night air over the island: a moonlit haze, so the ridges behind one another step back in paler layers
+    // instead of merging into one black wall
+    const nightHaze = atmo.night.mul(float(1).sub(atmo.overcast)).mul(4.5e-4).mul(avgExp(600));
+    const tau = haze.add(rain).add(mist).add(nightHaze).mul(d);
     return float(1).sub(exp(tau.negate())).clamp(0, 1);
   })();
   const colorN = Fn(() => {
     const v = normalize(positionWorld.sub(cameraPosition));
     const dir = vec3(v.x, max(v.y, 0.02), v.z).normalize();
-    const sky = skyRadiance(dir);
+    // (with the night sky's own glow: Sky.ts)
+    const sky = skyRadiance(dir).add(vec3(0.0013, 0.0024, 0.0058).mul(atmo.night));
     // under an overcast the haze is the grey of the overcast sky's horizon (Sky.ts: about a fifth of the dome
     // overhead, scaled from the clear sky 15 degrees up in this direction)
     const lumRef = skyRadiance(normalize(vec3(v.x, 0.27, v.z))).dot(vec3(0.2126, 0.7152, 0.0722));
