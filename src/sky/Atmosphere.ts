@@ -383,7 +383,8 @@ export function aerialFogNode() {
     // the damp night air over the island: a moonlit haze, so the ridges behind one another step back in paler layers
     // instead of merging into one black wall
     const nightHaze = atmo.night.mul(float(1).sub(atmo.overcast)).mul(4.5e-4).mul(avgExp(600));
-    const tau = haze.add(rain).add(mist).add(nightHaze).mul(d);
+    // (capped: over kilometres of open sea it would turn the dark night sea into the sky's colour)
+    const tau = haze.add(rain).add(mist).mul(d).add(min(nightHaze.mul(d), 0.4));
     return float(1).sub(exp(tau.negate())).clamp(0, 1);
   })();
   const colorN = Fn(() => {
