@@ -191,8 +191,9 @@ async function boot() {
   player.onStep = (e) => audio.step(e);
   player.onSplash = (s, p) => audio.splash(s, p);
   const spot = SPOTS.find((s) => s.name === (params.spot ?? 'beach')) ?? SPOTS[0];
-  await playerLoad;
-  mark('character');
+  // (not awaited here: the island's shaders prime while the character still downloads and parses, the main thread
+  // was idle for most of that second; it is waited for with the plants, and its own shaders build in the second prime)
+  const characterReady = playerLoad.then(() => mark('character'));
   player.place(spot.player[0], spot.player[1], spot.yaw, spot.player[2] ?? 1e9);
   rig.snapBehind(spot.yaw);
 
@@ -456,7 +457,7 @@ async function boot() {
   await prime('Catching the light', undefined, undefined, Number(new URLSearchParams(location.search).get('primeb')) || 14);
   mark('island primed');
   loading.status('Growing the jungle');
-  await Promise.all([plantsReady, kitReady]);
+  await Promise.all([plantsReady, kitReady, characterReady]);
   await veg.addLedges(kit.ledges).catch((e) => console.warn('ledge plants', e));
   veg.update(camera, 60, true);
   mark('scene ready');
