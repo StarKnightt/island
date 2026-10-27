@@ -502,13 +502,18 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
     const r = vec4(0.5, 0.5, 1, 0).toVar();
     If(fracMask.greaterThan(0.01), () => {
       const q = vec2(select(useX, p.z, p.x).div(1.45), p.y.add(vB.y.mul(2.6)).div(1.05)).add(4096);
-      const cell = floor(q);
-      const f1 = float(9).toVar(), f2 = float(9).toVar(), id = vec2(0.5).toVar();
-      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+      // (the 2x2 cells nearest the point, jitter kept under half a cell so they hold the nearest two; branch-free:
+      // a smaller node graph to build at load and less work per pixel than a 3x3 search)
+      const cell = floor(q.sub(0.5));
+      let f1: N = float(9), f2: N = float(9), id: N = vec2(0.5);
+      for (let j = 0; j <= 1; j++) for (let i = 0; i <= 1; i++) {
         const c = cell.add(vec2(i, j));
         const h = vec2(hash(c.x.mul(37).add(c.y.mul(1301))), hash(c.x.mul(113).add(c.y.mul(709)).add(17)));
-        const d = length(c.add(0.5).add(h.sub(0.5).mul(0.85)).sub(q));
-        If(d.lessThan(f1), () => { f2.assign(f1); f1.assign(d); id.assign(h); }).ElseIf(d.lessThan(f2), () => { f2.assign(d); });
+        const d = length(c.add(0.5).add(h.sub(0.5).mul(0.5)).sub(q));
+        const nearer = d.lessThan(f1);
+        f2 = min(f2, max(f1, d));
+        id = select(nearer, h, id);
+        f1 = min(f1, d);
       }
       r.assign(vec4(id, f2.sub(f1), fracMask));
     });

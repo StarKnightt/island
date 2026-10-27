@@ -93,7 +93,7 @@ export class Spray {
     const tRaw = ph.tau0.sub(seed(1.7).mul(0.7));
     // (a fifth of the burst, on the strong waves only, is the tall column: the swell slamming into the wall and thrown
     // a quarter of the way up it, there and gone in two seconds)
-    const tall = mist.not().and(seed(11.7).lessThan(0.32)).and(hit.greaterThan(0.6));
+    const tall = mist.not().and(seed(11.7).lessThan(0.4)).and(hit.greaterThan(0.35));
     const life = select(mist, float(5.5).add(seed(2.3).mul(3.5)), select(tall, float(1.7).add(seed(2.3).mul(0.8)), float(3.0).add(seed(2.3).mul(2.2))));
     const t = select(mist.and(tRaw.lessThan(0)), tRaw.add(surfU.period), tRaw);
     const u = t.div(life);
