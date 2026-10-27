@@ -91,26 +91,29 @@ export class Spray {
     // so a haze hangs at the foot of the wall between bursts)
     const mist = seed(10.3).lessThan(0.38);
     const tRaw = ph.tau0.sub(seed(1.7).mul(0.7));
-    const life = select(mist, float(5.5).add(seed(2.3).mul(3.5)), float(3.0).add(seed(2.3).mul(2.2)));
+    // (a fifth of the burst, on the strong waves only, is the tall column: the swell slamming into the wall and thrown
+    // a quarter of the way up it, there and gone in two seconds)
+    const tall = mist.not().and(seed(11.7).lessThan(0.32)).and(hit.greaterThan(0.6));
+    const life = select(mist, float(5.5).add(seed(2.3).mul(3.5)), select(tall, float(1.7).add(seed(2.3).mul(0.8)), float(3.0).add(seed(2.3).mul(2.2))));
     const t = select(mist.and(tRaw.lessThan(0)), tRaw.add(surfU.period), tRaw);
     const u = t.div(life);
     const alive = t.greaterThan(0).and(u.lessThan(1)).and(seed(9.1).lessThan(hit.mul(0.9).add(0.1)));
     // ballistic with heavy drag: a fast climb that stalls into hanging mist, carried off by the wind
-    const k = select(mist, float(1.8), float(1.1));
+    const k = select(mist, float(1.8), select(tall, float(0.8), float(1.1)));
     // (a third of the burst is the sheet thrown straight up the wall, the rest a plume leaning out to sea)
     const sheet = seed(4.9).lessThan(0.35).and(seed(10.3).greaterThanEqual(0.38));
-    const v0up = select(mist, float(1).add(seed(3.1).mul(3)), select(sheet, float(10).add(seed(3.1).mul(14)), float(5).add(seed(3.1).mul(11)))).mul(hit.clamp(0.3, 1.4));
+    const v0up = select(tall, float(22).add(seed(3.1).mul(12)).mul(hit.clamp(0.6, 1.3)), select(mist, float(1).add(seed(3.1).mul(3)), select(sheet, float(10).add(seed(3.1).mul(14)), float(5).add(seed(3.1).mul(11)))).mul(hit.clamp(0.3, 1.4)));
     // (out from the wall as they climb: the drawn faces lean out over the foot, and a sheet hugging the line rose inside the rock)
-    const v0out = select(sheet, float(1.2).add(seed(4.3).mul(1.4)), float(1.6).add(seed(4.3).mul(2.8)));
+    const v0out = select(tall, float(0.6).add(seed(4.3).mul(0.8)), select(sheet, float(1.2).add(seed(4.3).mul(1.4)), float(1.6).add(seed(4.3).mul(2.8))));
     const v0al = seed(5.9).sub(0.5).mul(4);
     const tt = max(t, 0);
     const reach = float(1).sub(exp(tt.mul(k).negate())).div(k);
     const wd = wetness.windDir.mul(wetness.wind.mul(3).add(0.8));
     const up = v0up.mul(reach).sub(select(mist, float(0.02), float(9.81 * 0.35)).mul(tt.mul(tt)));
-    const horiz = out.mul(v0out.mul(reach).add(select(sheet, float(1.4), float(1.8)))).add(along.mul(v0al.mul(reach).add(seed(6.6).sub(0.5).mul(5)))).add(wd.mul(tt));
+    const horiz = out.mul(v0out.mul(reach).add(select(tall, float(2.0), select(sheet, float(1.4), float(1.8))))).add(along.mul(v0al.mul(reach).add(seed(6.6).sub(0.5).mul(5)))).add(wd.mul(tt));
     const p = vec3(exz.x, 0.25, exz.y).add(vec3(horiz.x, max(up, 0.2), horiz.y));
     m.positionNode = p;
-    const size = mix(float(1.6), select(mist, float(8.5), select(sheet, float(7.5), float(6.0))), pow(u.clamp(0, 1), 0.5)).mul(seed(7.7).mul(0.6).add(0.7)).mul(hit.clamp(0.4, 1.2));
+    const size = mix(float(1.6), select(mist, float(8.5), select(tall, float(10.0), select(sheet, float(7.5), float(6.0)))), pow(u.clamp(0, 1), 0.5)).mul(seed(7.7).mul(0.6).add(0.7)).mul(hit.clamp(0.4, 1.2));
     m.scaleNode = vec2(size, size);
     // per particle (vertex stage): lit by the sun (forward scattering toward the eye when backlit) and the sky,
     // under the cloud shadows; its life fade
