@@ -20,7 +20,7 @@ import { wetness } from '../world/weatherUniforms';
 import { preset } from '../core/quality';
 
 const EMITTERS = 40;
-const PER = 44;
+const PER = 60;
 
 export const sprayU = {
   /** sun (or moon) radiance on the spray, set from the key light each frame */
@@ -109,7 +109,7 @@ export class Spray {
     const horiz = out.mul(v0out.mul(reach).add(select(sheet, float(0.3), float(0.8)))).add(along.mul(v0al.mul(reach).add(seed(6.6).sub(0.5).mul(5)))).add(wd.mul(tt));
     const p = vec3(exz.x, 0.25, exz.y).add(vec3(horiz.x, max(up, 0.2), horiz.y));
     m.positionNode = p;
-    const size = mix(float(1.2), select(mist, float(8.5), select(sheet, float(6.5), float(5.0))), pow(u.clamp(0, 1), 0.6)).mul(seed(7.7).mul(0.6).add(0.7)).mul(hit.clamp(0.4, 1.2));
+    const size = mix(float(1.6), select(mist, float(8.5), select(sheet, float(7.5), float(6.0))), pow(u.clamp(0, 1), 0.5)).mul(seed(7.7).mul(0.6).add(0.7)).mul(hit.clamp(0.4, 1.2));
     m.scaleNode = vec2(size, size);
     // per particle (vertex stage): lit by the sun (forward scattering toward the eye when backlit) and the sky,
     // under the cloud shadows; its life fade
@@ -119,7 +119,7 @@ export class Spray {
     const sunL = vec3(sprayU.sun).mul(fwd.add(0.32)).mul(cloudShadow(p));
     const col = varying(sunL.mul(0.9).add(particleSky().mul(2.6)).mul(0.85));
     const dist = length(p.sub(cameraPosition));
-    const fade = varying(pow(float(1).sub(u.clamp(0, 1)), 1.4).mul(smoothstep(0.0, 0.08, u)).mul(smoothstep(2, 8, dist)).mul(select(alive, select(mist, float(0.32), float(1.0)), float(0))));
+    const fade = varying(pow(float(1).sub(u.clamp(0, 1)), 1.4).mul(smoothstep(0.0, 0.08, u)).mul(smoothstep(2, 8, dist)).mul(select(alive, select(mist, float(0.3), float(0.8)), float(0))));
     const tex = varying(vec2(seed(8.2), seed(8.9)));
     // per pixel: a soft, lumpy puff, faded where it meets rock or water
     const r = length(uv().sub(0.5)).mul(2);
