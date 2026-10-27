@@ -62,6 +62,15 @@ const HEADLESS: Display = { name: 'headless', primary: false, x: 0, y: 0, width:
 
 /** the display the test browser opens on (see the header) */
 export function targetDisplay(): Display {
+  // (ISLAND_DISPLAY_FORCE=secondary is a one-command exception to the user's file, for a headed check on the second
+  // screen; it never falls back to the primary)
+  const force = (process.env.ISLAND_DISPLAY_FORCE ?? '').trim().toLowerCase();
+  if (force) {
+    if (force !== 'secondary') throw new Error('ISLAND_DISPLAY_FORCE only accepts "secondary"');
+    const second = displays().find((d) => !d.primary);
+    if (!second) throw new Error('ISLAND_DISPLAY_FORCE=secondary: no secondary display connected');
+    return second;
+  }
   const want = (displayOverride() ?? process.env.ISLAND_DISPLAY ?? '').trim().toLowerCase();
   if (want === 'headless') return HEADLESS;
   const list = displays();

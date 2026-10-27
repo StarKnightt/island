@@ -118,6 +118,10 @@ frame times, captures within run-to-run noise of headed ones, mean difference 2-
 PC while the user works at it (each run prints `[browser] headless 1920x1080 at (0,0): headless 1920x1080
 viewport`). In headless mode the page still reports the main display's refresh (200 Hz), so the frame cap is 66.7 fps.
 
+One-command exception: `ISLAND_DISPLAY_FORCE=secondary pnpm perf ...` opens that one run headed on the secondary
+screen whatever the file says (for a capped-pacing check while the file says `headless`); it stops with an error if no
+secondary screen is connected and never falls back to the primary.
+
 Window placement (headed): each launch asks Windows for the monitor layout and opens the window on the display named in
 `%USERPROFILE%\.island-display` (`primary`, `secondary` or a device name such as `DISPLAY2`). That file is the user's
 machine-wide choice and overrides everything else; without it, `ISLAND_DISPLAY` (the same values, or a 1-based index in
