@@ -458,3 +458,39 @@ before = `round-04c\`. Baseline and final measurements in `round-05-base\perf\` 
   discard kept in the main pass it was slower (twice the leaf vertices, no early rejection). The depth-equal variant
   did not take effect in the time box: still the largest win left for the jungle (72 fps needs ~3 ms off the leaves).
 
+## Round 6 (one builder session against critic-05's gaps)
+
+Captures: before (master) `E:\shots\island\round-06\before\`, after `round-06\after\`, side-by-side crops in
+`round-06\compare\`. Perf: `round-06\perf-master-A`, `perf-r6-A`, `perf-master-B` (full 30 rows) and the interleaved
+jungle/waterfall runs `perf-ab-*`.
+
+* **Village at night.** The lighthouse beam's hard wedge was the scene fog: an additive cone with fog on adds the haze
+  colour over its whole silhouette. The beam material is now unfogged, and the light is worked out from the view
+  ray's closest approach to the beam axis (a gaussian ~2 degrees wide, falling off as 1/(r sin) with distance and
+  brighter looking into the lamp), so it is a soft shaft with no mesh edge. The night haze is ~2.4x denser (still
+  capped, so the far sea keeps its dark) and the moonlit sky fill on foliage favours faces turned up, so the crowns
+  of the backdrop step back in paler layers. The treeline is still dark; it is a night shot, not a moonlit vista.
+* **Waterfall in afternoon shade.** The pool's sky term was the zenith's blue (`particleSky`): with no sun on it the
+  foam and the body went navy. It now uses the desaturated `whiteSky()`, at about twice the strength on foam (spray
+  is lit the same way), and the tea-green body is a little lifted. The churn drum's height fade multiplies instead
+  of cutting the fine noise, so its top is soft clumps, not a fringe of white petals.
+* **Cliffs.** The kit rock has fractured blocks on the sea-cliff faces: a 2D cell pattern in the plane of the face
+  (cells ~1.45 x 1.05 m, rows along the strata), each a facet with its own slight tilt and tone and a dark crack round
+  it, inside an `If` so the gorge's rocks (same material) skip it; faded out past 170 m. Strong, it read as
+  flat-shaded Voronoi polygons; the shipped strength is a hint. The spray is thrown 1.2-4 m/s out from the wall and
+  lives longer (3-5 s): the drawn faces lean out over the foot, and a sheet hugging the foot line climbed inside the
+  rock and was never seen.
+* **Jungle.** Under the canopy (`atmo.underCanopy`, from main.ts's `canopyK`, faded out within ~40 m of the plunge
+  pool so the gorge stays clear) the aerial fog adds a dark green wall: optical depth 0.019/m past 7 m, capped at 1.4,
+  coloured by the light through the crowns. It closes the sightlines at 20-40 m. The same signal shortens the
+  midstorey and understory cull range to 55 % (`Vegetation.reach`, species flagged `shrink`), so the leaves hidden by
+  the haze are not drawn: that pays for the haze and the floor work. The rainforest bark (`canopy_bark`) is darker,
+  flatter and greener toward the foot. The litter tile is 3.7 m (was 2.8), its normals flattened by 30 % and its
+  colour duller and less orange, so the floor reads as damp leaves rather than gravel and the sunrise floor is brown.
+
+### Gotchas from round 6
+
+* Additive effect meshes (beams, glows) need `fog = false`: the fog blend adds the haze colour over the silhouette.
+* `look.ts --eval` runs a plain expression: no top-level `await` (return the promise; Playwright waits for it).
+* Several source files are CRLF: scripted string replacements must match `\r\n` or edit line by line.
+* Reading a full 1920x1080 PNG into the agent can hang; compare downscaled JPEGs (ffmpeg hstack) instead.

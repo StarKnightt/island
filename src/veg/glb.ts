@@ -222,7 +222,7 @@ function nearFade(): N {
 export function nightFill(alb: N): N {
   const h = normalWorld.y.mul(0.5).add(0.5).clamp(0, 1);
   const up = h.mul(h).mul(1.5).add(0.12);
-  return alb.mul(vec3(0.0013, 0.0024, 0.0058).mul(atmo.night.mul(float(1).sub(atmo.overcast)).mul(6))).mul(up);
+  return alb.mul(vec3(0.0013, 0.0024, 0.0058).mul(atmo.night.mul(float(1).sub(atmo.overcast)).mul(7.5))).mul(up);
 }
 
 /** a node material for a helper plant part: its textures, AO from COLOR_0, wind, wet darkening, backlit leaves, and
