@@ -510,15 +510,30 @@ Captures in `E:\shots\island\round-07\` (`before\` = round-06 master, `after\`, 
   random draws; given the crest's height explicitly: the usual settling on the lowest footprint corner sank them
   20 m down the face behind the sheet), breaking the straight lip. The sheet itself starts in lobes (`lipCut`),
   and the pool's foam covers more round the plunge.
-* **Jungle.** The trail (`dirt`, the laterite scan) is pressed toward its mean colour, its normals halved, the tile
-  3.8 m (was 2.8), darker under the forest: packed earth, not gravel. The rainforest bark's white lichen blotches
+* **Jungle.** The pale "gravel" in the jungle shot is not a trail: it is the litter layer in a sun fleck (a per-layer
+  tint showed it). The litter is sampled a mip blurrier (`bias` on the layer samplers) and lower in contrast, so its
+  small dry leaves stop reading as stones. Real trails (`dirt`, the laterite scan) are pressed toward their mean
+  colour, normals halved, the tile 3.8 m, blurred 2.5 mips and darker under the forest. The rainforest bark's white lichen blotches
   are pulled down to the bark tone.
 * **Rock fracture cells** are a 2x2 branch-free search with jitter 0.5 (was 3x3 with branches): the same look, a
   smaller node graph to build at load and less per-pixel work.
-* **Loading.** `?primeb=n` sets the number of shader-priming batches for A/B load measurements.
+* **Loading.** `?primeb=n` sets the number of shader-priming batches for A/B load measurements. Fewer batches (8)
+  was no better (9.6 and 11.1 s against 10.3 s at 14: noise). Priming while the character still loads (instead of
+  after it) won ~1 s on two first visits but starved the plants' parsing and scattering on the main thread (plants
+  at 6-10 s instead of ~3.5 s): one first visit took 13.6 s and returning visits got slower, so it was reverted, as
+  round 4's wider overlap was. In this session round 7 and master both load in ~10.2 s (first frame, three
+  alternating pairs); round 6's 9.05 s was a faster session.
+* **Capped pacing, headed on the secondary screen** (`ISLAND_DISPLAY_FORCE=secondary`: DISPLAY2, portrait
+  1080x1920, emulated 1920x1080 viewport): the page measured 200 Hz and capped at 66.7, but the pacer stepped down to
+  50 fps in 28 of 30 combinations, the beach at noon included (GPU 9 ms). With Wallpaper Engine running (42 % GPU at
+  idle clocks) and the window composed on the second screen, that does not measure the game's own headroom; round
+  4's headed run on the primary held 66.7 in all 30. The real check is a headed run on the primary with Wallpaper
+  Engine paused.
 
 ### Gotchas from round 7
 
 * From below (the waterfall shot), anything set back from a crest hides behind its edge: lip props stand on it.
+* `look.ts` and `session.ts` keep a persistent Chrome profile, which can serve a stale `index.html` (and so the
+  previous bundle) after a rebuild: pass `--fresh`, or use `pnpm shots` (always a fresh profile), to check a change.
 * Don't `pnpm build` while a harness job runs from the same folder: the preview serves `dist\` and the next page load
   picks up the new build mid-run.
