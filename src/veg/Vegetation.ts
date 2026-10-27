@@ -67,6 +67,8 @@ interface Species {
   pad: number;
   /** lie on the slope (flat ground covers such as leaf litter) instead of standing upright */
   tilt?: boolean;
+  /** draws only out to `reach` of its range while the camera is under the canopy (the green haze hides the rest) */
+  shrink?: boolean;
 }
 
 // ---------------------------------------------------------------- materials
@@ -375,6 +377,7 @@ export class Vegetation {
     const mids = ['a', 'b'].map((k) => this.glbSpecies(get(mid, `midstorey_${k}`), [30 * K, 90 * K, 190 * K], [true, false, false], midLook));
     const unders = ['banana_a', 'alocasia_a', 'treefern_a', 'rattan_a', 'licuala_a', 'sapling_a', 'sapling_b']
       .map((k) => this.glbSpecies(get(under, k), [26 * K, 70 * K], [false, false], lowLook));
+    for (const sp of [...mids, ...unders]) sp.shrink = true;
     // the scanned herbs' full meshes are 4500 triangles: their second LOD is plenty on the forest floor
     for (const k of ['anthurium_a', 'calathea_b']) { const v = get(under, k); v.lods = [v.lods[1]]; }
     const grounds = ['fern_a', 'fern_b', 'anthurium_a', 'calathea_b'].map((k) => this.glbSpecies(get(under, k), [30 * K], [false], groundLook));
@@ -768,6 +771,10 @@ export class Vegetation {
     return Object.fromEntries(this.species.map((s) => [s.name, s.count]));
   }
 
+  /** 0..1: the share of their range that `shrink` species draw (main.ts, from how deep under the canopy the camera is) */
+  reach = 1;
+  private lastReach = 1;
+
   update(camera: THREE.PerspectiveCamera, shadowNear: number, force = false) {
     this.frame++;
     const priming = this.prime > 0;
@@ -777,7 +784,8 @@ export class Vegetation {
     camera.getWorldDirection(dir);
     // culled against a frustum 6 degrees wider than the view, so the camera can turn ~3 degrees (or walk 1.2 m)
     // before the lists need rebuilding: fewer instance-buffer uploads while the camera swings
-    const moved = cam.distanceTo(this.lastCam) > 1.2 || dir.angleTo(this.lastDir) > 0.05;
+    const moved = cam.distanceTo(this.lastCam) > 1.2 || dir.angleTo(this.lastDir) > 0.05 || this.reach !== this.lastReach;
+    this.lastReach = this.reach;
     // the frame after priming re-culls so the collapsed instances go away
     // (nothing in the lists depends on anything but the camera: a periodic re-cull of a still camera only re-uploaded
     // megabytes of identical instances, a 40-80 ms stall every 20th frame whenever the GPU queue was full)
@@ -804,7 +812,7 @@ export class Vegetation {
     const cx = cam.x, cy = cam.y, cz = cam.z;
     for (const sp of this.species) {
       const nL = sp.lods.length;
-      const maxD = sp.lods[nL - 1].maxDist;
+      const maxD = sp.lods[nL - 1].maxDist * (sp.shrink ? this.reach : 1);
       const maxD2 = maxD * maxD;
       counts.length = nL;
       counts.fill(0);

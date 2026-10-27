@@ -265,6 +265,11 @@ async function boot() {
     // sun (sunrise, sunset) the bright half of the view sets it, as a centre-weighted camera meter would
     const under = camera.position.y < hf.height(camera.position.x, camera.position.z) + 18 ? hf.forest(camera.position.x, camera.position.z) : 0;
     canopyK += (under - canopyK) * (1 - Math.exp(-dt * 2.0));
+    // (the gorge round the plunge pool is open to the sky: no green wall over the falls)
+    const pl = hf.meta.pool;
+    const gorgeOpen = THREE.MathUtils.smoothstep(Math.hypot(camera.position.x - pl.p[0], camera.position.z - pl.p[1]), pl.r + 12, pl.r + 40);
+    atmo.underCanopy.value = canopyK * gorgeOpen;
+    veg.reach = 1 - 0.45 * Math.round(canopyK * gorgeOpen * 10) / 10;
     camera.getWorldDirection(fwd);
     const sd = atmo.sunDir.value as THREE.Vector3;
     const facing = (fwd.x * sd.x + fwd.z * sd.z) / ((Math.hypot(fwd.x, fwd.z) || 1) * (Math.hypot(sd.x, sd.z) || 1));

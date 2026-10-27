@@ -11,6 +11,7 @@ import * as THREE from 'three/webgpu';
 import {
   cameraViewMatrix, cameraWorldMatrix, float, fract, length, max, min, mix, mx_noise_float, normalize, normalMap,
   normalWorldGeometry, positionWorld, smoothstep, texture, uniform, uv, varying, vec2, vec3, vec4, type N,
+  cameraPosition, Fn, If, select, floor, hash,
 } from '../core/tsl';
 import { loadGLTF } from '../core/Assets';
 import { toFloatGeometry } from '../veg/glb';
@@ -489,6 +490,32 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
   // the waterfall: everything within reach of its spray is wet; the gorge is mossy
   const dFalls = length(p.xz.sub(rockU.falls.xz));
   const dPool = length(p.xz.sub(rockU.pool.xz));
+  // fractured blocks on the sea-cliff faces: a cell pattern in the plane of the face (rows a block high along the
+  // strata), each cell a flat facet tilted its own way with its own tone, dark cracks between them, so the scan's
+  // rounded lumps break into angular basalt. Only near the camera and away from the falls (the gorge's rocks share
+  // this material and skip the work in the branch).
+  const nG = normalWorldGeometry;
+  const camD = length(p.sub(cameraPosition));
+  const fracMask = smoothstep(0.92, 0.55, nG.y.abs()).mul(smoothstep(170, 70, camD)).mul(smoothstep(45, 70, dPool));
+  const useX = nG.x.abs().greaterThan(nG.z.abs());
+  const frac: N = Fn(() => {
+    const r = vec4(0.5, 0.5, 1, 0).toVar();
+    If(fracMask.greaterThan(0.01), () => {
+      const q = vec2(select(useX, p.z, p.x).div(1.45), p.y.add(vB.y.mul(2.6)).div(1.05)).add(4096);
+      const cell = floor(q);
+      const f1 = float(9).toVar(), f2 = float(9).toVar(), id = vec2(0.5).toVar();
+      for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+        const c = cell.add(vec2(i, j));
+        const h = vec2(hash(c.x.mul(37).add(c.y.mul(1301))), hash(c.x.mul(113).add(c.y.mul(709)).add(17)));
+        const d = length(c.add(0.5).add(h.sub(0.5).mul(0.85)).sub(q));
+        If(d.lessThan(f1), () => { f2.assign(f1); f1.assign(d); id.assign(h); }).ElseIf(d.lessThan(f2), () => { f2.assign(d); });
+      }
+      r.assign(vec4(id, f2.sub(f1), fracMask));
+    });
+    return r;
+  })();
+  const crack = smoothstep(0.1, 0.0, frac.z).mul(frac.w);
+  alb = alb.mul(mix(float(1), frac.x.mul(0.4).add(0.8), frac.w)).mul(float(1).sub(crack.mul(0.6)));
   const gorge = smoothstep(42, 18, dPool).mul(smoothstep(rockU.pool.y.sub(8), rockU.pool.y.add(2), p.y));
   // (the plunge throws spray over the walls round it, a dozen metres up)
   const plunge = smoothstep(24, 7, length(p.xz.sub(rockU.impact.xz))).mul(smoothstep(rockU.pool.y.add(18), rockU.pool.y.add(4), p.y));
@@ -518,7 +545,10 @@ function kitMaterial(src: THREE.MeshStandardMaterial) {
   // (the scan's normals pushed harder, then the ledges' lips tilted up and their undercuts down, in world space)
   const nV: N = src.normalMap ? normalMap(texture(src.normalMap, U), vec2(1.7)) : normalWorldGeometry;
   const nW = src.normalMap ? cameraWorldMatrix.mul(vec4(nV, 0)).xyz : nV;
-  const nW2 = normalize(nW.add(vec3(0, 1, 0).mul(lip.mul(1.5).sub(under.mul(1.0)))));
+  const tang = select(useX, vec3(0, 0, 1), vec3(1, 0, 0));
+  const facet = tang.mul(frac.x.sub(0.5).mul(1.2)).add(vec3(0, 1, 0).mul(frac.y.sub(0.42).mul(1.1)));
+  const nF = normalize(mix(nW, nG, frac.w.mul(0.45)).add(facet.mul(frac.w)));
+  const nW2 = normalize(nF.add(vec3(0, 1, 0).mul(lip.mul(1.5).sub(under.mul(1.0)))));
   m.normalNode = normalize(cameraViewMatrix.mul(vec4(nW2, 0)).xyz);
   return m;
 }

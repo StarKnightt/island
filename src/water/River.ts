@@ -259,8 +259,10 @@ export class River {
     // ---- light: the sun on the jade body and the foam comes from the lighting model; the sky (most of it hidden by
     // the gorge) is added here, as are the bed seen through the water and the mirror
     // (a Lambert surface under a sky of radiance L gives back albedo x L; the gorge hides about half of the sky)
-    const skyE = varying(particleSky()).mul(0.5);
-    const diffuse = mix(jade.mul(float(1).sub(T)), vec3(0.85, 0.88, 0.86), foam);
+    // (the grey-white of the sky gap, not the zenith's blue: in the afternoon shade the foam and the body under a blue
+    // sky term turned the whole pool navy)
+    const skyE = varying(whiteSky()).mul(mix(float(0.75), float(1.0), foam));
+    const diffuse = mix(jade.mul(float(1).sub(T)).mul(vec3(1.1, 1.35, 1.05)), vec3(0.85, 0.88, 0.86), foam);
     m.colorNode = vec4(diffuse, 1);
     m.roughnessNode = mix(float(0.05), float(0.75), foam);
     m.metalnessNode = float(0);
@@ -612,7 +614,9 @@ export class River {
     const n1 = mx_noise_float(vec3(around.mul(0.75), U.y.mul(H * 0.75).sub(t.mul(1.5)), t.mul(0.45)));
     const n2 = mx_noise_float(vec3(around.mul(2.2), U.y.mul(H * 2.2).sub(t.mul(2.9)), t.mul(0.9).add(4.2)));
     const surge = sin(t.mul(1.37)).mul(sin(t.mul(0.53).add(1.1))).mul(0.12).add(0.08);
-    const body = n1.mul(0.6).add(n2.mul(0.3)).add(surge).add(float(0.5).sub(U.y.mul(1.05)));
+    // (the height fade is soft and mostly multiplies: an additive cut through the fine noise left a fringe of spikes
+    // that read as white petals in the shade)
+    const body = n1.mul(0.6).add(n2.mul(0.15)).add(surge).add(float(0.42).sub(U.y.mul(0.6)));
     const V = normalize(cameraPosition.sub(p));
     const L = atmo.sunDir.normalize();
     const fwdS = pow(max(L.negate().dot(V), 0), 5).mul(1.8);
@@ -620,7 +624,7 @@ export class River {
     // (the clumps' undersides and the gaps between them in their own shade)
     const shade = smoothstep(-0.1, 0.5, body).mul(0.4).add(0.6);
     const soft = smoothstep(0.0, 0.8, sceneViewDepth(screenUV).sub(positionView.z.negate())).mul(smoothstep(c.y - 0.35, c.y + 0.25, p.y));
-    const a = smoothstep(-0.12, 0.4, body).mul(smoothstep(1.0, 0.55, U.y)).mul(soft).mul(0.9);
+    const a = smoothstep(-0.2, 0.55, body).mul(pow(smoothstep(1.0, 0.1, U.y), 1.6)).mul(soft).mul(0.9);
     m.colorNode = vec4(lit.mul(shade), a);
     m.opacityNode = a;
     const mesh = new THREE.Mesh(g, m);

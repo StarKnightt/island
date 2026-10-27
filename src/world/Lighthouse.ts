@@ -10,7 +10,7 @@ import { KitBuilder, box, cylinder, pbr, flat, tubeGeo, poly, MeshAcc } from './
 import type { Heightfield } from './Heightfield';
 import type { Colliders } from './Colliders';
 import { LIGHTHOUSE } from './layout';
-import { float, uniform, vec3, vec4, smoothstep, abs, positionLocal, length, mix, pow, max, min, cameraPosition, positionWorld, normalize, dot } from '../core/tsl';
+import { float, uniform, vec3, vec4, smoothstep, length, pow, max, min, cameraPosition, positionWorld, normalize, dot, modelWorldMatrix, exp, sqrt, select, frontFacing } from '../core/tsl';
 import { atmo } from '../sky/Atmosphere';
 
 export const lighthouseU = { angle: uniform(0), on: uniform(0) };
@@ -244,13 +244,29 @@ export class Lighthouse {
     bm.depthWrite = false;
     bm.blending = THREE.AdditiveBlending;
     bm.side = THREE.DoubleSide;
-    const along = positionLocal.x.div(coneLen).clamp(0, 1);
-    const rad = length(positionLocal.yz).div(max(positionLocal.x.mul(60 / coneLen), 0.25));
-    const core = pow(smoothstep(1.0, 0.0, rad), 2.0);
-    const view = abs(dot(normalize(positionWorld.sub(cameraPosition)), normalize(positionWorld.sub(vec3(this.lampPos.x, this.lampPos.y, this.lampPos.z)))));
-    const k = smoothstep(0.0, 0.015, along).mul(pow(float(1).sub(along), 2.2)).mul(core).mul(mix(float(1), float(0.3), view));
+    // The cone is only a bound: the light is the haze it scatters along the view ray, from the ray's closest approach
+    // to the beam's axis (a gaussian a few degrees wide), so the beam is a soft shaft with no edge where the mesh is.
+    // Front faces shade it from outside; back faces only when the camera is inside the cone.
+    const lamp = vec3(this.lampPos.x, this.lampPos.y, this.lampPos.z);
+    const axis = normalize(modelWorldMatrix.mul(vec4(1, 0, 0, 0)).xyz);
+    const ray = normalize(positionWorld.sub(cameraPosition));
+    const w0 = cameraPosition.sub(lamp);
+    const b = dot(ray, axis), dd = dot(ray, w0), e = dot(axis, w0);
+    const den = max(float(1).sub(b.mul(b)), 1e-4);
+    const sRay = max(b.mul(e).sub(dd).div(den), 0);
+    const tAx = e.add(b.mul(sRay)).max(0);
+    const sep = length(cameraPosition.add(ray.mul(sRay)).sub(lamp.add(axis.mul(tAx))));
+    const r = max(tAx.mul(0.035), 0.6);
+    const camT = e, camR = length(w0.sub(axis.mul(e)));
+    const camInside = camT.greaterThan(0).and(camR.lessThan(camT.mul(60 / coneLen)));
+    const side = select(frontFacing, float(1), select(camInside, float(1), float(0)));
+    const profile = exp(sep.mul(sep).div(r.mul(r)).mul(-4));
+    const sinV = sqrt(den).max(0.2);
+    const phase = float(1).add(pow(max(b.negate(), 0), 12).mul(4));
+    const fade = exp(tAx.div(-520)).mul(smoothstep(0, 6, tAx));
+    const k = profile.div(r.mul(sinV)).mul(phase).mul(fade).mul(side).min(2);
     // (tropical night air is humid: the beams read even on a clear night, more in haze and rain)
-    bm.colorNode = vec4(vec3(1.0, 0.86, 0.62).mul(k).mul(lighthouseU.on).mul(float(0.9).add(min(atmo.mist.mul(14000), 8))), 1);
+    bm.colorNode = vec4(vec3(1.0, 0.86, 0.62).mul(k).mul(0.9).mul(lighthouseU.on).mul(float(0.9).add(min(atmo.mist.mul(14000), 8))), 1);
     this.beam = new THREE.Mesh(cone, bm);
     const beam2 = new THREE.Mesh(cone, bm);
     beam2.rotation.y = Math.PI;

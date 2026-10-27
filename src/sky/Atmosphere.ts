@@ -60,6 +60,8 @@ export const atmo = {
   night: uniform(0),
   /** illuminance of a horizontal surface (sun or moon + sky), scene units: lights unlit effects (mist, spray) */
   lightE: uniform(1),
+  /** 0..1, how far the camera is in under the rainforest canopy (eased, from main.ts) */
+  underCanopy: uniform(0),
   moonPhaseLight: uniform(0.8),
   time: uniform(0),
 };
@@ -365,6 +367,13 @@ export function sunTransmittanceCPU(elevation: number, mie = 2e-5, out = new THR
 /** scale height of the dawn ground mist (m): it lies over the sea, the beach and the coastal flats, thin on the hills */
 export const DAWN_H = 40;
 
+/**
+ * Under the rainforest the view closes into a green wall a few tens of metres out: past the nearest trunks every
+ * line of sight meets leaves, and the damp air between them is lit green by the light through the crowns. The haze
+ * stands in for the layers of foliage too far to draw (Vegetation shortens its reach under the canopy).
+ */
+const jungleTau = (d: N) => atmo.underCanopy.mul(max(d.sub(7), 0).mul(0.024)).min(1.5);
+
 export function aerialFogNode() {
   const factor = Fn(() => {
     const d = length(positionView);
@@ -382,10 +391,10 @@ export function aerialFogNode() {
     const mist = atmo.dawnMist.mul(avgExp(DAWN_H));
     // the damp night air over the island: a moonlit haze, so the ridges behind one another step back in paler layers
     // instead of merging into one black wall
-    const nightHaze = atmo.night.mul(float(1).sub(atmo.overcast)).mul(4.5e-4).mul(avgExp(600));
+    const nightHaze = atmo.night.mul(float(1).sub(atmo.overcast)).mul(1.1e-3).mul(avgExp(600));
     // (capped: over kilometres of open sea it would turn the dark night sea into the sky's colour)
-    const tau = haze.add(rain).add(mist).mul(d).add(min(nightHaze.mul(d), 0.4));
-    return float(1).sub(exp(tau.negate())).clamp(0, 1);
+    const tau = haze.add(rain).add(mist).mul(d).add(min(nightHaze.mul(d), 0.45));
+    return float(1).sub(exp(tau.add(jungleTau(d)).negate())).clamp(0, 1);
   })();
   const colorN = Fn(() => {
     const v = normalize(positionWorld.sub(cameraPosition));
@@ -397,7 +406,13 @@ export function aerialFogNode() {
     // under an overcast the haze is the grey of the overcast sky's horizon (Sky.ts: about a fifth of the dome
     // overhead, scaled from the clear sky 15 degrees up in this direction)
     const lumRef = skyRadiance(normalize(vec3(v.x, 0.27, v.z))).dot(vec3(0.2126, 0.7152, 0.0722));
-    return mix(sky, vec3(atmo.mistColor).mul(lumRef.mul(0.73).mul(atmo.deck)), atmo.overcast);
+    const air = mix(sky, vec3(atmo.mistColor).mul(lumRef.mul(0.73).mul(atmo.deck)), atmo.overcast);
+    // (the green wall's share of the haze: its optical depth against the open air's, roughly)
+    const d = length(positionView);
+    const tJ = jungleTau(d);
+    const tA = atmo.mieScatter.mul(1.11).add(1.1e-5).add(atmo.haze).mul(d).add(atmo.night.mul(1.1e-3).mul(d).min(0.45));
+    const green = vec3(0.03, 0.05, 0.026).mul(atmo.lightE.mul(1 / Math.PI));
+    return mix(air, green, tJ.div(tJ.add(tA).add(1e-4)));
   })();
   return fog(colorN, factor);
 }
