@@ -394,3 +394,49 @@ Load: first visit 9.1-10.0 s to the first frame, returning 7.5-8.3 s, 129.1 MB, 
 * Waterfall: the pool in front shows little foam and a reflected stripe of the falls; the splash reads as soft puffs.
 * Jungle: one leaf-litter texture; some sunlit trunks read warm orange in the afternoon.
 * Lighthouse: the near crowns under the gallery are still leaf-clump blobs (kept out of the authored frames).
+
+## Round 5 (one builder session against critic-04's list)
+
+Captures in `E:\shots\island\round-05\` (shot camera, 6 places x 6 conditions, plus `dev\r5*` close checks);
+before = `round-04c\`. Baseline and final measurements in `round-05-base\perf\` and `round-05\perf\`.
+
+* **Waterfall.** The pool no longer mirrors the falls (the white stripe on the water). The sheet carries clumps a
+  metre or two across that tumble down with the water, thin bright threads (ridges of fine noise), a denser, more
+  opaque body and a sky-lit glow (white water is lit by the whole dome and by light scattered inside the foam: a
+  desaturated sky term, `whiteSky()`, also used by the splash and mist; with the zenith's blue the shaded afternoon
+  falls glowed blue). A churn skirt (`falls_boil`: a low open drum round the plunge, flaring as it rises, cut by
+  rising noise into clumps) hides the seam where the sheet met the pool and gives the foot a solid white mass. A
+  third of the mist is a low cloud hugging the plunge. The pool's boil is wider and carries more lace across the
+  pool. The spray soaks the kit rock (wider, higher reach, darker) and the terrain banks and lower walls round the
+  pool (near black, a little green).
+* **Cliffs.** Spray emitters stand at the drawn rock foot (7 m out from the baked shoreline on sea cliffs, as the
+  surf foam is since round 4c): the bursts rose inside the overhanging kit meshes and were never seen. A third of each
+  burst is a sheet thrown straight up the wall; bursts are larger, more numerous and chunky; the mist they leave stays
+  soft (hard-edged it read as discs). The kit rock has lava-flow strata every ~2.3 m (a sun-catching lip tilted up
+  over a dark undercut, broken along the face, wandering in height), vertical cooling joints, and the scan's normals
+  at 1.7x. Its per-vertex noises are packed four to a varying: the stacks' vertex stage had hit WebGPU's 16 outputs.
+* **Jungle.** The floor layer is sampled twice (turned and rescaled) in drifts, over damp-soil, algae-green and
+  dry-leaf patches (per-vertex noise); the litter meshes get per-patch age, tone and greening; any strongly orange
+  plant texel (the stems in the understory atlas) is pulled to a dull brown-olive; the forest floor sees more sky
+  (terrain AO under the forest 0.32 -> 0.58).
+* **Lighthouse.** Past ~50 m the canopy leaf cards are broken into leaf-sized lumps, holes and shade (two texture
+  taps of the lace pattern: procedural noise there cost ~20 fps in the jungle, in the shadow passes too), so the
+  simplified crowns under the gallery no longer read as single leaves two metres across.
+* **Village at night.** A moonlit haze (`nightHaze` in the aerial perspective, with the night sky's own glow as its
+  colour) steps the ridges back; foliage, crown stand-ins and the canopy shell get a night sky fill (`nightFill`),
+  so palms and crowns separate from each other and from the sky.
+* **Main thread.** The sun probe's occlusion query was drawn in every shadow cascade as well, so three created and
+  destroyed a query set and its resolve buffer per pass every frame (~1 ms of the main thread): it is now visible
+  only in the main camera's pass (`scene.onBeforeRender`).
+
+### Gotchas from round 5
+
+* WebGPU allows 16 vertex outputs; a lit node material with a few `varying()`s is close to it. Pack per-vertex
+  scalars into a `vec4` varying (RockKit `kitMaterial`).
+* Procedural noise (`mx_noise_float`) in a foliage material runs per leaf fragment in every shadow cascade too: use a
+  texture tap or a varying.
+* **Headless pacing.** In headless Chrome the auto cap steps down to 50 fps nearly everywhere even with shadows off
+  (main thread 5 ms, GPU 1 ms): headless frame ticks are not a real display's vsync, so the pacer sees late frames
+  that are not there. Judge headless runs by the uncapped numbers; check the capped pacing headed.
+* The GPU lock (`E:\tmp\island\gpu.lock`, `withlock.sh`) is shared with other sessions on this PC. `withlock.sh`
+  breaks a lock older than 20 min even if its owner is still running (a long clip render holds it longer).

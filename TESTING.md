@@ -257,6 +257,10 @@ one) and take `--uncapped` (vsync and frame limit off).
 * GPU timing comes from WebGPU timestamp queries; if the browser disables them `gpu.n` is 0. The GPU columns do not
   include the main scene pass (with `?noshadow=1` they read about 1 ms): they are the shadow and post passes. The
   frame time (and fps) is the measure of a view's real cost.
+* Headless runs (`.island-display` = `headless`): the capped measurement is not meaningful there. Headless Chrome's
+  frame ticks do not follow a real display, so the auto cap sees late frames and steps down to 50 fps nearly
+  everywhere, even with shadows off and the main thread at 5 ms. Read the uncapped numbers for headroom and check
+  pacing with a headed run.
 * `stage()` resets the auto cap's pacing to its own rate, so every staged view starts at 66.7 fps and steps down to 50 only if it cannot hold it; `stats().targetFps` is the rate in force.
 * The frame cap renders on every third refresh of the 200 Hz display, timed by the display's frame times, so frame
   intervals are 15 ms, or 20 ms when a frame runs over; an fps between 60 and 66.7 is a mix of the two.
