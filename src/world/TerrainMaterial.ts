@@ -27,7 +27,7 @@ const LAYERS = ['sand_dry', 'sand_wet', 'jungle', 'grass', 'dirt', 'rock', 'moss
 /** linear target albedos, for the stand-in colours */
 const TARGET = [[0.5, 0.44, 0.34], [0.25, 0.215, 0.165], [0.085, 0.065, 0.04], [0.085, 0.13, 0.035], [0.2, 0.11, 0.06], [0.055, 0.052, 0.05], [0.075, 0.085, 0.05], [0.34, 0.29, 0.21]];
 /** world metres per texture repeat */
-const SCALE = [3.4, 3.6, 3.7, 2.2, 2.8, 4.8, 3.4, 3.8];
+const SCALE = [3.4, 3.6, 3.7, 2.2, 3.8, 4.8, 3.4, 3.8];
 const ROUGH = [0.9, 0.55, 0.92, 0.95, 0.9, 0.82, 0.85, 0.75];
 
 const toSrgb = (c: number) => (c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
@@ -189,6 +189,12 @@ export function createTerrainMaterial(hf: Heightfield) {
       const dull = mix(vec3(lumJ), tA.rgb, 0.62).mul(vec3(0.92, 0.98, 1.0));
       tA = vec4(mix(vec3(lumJ.mul(0.4).add(0.03)), dull, 0.78).mul(tint), tA.a);
       tN = vec4(mix(vec2(0.5), tN.xy, 0.7), tN.z, tN.w);
+    }
+    if (i === 4) {
+      // (the laterite scan is a field of small stones: on a trail it read as gravel. A worn path is packed earth,
+      // its pebbles pressed in, damp and darker under the forest)
+      tA = vec4(mix(vec3(...TARGET[4]), tA.rgb, 0.5).mul(mix(float(1), float(0.8), forest)), tA.a);
+      tN = vec4(mix(vec2(0.5), tN.xy, 0.5), tN.z, tN.w);
     }
     if (i === 7) {
       // living coral and algae are dark from above (brown, olive, a purple cast), coral rubble pale

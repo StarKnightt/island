@@ -257,7 +257,8 @@ export function plantMaterial(src: THREE.MeshStandardMaterial, look: PlantLook) 
   // trunks in the forest shade are dark, low in contrast and green with damp and algae toward their feet)
   if (src.name === 'canopy_bark') {
     const luma = alb.dot(vec3(0.3, 0.55, 0.15));
-    const flat = mix(vec3(luma.mul(0.5).add(0.04)), alb, 0.4);
+    // (and the scan's white lichen blotches pulled down to the bark's own tone: they read as pale patches from afar)
+    const flat = mix(vec3(luma.mul(0.5).add(0.04)), alb, 0.4).mul(mix(float(1), float(0.5), TSLTyped.smoothstep(0.2, 0.42, luma)));
     const foot = TSLTyped.smoothstep(5.0, 0.6, positionLocal.y);
     alb = flat.mul(0.5).mul(mix(vec3(1), vec3(0.72, 0.95, 0.55), foot.mul(0.7)));
   }

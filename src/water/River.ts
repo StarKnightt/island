@@ -228,12 +228,12 @@ export class River {
     const r2 = texture(laceTex, q.sub(dirR.mul(ph2.mul(7))).div(4.2).add(0.5)).r;
     const radial = r1.mul(float(1).sub(abs(ph1.mul(2).sub(1)))).add(r2.mul(float(1).sub(abs(ph2.mul(2).sub(1)))));
     const pat = mix(l1.r.mul(0.6).add(l2.a.mul(0.4)), radial, smoothstep(1.5, 5.0, rImp).mul(0.55));
-    let foam: N = smoothstep(0, 0.16, pat.sub(float(0.98).sub(cover.mul(mix(float(0.85), float(1.25), l1.b)).mul(1.2))));
+    let foam: N = smoothstep(0, 0.16, pat.sub(float(0.98).sub(cover.mul(mix(float(0.85), float(1.25), l1.b)).mul(1.42))));
     // the boil itself, as wide as the falling water, churning with bubbles
     const rCore = length(vec2(ra, max(abs(rc).sub(this.impactW * 0.3), 0)));
     const churn = texture(laceTex, q.div(1.6).add(vec2(t.mul(0.9), t.mul(-0.7)))).g;
     const churn2 = texture(laceTex, q.div(3.3).sub(vec2(t.mul(0.55), t.mul(0.8))).add(0.27)).r;
-    foam = max(foam, smoothstep(6.5, 1.0, rCore).mul(churn.mul(0.35).add(churn2.mul(0.3)).add(0.6))).clamp(0, 1);
+    foam = max(foam, smoothstep(8.0, 1.0, rCore).mul(churn.mul(0.35).add(churn2.mul(0.3)).add(0.6))).clamp(0, 1);
     // ---- what the calm water mirrors
     const R = reflect(V.negate(), N0);
     const d0 = q.sub(C);
@@ -410,8 +410,14 @@ export class River {
     const s1 = mx_noise_float(vec3(across.mul(1.9), tau.mul(0.8), 0.3));
     const s2 = mx_noise_float(vec3(across.mul(6.5), tau.mul(2.4), 1.7));
     const lumps = mx_noise_float(vec3(across.mul(0.9), tau.mul(3.1), 4.1));
-    // aeration: glassy over the lip, white within a few metres, breaking up toward the plunge
-    const aer = smoothstep(0.02, 0.3, U.y);
+    // the lip is not a weir: the water comes over it in lobes, thick where the rock is low and parted where a ledge
+    // stands up, so the top of the falls is a ragged line of tongues with dark rock between them that closes a few
+    // metres down as the lobes spread
+    const lobe = mx_noise_float(vec3(across.mul(0.62), riverU.time.mul(0.05), 6.6)).add(mx_noise_float(vec3(across.mul(1.7), 2.1, 3.3)).mul(0.35));
+    const start = float(0.012).add(max(lobe.negate(), 0).mul(0.09));
+    const lipCut = smoothstep(start, start.add(0.03), U.y).mul(mix(smoothstep(-0.75, -0.3, lobe), float(1), smoothstep(0.05, 0.3, U.y)));
+    // aeration: glassy over the lip, white within a few metres (sooner in the thick lobes), breaking up toward the plunge
+    const aer = smoothstep(float(0.02).sub(lobe.mul(0.015)), float(0.3).sub(lobe.mul(0.1)), U.y);
     const edge = float(0.5).sub(abs(U.x.sub(0.5)));
     // ragged sides: the edge wanders with the strands and the lumps coming down
     const fray = smoothstep(0.0, mix(float(0.1), float(0.2), U.y).add(s2.mul(0.05)), edge.add(s1.mul(0.09)).add(lumps.mul(aer).mul(0.05)));
@@ -431,10 +437,10 @@ export class River {
     if (veil) {
       // the veil: separate clumps and strands in front of the body, more of them lower down
       const clump = smoothstep(0.3, 0.7, lumps.mul(0.5).add(s1.mul(0.25)).add(clumps.mul(0.45)).add(U.y.mul(0.45)));
-      alpha = clump.mul(fray).mul(aer).mul(0.9).mul(smoothstep(1.0, 0.86, U.y));
+      alpha = clump.mul(fray).mul(aer).mul(0.9).mul(smoothstep(1.0, 0.86, U.y)).mul(lipCut);
     } else {
       // (a falls this size is a thick white column: see-through only over the lip and at its frayed sides)
-      alpha = clamp(mix(float(0.6), dens.mul(1.5).add(0.55).add(core.mul(0.7)), aer), 0, 1).mul(fray).mul(smoothstep(1.0, 0.93, U.y));
+      alpha = clamp(mix(float(0.6), dens.mul(1.5).add(0.55).add(core.mul(0.7)), aer), 0, 1).mul(fray).mul(smoothstep(1.0, 0.93, U.y)).mul(lipCut);
     }
     // colour: the glassy tongue is green-dark water; the body's thick strands white with a bright core, the thin water
     // between them and at the sides grey (the wet rock shows through), the clumps in front whitest
