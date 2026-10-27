@@ -440,3 +440,21 @@ before = `round-04c\`. Baseline and final measurements in `round-05-base\perf\` 
   that are not there. Judge headless runs by the uncapped numbers; check the capped pacing headed.
 * The GPU lock (`E:\tmp\island\gpu.lock`, `withlock.sh`) is shared with other sessions on this PC. `withlock.sh`
   breaks a lock older than 20 min even if its owner is still running (a long clip render holds it longer).
+
+## Round 5b (perf-5: the jungle and waterfall frame rate)
+
+* **Cause.** Not the main thread: the jungle and the waterfall are GPU-bound (fragment-bound: half resolution doubles
+  the frame rate). The "14-17 ms of CPU" of critic-05 is the main thread blocked in `writeBuffer` /
+  `createCommandEncoder` behind the GPU, and the GPU column missed the scene pass (fixed, see TESTING). With every pass
+  counted the jungle reads ~13-14 ms of GPU, the waterfall ~11-12. Hiding the rainforest trees takes the jungle from
+  ~55 to ~86 fps, the midstorey ~4 ms more: overdraw of alpha-tested leaf cards, each layer shaded in full.
+* **Fix.** Round 5's canopy-card breakup was the regression: the shadow passes measured its distance from the sun's
+  camera, so every leaf of the forest ran the two lace taps and the alpha change in every cascade. It now measures
+  from the player's camera (`glbU.viewPos`) and skips the taps on near leaves (a branch with explicit gradients).
+* **Tried and dropped.** A depth pre-pass for the leaf materials (an alpha-only pass writing depth, then the leaf
+  material depth-equal without discard). Gotchas found: three r186's reversed-depth table maps `EqualDepth` to
+  not-equal (ask for `NotEqualDepth` to get equal); `colorWrite = false` drops the alpha test (blend Zero/One
+  instead); the two pipelines' depths differ by more than a 1-unit polygon offset (-4/-4 with reversed depth). With
+  discard kept in the main pass it was slower (twice the leaf vertices, no early rejection). The depth-equal variant
+  did not take effect in the time box: still the largest win left for the jungle (72 fps needs ~3 ms off the leaves).
+

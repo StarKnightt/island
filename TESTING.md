@@ -254,9 +254,11 @@ one) and take `--uncapped` (vsync and frame limit off).
 * Rain needs a second or two to build up on surfaces if set with `immediate = false`; `stage()` sets it instantly.
 * The `shot` camera of `cliffs` is offshore (a boat's view); the `cliffs` player spot is on the cliff top, so the
   `follow` view shows the cliffs from above.
-* GPU timing comes from WebGPU timestamp queries; if the browser disables them `gpu.n` is 0. The GPU columns do not
-  include the main scene pass (with `?noshadow=1` they read about 1 ms): they are the shadow and post passes. The
-  frame time (and fps) is the measure of a view's real cost.
+* GPU timing comes from WebGPU timestamp queries; if the browser disables them `gpu.n` is 0. Since perf-5 the GPU
+  column is every pass of a frame (shadow cascades, scene, post, compute); before it the scene pass was missing
+  (three's 2048-query pool overflowed while the resolves lagged), so older reports read 2-3 ms where the frame was
+  GPU-bound. When the GPU is the limit the `cpu` column rises with it: the main thread blocks in `writeBuffer` and
+  `createCommandEncoder` waiting for the GPU process, so a high `cpu` next to a high `gpu` is not JavaScript work.
 * Headless runs (`.island-display` = `headless`): the capped measurement is not meaningful there. Headless Chrome's
   frame ticks do not follow a real display, so the auto cap sees late frames and steps down to 50 fps nearly
   everywhere, even with shadows off and the main thread at 5 ms. Read the uncapped numbers for headroom and check
