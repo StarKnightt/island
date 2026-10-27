@@ -51,6 +51,16 @@ function rainRings(q: N, t: N): N {
   return s;
 }
 
+/**
+ * The sky's light on white water: the falls, the churn and the spray are lit by the whole dome and by light scattered
+ * many times inside the foam, which washes the sky's blue out (with the zenith's colour the shaded falls of an
+ * afternoon glowed a saturated blue)
+ */
+function whiteSky(): N {
+  const s = particleSky();
+  return mix(vec3(dot(s, vec3(0.2126, 0.7152, 0.0722))).mul(vec3(0.97, 0.99, 1.03)), s, 0.3);
+}
+
 export class River {
   readonly group = new THREE.Group();
   readonly fallsCenter = new THREE.Vector3();
@@ -443,7 +453,7 @@ export class River {
     // where the escarpment behind the falls hides a low sun)
     // (white water is lit by the sky it sees and by the light it scatters inside itself: the thick body glows
     // white in the gorge's shade instead of turning the blue-grey of a lit card)
-    const skyLift = varying(particleSky()).mul(col).mul(alpha.mul(0.55));
+    const skyLift = varying(whiteSky()).mul(col).mul(alpha.mul(0.55));
     m.emissiveNode = skyLift.add(vec3(0.9, 0.95, 0.95).mul(fwd.mul(0.012).mul(pow(float(1).sub(alpha.mul(0.85)), 2))).mul(atmo.lightE).mul(cloudShadow(positionWorld)).mul(inSun));
     // relief: the streaks and lumps as bumps across the sheet, on the side facing the eye (the custom normal skips
     // the built-in back-face flip: the sheet's geometric normal faces the cliff, and the sunset behind it would light
@@ -533,18 +543,18 @@ export class River {
       const L = atmo.sunDir.normalize();
       const fwdS = pow(max(L.negate().dot(V), 0), 5).mul(1.8);
       const inSun = this.gorgeSun(p, heightAt);
-      const lit = varying(vec3(sprayU.sun).mul(fwdS.add(0.3)).mul(cloudShadow(p)).mul(inSun).mul(0.9).add(particleSky().mul(2.6)).mul(0.85));
+      const lit = varying(vec3(sprayU.sun).mul(fwdS.add(0.3)).mul(cloudShadow(p)).mul(inSun).mul(0.9).add(whiteSky().mul(2.6)).mul(0.85));
       // the plunge surges and slackens with the lumps of water coming over the lip: some splashes strong, some weak,
       // and the whole curtain breathing on two unrelated periods
       const surge = sin(t.mul(1.37)).mul(sin(t.mul(0.53).add(1.1))).mul(0.3).add(0.85);
-      const strength = mist ? select(veil, float(0.22), select(low, float(0.6), float(0.45))) : sc(10.3).mul(0.6).add(0.7).mul(surge).mul(0.8);
+      const strength = mist ? select(veil, float(0.22), select(low, float(0.75), float(0.45))) : sc(10.3).mul(0.6).add(0.7).mul(surge).mul(0.8);
       const fade = varying(smoothstep(0.0, mist ? 0.12 : 0.05, age).mul(pow(float(1).sub(age), mist ? 1.2 : 1.6)).mul(smoothstep(1.5, 6, length(p.sub(cameraPosition)))).mul(strength));
       const tex = varying(vec2(sc(9.2), sc(9.7)));
       const r = length(uv().sub(0.5)).mul(2);
       const lump = texture(laceTex, uv().mul(mist ? 0.18 : 0.3).add(tex)).b;
       const puff = smoothstep(1.0, 0.0, r).pow(mist ? 1.5 : 2.1).mul(lump.mul(1.4).sub(0.1).clamp(0.2, 1.2));
       // soft where it meets rock, and thinning into the water's surface (the pool's depth would cut it in a line)
-      const soft = smoothstep(0.0, 1.4, sceneViewDepth(screenUV).sub(positionView.z.negate())).mul(smoothstep(c.y - 0.1, c.y + (mist ? 1.2 : 0.3), positionWorld.y));
+      const soft = smoothstep(0.0, 1.4, sceneViewDepth(screenUV).sub(positionView.z.negate())).mul(smoothstep(c.y - 0.1, c.y + (mist ? 0.6 : 0.3), positionWorld.y));
       const a = puff.mul(fade).mul(soft);
       m.colorNode = vec4(lit, a);
       m.opacityNode = a;
@@ -606,7 +616,7 @@ export class River {
     const V = normalize(cameraPosition.sub(p));
     const L = atmo.sunDir.normalize();
     const fwdS = pow(max(L.negate().dot(V), 0), 5).mul(1.8);
-    const lit = varying(vec3(sprayU.sun).mul(fwdS.add(0.35)).mul(cloudShadow(p)).mul(this.gorgeSun(p, heightAt)).mul(0.9).add(particleSky().mul(2.8)).mul(0.85));
+    const lit = varying(vec3(sprayU.sun).mul(fwdS.add(0.35)).mul(cloudShadow(p)).mul(this.gorgeSun(p, heightAt)).mul(0.9).add(whiteSky().mul(2.8)).mul(0.85));
     // (the clumps' undersides and the gaps between them in their own shade)
     const shade = smoothstep(-0.1, 0.5, body).mul(0.4).add(0.6);
     const soft = smoothstep(0.0, 0.8, sceneViewDepth(screenUV).sub(positionView.z.negate())).mul(smoothstep(c.y - 0.35, c.y + 0.25, p.y));

@@ -216,6 +216,9 @@ export function createTerrainMaterial(hf: Heightfield) {
   const wet = max(max(max(wetShore, rainWet), m1.y.mul(0.65).mul(float(1).sub(underwater))), max(poolBank.mul(0.75), gorge.mul(0.7))).clamp(0, 1);
   albedo = albedo.mul(mix(float(1), float(0.58), wet.mul(float(1).sub(underwater.mul(0.6)))));
   rough = mix(rough, float(0.4), wet.mul(0.8));
+  // the falls' spray soaks everything round the pool: the banks and the lower walls near black, a little green
+  const sprayWet = smoothstep(pl.r + 24, pl.r + 3, dPool).mul(smoothstep(pl.level + 18, pl.level + 1, h)).mul(float(1).sub(underwater));
+  albedo = albedo.mul(mix(vec3(1), vec3(0.5, 0.56, 0.48), sprayWet));
   const puddle = wetness.rain.mul(smoothstep(0.58, 0.74, mx_noise_float(vec3(xz.mul(1 / 4.5), 1.3)).mul(0.5).add(0.5)))
     .mul(smoothstep(0.975, 0.995, n.y)).mul(float(1).sub(sand.mul(0.7)));
   rough = mix(rough, float(0.03), puddle);
