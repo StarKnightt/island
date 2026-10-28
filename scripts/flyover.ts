@@ -16,6 +16,12 @@
  *                                         flight, from which the render sets its exposure (below); run it first
  *   pnpm flyover --preview --from 13 --to 19   a cheap look at part of it: 1280x720, 30 fps, 2 renders a frame
  *   pnpm flyover --encode-only            mix and encode from the frames on disk
+ *   pnpm flyover --resume                 finish an interrupted render: keeps the PNGs on disk, replays the flight from
+ *                                         frame 0 uncaptured (one render a frame, the dither counters stepped as the
+ *                                         averaged renders step them) so the world, its seeded randomness and every
+ *                                         smoothed state reach the first missing frame exactly as the first run had
+ *                                         them, renders the last REPLAY_FULL frames before it in full and checks the
+ *                                         last CHECK of them against the files, then captures on
  *   [--rest <ms>] idle time after each frame (default 60), [--batch <n>] [--pause <s>] a rest after every n frames
  *   (default 120 and 8): the GPU is shared (someone may be playing a game). Everything runs at Idle priority (Chrome
  *   and ffmpeg inherit it). [--keep] keep the PNG frames; [--dev] against the dev server
@@ -50,6 +56,16 @@ const MAX_BYTES = 99e6;
 // (Windows hands an Idle process's priority class to the processes it starts: Chrome, its GPU process and ffmpeg)
 setPriority(0, constants.priority.PRIORITY_LOW);
 const N = Math.round((to - from) * FPS);
+const resume = a.has('resume');
+/** --resume: frames rendered in full (averaged) before the first missing one, and how many of those are compared */
+const REPLAY_FULL = 30, CHECK = 3;
+const checkOnly = a.has('check-only');
+/** the other side of a shared GPU: when it is busy while this capture rests, a game is running; rests grow */
+let courtesy = 1;
+function gpuBusy() {
+  const r = spawnSync('nvidia-smi', ['--query-gpu=utilization.gpu', '--format=csv,noheader,nounits'], { encoding: 'utf8' });
+  return r.status === 0 ? Number(r.stdout.trim().split('\n')[0]) : 0;
+}
 
 /**
  * The camera's exposure on top of the game's metering (ctx.exposureBias, a multiplier on the exposure): from the
@@ -142,8 +158,17 @@ async function render() {
     }
     await L.page.evaluate((w) => (window as unknown as { __island: any }).__island.ctx.engine.time = w, WORLD + from);
 
-    rmSync(FRAMES, { recursive: true, force: true });
-    mkdirSync(FRAMES, { recursive: true });
+    // --resume: the frames already on disk (a run from 0, contiguous, each a whole PNG) stay
+    let start = 0;
+    if (resume) {
+      if (from !== 0) throw new Error('--resume continues a whole flight (from 0)');
+      while (existsSync(join(FRAMES, `f_${String(start).padStart(5, '0')}.png`)) && statSync(join(FRAMES, `f_${String(start).padStart(5, '0')}.png`)).size > 100e3) start++;
+      console.log(`resume: ${start} frames on disk, replaying to frame ${start}`);
+    } else {
+      rmSync(FRAMES, { recursive: true, force: true });
+      mkdirSync(FRAMES, { recursive: true });
+    }
+    const checkDir = join(FRAMES, 'resume-check');
     const capture = async () => {
       const r = (await cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true, clip: { x: 0, y: 0, width: W, height: H, scale: 1 } })) as { data: string };
       return Buffer.from(r.data, 'base64');
@@ -154,6 +179,15 @@ async function render() {
     let pending = 0;
     for (let f = 0; f < N; f++) {
       const t = from + f / FPS;
+      if (checkOnly && f >= start) break;
+      if (f < start - REPLAY_FULL) {
+        // replay: one render, the dither counters stepped as the other ACCUM - 1 renders would have stepped them
+        const r = await frame(t, true);
+        await L.page.evaluate((n) => { const e = (window as unknown as { __island: any }).__island.ctx.engine; for (let k = 0; k < n; k++) for (const h of e.onSubframe) h(); }, ACCUM - 1);
+        log.push({ t: f / FPS, cam: r.cam, hour: +pose(t).hour.toFixed(4), layers: r.layers, pending: r.pending });
+        if (f % 120 === 0) process.stdout.write(`\rreplay ${f}/${start}`);
+        continue;
+      }
       const r = await frame(t, false);
       if (r.pending) pending++;
       log.push({ t: f / FPS, cam: r.cam, hour: +pose(t).hour.toFixed(4), layers: r.layers, pending: r.pending });
@@ -163,10 +197,24 @@ async function render() {
         const st = await sharp(png).stats();
         luma.push(+(0.2126 * st.channels[0].mean + 0.7152 * st.channels[1].mean + 0.0722 * st.channels[2].mean).toFixed(2));
         if (f % 10 === 0) await sharp(png).jpeg({ quality: 80 }).toFile(join(FRAMES, `m_${(f / FPS).toFixed(1).padStart(4, '0')}.jpg`));
+      } else if (f < start) {
+        // the last replayed frames, rendered in full: the ones checked are kept beside the originals
+        if (f >= start - CHECK) {
+          mkdirSync(checkDir, { recursive: true });
+          writeFileSync(join(checkDir, `f_${String(f).padStart(5, '0')}.png`), await capture());
+        }
+        continue;
       } else writes.push(writeFile(join(FRAMES, `f_${String(f).padStart(5, '0')}.png`), await capture()));
       if (writes.length >= 12) await writes.shift();
-      if (REST) await sleep(REST);
-      if (f && f % BATCH === 0 && PAUSE) await sleep(PAUSE * 1000);
+      if (REST) await sleep(REST * courtesy);
+      if (f && f % BATCH === 0 && PAUSE) {
+        await sleep(1500);
+        const busy = gpuBusy();
+        const was = courtesy;
+        courtesy = busy > 45 ? Math.min(6, courtesy * 2) : Math.max(1, courtesy / 2);
+        if (courtesy !== was) console.log(`\n[gpu] ${busy} % busy while resting: rests x${courtesy}`);
+        await sleep(PAUSE * 1000 * courtesy);
+      }
       if (f % 60 === 0) process.stdout.write(`\rframe ${f}/${N} (${((Date.now() - t0) / Math.max(1, f)).toFixed(0)} ms/frame)`);
     }
     await Promise.all(writes);
@@ -177,7 +225,7 @@ async function render() {
     server.stop();
   }
   if (L.console.some((l) => l.startsWith('[pageerror]'))) console.warn(L.console.filter((l) => l.startsWith('[pageerror]')).join('\n'));
-  writeFileSync(join(FRAMES, 'flight.json'), JSON.stringify({ fps: FPS, from, fallsPos, frames: log }));
+  if (!checkOnly) writeFileSync(join(FRAMES, 'flight.json'), JSON.stringify({ fps: FPS, from, fallsPos, frames: log }));
 }
 
 function ff(args: string[], what: string) {
@@ -217,7 +265,13 @@ function writeWav(path: string, data: Float32Array, rate = 48000) {
  * way toward its mean), faded in and out, then MASTER and a two-pass linear loudnorm.
  */
 function mixAudio(wav: string) {
-  const j = JSON.parse(readFileSync(join(FRAMES, 'flight.json'), 'utf8')) as { fps: number; fallsPos: number[]; frames: FrameLog[] };
+  // the render's own log of the game's levels when it covers the whole flight, else the metering pass's (same flight,
+  // 20 fps; the envelopes are smoothed far below that)
+  const own = join(FRAMES, 'flight.json'), metered = 'E:\\tmp\\island\\flyover-meter\\flight.json';
+  const whole = (p: string) => existsSync(p) && Math.abs((JSON.parse(readFileSync(p, 'utf8')).frames.length / JSON.parse(readFileSync(p, 'utf8')).fps) - (to - from)) < 0.1;
+  const src = whole(own) ? own : metered;
+  const j = JSON.parse(readFileSync(src, 'utf8')) as { fps: number; fallsPos: number[]; frames: FrameLog[] };
+  console.log(`audio levels from ${src}`);
   const fps = j.fps, n = j.frames.length, len = n / fps, S = Math.round(len * 48000);
   const env = new Map<string, number[]>();
   for (const l of LAYERS) {
@@ -294,6 +348,7 @@ function stills() {
 
 mkdirSync(OUT_DIR, { recursive: true });
 if (!a.has('encode-only')) await render();
+if (checkOnly) process.exit(0);
 if (meter) {
   const m = JSON.parse(readFileSync(METER, 'utf8')) as { luma: number[] };
   console.log(`metered ${m.luma.length} frames -> ${METER}; luma ${Math.min(...m.luma).toFixed(0)}..${Math.max(...m.luma).toFixed(0)}`);
