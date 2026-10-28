@@ -13,6 +13,7 @@
     "perf": "tsx scripts/perf.ts",
     "clip": "tsx scripts/clip.ts",
     "record": "tsx scripts/record.ts",
+    "flyover": "tsx scripts/flyover.ts",
     "assets:fetch": "tsx scripts/fetch-assets.ts",
     "assets:build": "tsx scripts/build-assets.ts",
     "gen:island": "tsx tools/gen-island.ts"
