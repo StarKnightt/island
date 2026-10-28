@@ -162,7 +162,7 @@ async function render() {
     let start = 0;
     if (resume) {
       if (from !== 0) throw new Error('--resume continues a whole flight (from 0)');
-      while (existsSync(join(FRAMES, `f_${String(start).padStart(5, '0')}.png`)) && statSync(join(FRAMES, `f_${String(start).padStart(5, '0')}.png`)).size > 100e3) start++;
+      while (existsSync(join(FRAMES, `f_${String(start).padStart(5, '0')}.png`)) && statSync(join(FRAMES, `f_${String(start).padStart(5, '0')}.png`)).size > 10e3) start++;
       console.log(`resume: ${start} frames on disk, replaying to frame ${start}`);
     } else {
       rmSync(FRAMES, { recursive: true, force: true });
