@@ -4,7 +4,7 @@
  * the steeper reaches, foamy at riffles and under the falls); the falls are a curved sheet of streaming water with
  * spray and a mist cloud rising from the pool.
  */
-import { effectMRT } from '../core/fx';
+import { aoCoverMRT, effectMRT } from '../core/fx';
 import * as THREE from 'three/webgpu';
 import {
   abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, cos, dot, exp, float, floor,
@@ -211,15 +211,19 @@ export class River {
     const sigma = mix(vec3(0.95, 0.5, 0.58), vec3(1.25, 1.15, 1.3), turbid);
     const T = exp(sigma.negate().mul(min(dEff, 30)));
     const bed = behind.mul(mix(float(0.72), float(1.12), bedN)).mul(vec3(0.92, 1.0, 0.94));
-    const jade = mix(vec3(0.012, 0.036, 0.03), vec3(0.05, 0.04, 0.024), turbid);
+    // (clear tea-green over dark basalt: little light comes back out of the deep water)
+    const jade = mix(vec3(0.014, 0.034, 0.022), vec3(0.05, 0.04, 0.024), turbid);
     // ---- foam: a solid boil under the falls breaking into lace that drifts and spreads toward the outflow
+    // (cover: 1 is solid foam, ~0.7 streaks, ~0.3 the odd thread of the web, below ~0.2 clear water. Out of the churn
+    // the pool is clear: a scatter over the whole pool saturated the threshold below and turned it into a white sheet)
     const down = max(ra, 0);
-    const spread = down.mul(0.42).add(this.impactW * 0.45 + 1.5);
-    const plume = exp(down.mul(-0.11)).mul(smoothstep(spread, spread.mul(0.25), abs(rc)));
-    // (past the boil a thin scatter of drifting foam over the whole pool, thinning toward its banks)
-    const cover = max(max(plume.mul(1.05), float(1).sub(smoothstep(0.5, 15, rImp)).pow(1.1)), exp(rImp.mul(-0.03)).mul(0.9));
+    const spread = down.mul(0.3).add(this.impactW * 0.35 + 1.0);
+    const plume = exp(down.mul(-0.045)).mul(smoothstep(spread, spread.mul(0.2), abs(rc)));
+    const near = float(1).sub(smoothstep(2.0, 9.0, rImp));
+    const cover = max(max(plume, near), exp(rImp.mul(-0.07)).mul(0.32));
     const drift = fd.mul(t.mul(0.5));
-    const l1 = texture(laceTex, q.sub(drift).div(6.5));
+    // (the lace drawn out along the flow: the foam leaves the churn in streaks)
+    const l1 = texture(laceTex, vec2(ra.sub(t.mul(0.5)).div(15), rc.div(5.5)));
     const l2 = texture(laceTex, q.sub(drift.mul(1.5)).div(2.4).add(0.37));
     // and lace carried outward from the boil, every way across the pool (two flow phases crossfaded, so the pattern
     // never shears apart however long it runs)
@@ -228,12 +232,15 @@ export class River {
     const r2 = texture(laceTex, q.sub(dirR.mul(ph2.mul(7))).div(4.2).add(0.5)).r;
     const radial = r1.mul(float(1).sub(abs(ph1.mul(2).sub(1)))).add(r2.mul(float(1).sub(abs(ph2.mul(2).sub(1)))));
     const pat = mix(l1.r.mul(0.6).add(l2.a.mul(0.4)), radial, smoothstep(1.5, 5.0, rImp).mul(0.55));
-    let foam: N = smoothstep(0, 0.16, pat.sub(float(0.98).sub(cover.mul(mix(float(0.85), float(1.25), l1.b)).mul(1.42))));
-    // the boil itself, as wide as the falling water, churning with bubbles
+    let foam: N = smoothstep(0, 0.1, pat.sub(float(0.97).sub(cover.mul(mix(float(0.85), float(1.2), l1.b)).mul(0.78))));
+    // the boil itself, as wide as the falling water: solid where it lands, breaking into churning clumps a few metres out
     const rCore = length(vec2(ra, max(abs(rc).sub(this.impactW * 0.3), 0)));
     const churn = texture(laceTex, q.div(1.6).add(vec2(t.mul(0.9), t.mul(-0.7)))).g;
     const churn2 = texture(laceTex, q.div(3.3).sub(vec2(t.mul(0.55), t.mul(0.8))).add(0.27)).r;
-    foam = max(foam, smoothstep(8.0, 1.0, rCore).mul(churn.mul(0.35).add(churn2.mul(0.3)).add(0.6))).clamp(0, 1);
+    const boilK = smoothstep(6.5, 1.5, rCore);
+    foam = max(foam, smoothstep(0.45, 0.75, boilK.mul(0.75).add(churn.mul(0.55).add(churn2.mul(0.45)).mul(0.5)))).clamp(0, 1);
+    // under the churn the water is full of bubbles: a paler, milkier green, not white
+    const aerated = exp(rImp.mul(-0.2)).mul(0.85);
     // ---- what the calm water mirrors
     const R = reflect(V.negate(), N0);
     const d0 = q.sub(C);
@@ -252,7 +259,7 @@ export class River {
     const wMirror = select(dH.greaterThan(0.5), onScreen.mul(clear), float(0));
     const cloud = cloudShadow(p);
     const lightE = atmo.lightE.mul(1 / Math.PI);
-    const surround = vec3(0.045, 0.06, 0.04).mul(lightE).mul(mix(float(0.7), float(1), cloud));
+    const surround = vec3(0.055, 0.075, 0.05).mul(lightE).mul(mix(float(0.7), float(1), cloud));
     // (the falls are not mirrored: the pool in front of a falls this size is never calm enough to hold its image,
     // and a clean white stripe on the water gave the trick away)
     const mirror: N = mix(surround, viewportSharedTexture(uvH).rgb.mul(0.9), wMirror.mul(poolDbg.mirror));
@@ -261,8 +268,11 @@ export class River {
     // (a Lambert surface under a sky of radiance L gives back albedo x L; the gorge hides about half of the sky)
     // (the grey-white of the sky gap, not the zenith's blue: in the afternoon shade the foam and the body under a blue
     // sky term turned the whole pool navy)
-    const skyE = varying(whiteSky()).mul(mix(float(0.85), float(2.2), foam));
-    const diffuse = mix(jade.mul(float(1).sub(T)).mul(vec3(1.2, 1.6, 1.15)), vec3(0.85, 0.88, 0.86), foam);
+    // (foam takes about what a white surface under the half of the sky the gorge leaves it gets: at twice that it
+    // glowed brighter than the sky gap in the afternoon shade)
+    const skyE = varying(whiteSky()).mul(mix(float(0.85), float(1.1), foam));
+    const water = mix(jade.mul(float(1).sub(T)), vec3(0.07, 0.11, 0.095), aerated.mul(float(1).sub(turbid)));
+    const diffuse = mix(water, vec3(0.8, 0.83, 0.81), foam);
     m.colorNode = vec4(diffuse, 1);
     m.roughnessNode = mix(float(0.05), float(0.75), foam);
     m.metalnessNode = float(0);
@@ -454,6 +464,7 @@ export class River {
     const col = mix(glassy, white, aer.max(0.25)).mul(mix(float(0.3), float(1), inSun));
     m.colorNode = vec4(col, alpha);
     m.opacityNode = alpha;
+    m.mrtNode = aoCoverMRT(smoothstep(0.0, 0.12, alpha));
     m.roughnessNode = mix(float(0.08), float(0.65), aer);
     m.metalnessNode = float(0);
     // light passing through the thin water toward the eye (backlit falls glow), and the glassy tongue's sky sheen
@@ -502,7 +513,6 @@ export class River {
       const m = new THREE.SpriteNodeMaterial();
       m.transparent = true;
       m.depthWrite = false;
-      m.mrtNode = effectMRT();
       const t = riverU.time;
       const id = float(instanceIndex);
       const seed = (k: number) => hash(id.mul(k).add(mist ? 31.7 : 3.3));
@@ -568,6 +578,7 @@ export class River {
       const a = puff.mul(fade).mul(soft);
       m.colorNode = vec4(lit, a);
       m.opacityNode = a;
+      m.mrtNode = effectMRT(a);
       const sprite = new THREE.Sprite(m);
       (sprite as unknown as { count: number }).count = count;
       sprite.frustumCulled = false;
@@ -614,7 +625,6 @@ export class River {
     m.depthWrite = false;
     m.side = THREE.DoubleSide;
     m.forceSinglePass = true;
-    m.mrtNode = effectMRT();
     m.fog = false;
     const t = riverU.time, U = uv(), p = positionWorld;
     const around = U.x.mul(W * 4.2);
@@ -635,6 +645,7 @@ export class River {
     const a = smoothstep(-0.2, 0.55, body).mul(pow(smoothstep(1.0, 0.1, U.y), 1.6)).mul(soft).mul(0.9);
     m.colorNode = vec4(lit.mul(shade), a);
     m.opacityNode = a;
+    m.mrtNode = effectMRT(a);
     const mesh = new THREE.Mesh(g, m);
     mesh.renderOrder = 12.8;
     mesh.frustumCulled = false;
