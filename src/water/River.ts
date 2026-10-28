@@ -213,32 +213,39 @@ export class River {
     const bed = behind.mul(mix(float(0.72), float(1.12), bedN)).mul(vec3(0.92, 1.0, 0.94));
     // (clear tea-green over dark basalt: little light comes back out of the deep water)
     const jade = mix(vec3(0.014, 0.034, 0.022), vec3(0.05, 0.04, 0.024), turbid);
-    // ---- foam: a solid boil under the falls breaking into lace that drifts and spreads toward the outflow
-    // (cover: 1 is solid foam, ~0.7 streaks, ~0.3 the odd thread of the web, below ~0.2 clear water. Out of the churn
-    // the pool is clear: a scatter over the whole pool saturated the threshold below and turned it into a white sheet)
+    // ---- foam: white where the falls churn the water and in streaks drifting off toward the outflow, the rest clear
+    // (cover 1 is nearly solid, ~0.5 thin threads, below ~0.15 none: a scatter of cover over the whole pool saturated
+    // the threshold and turned it into a white sheet)
     const down = max(ra, 0);
-    const spread = down.mul(0.3).add(this.impactW * 0.35 + 1.0);
-    const plume = exp(down.mul(-0.045)).mul(smoothstep(spread, spread.mul(0.2), abs(rc)));
-    const near = float(1).sub(smoothstep(2.0, 9.0, rImp));
-    const cover = max(max(plume, near), exp(rImp.mul(-0.07)).mul(0.32));
     const drift = fd.mul(t.mul(0.5));
-    // (the lace drawn out along the flow: the foam leaves the churn in streaks)
-    const l1 = texture(laceTex, vec2(ra.sub(t.mul(0.5)).div(15), rc.div(5.5)));
-    const l2 = texture(laceTex, q.sub(drift.mul(1.5)).div(2.4).add(0.37));
+    const l2 = texture(laceTex, q.sub(drift.mul(1.2)).div(7).add(0.37));
+    // (a band of streaks leaving the churn toward the outflow, its edges wandering)
+    const spread = down.mul(0.12).add(this.impactW * 0.22 + 0.5);
+    const plume = exp(down.mul(-0.055)).mul(smoothstep(spread, spread.mul(0.2), abs(rc.add(l2.b.sub(0.5).mul(4)))));
+    const near = float(1).sub(smoothstep(2.0, 9.0, rImp));
+    const cover = max(plume, near);
+    // the streaks: the lines of the lace's web drawn out along the flow (thresholded, its lines stay connected
+    // threads where the peaks of a noise turned into specks: confetti close up, glitter from afar)
+    const l1 = texture(laceTex, vec2(ra.sub(t.mul(0.5)).div(32), rc.div(7)));
     // and lace carried outward from the boil, every way across the pool (two flow phases crossfaded, so the pattern
     // never shears apart however long it runs)
     const ph1 = fract(t.mul(0.07)), ph2 = fract(t.mul(0.07).add(0.5));
-    const r1 = texture(laceTex, q.sub(dirR.mul(ph1.mul(7))).div(4.2)).r;
-    const r2 = texture(laceTex, q.sub(dirR.mul(ph2.mul(7))).div(4.2).add(0.5)).r;
+    const r1 = texture(laceTex, q.sub(dirR.mul(ph1.mul(7))).div(6.5)).r;
+    const r2 = texture(laceTex, q.sub(dirR.mul(ph2.mul(7))).div(6.5).add(0.5)).r;
     const radial = r1.mul(float(1).sub(abs(ph1.mul(2).sub(1)))).add(r2.mul(float(1).sub(abs(ph2.mul(2).sub(1)))));
-    const pat = mix(l1.r.mul(0.6).add(l2.a.mul(0.4)), radial, smoothstep(1.5, 5.0, rImp).mul(0.55));
-    let foam: N = smoothstep(0, 0.1, pat.sub(float(0.97).sub(cover.mul(mix(float(0.85), float(1.2), l1.b)).mul(0.78))));
+    const pat = mix(l1.a, radial, smoothstep(1.5, 5.0, rImp).mul(smoothstep(13, 7, rImp)).mul(0.3));
+    // (thin foam is a lace of bubbles with the water showing through, not a white line)
+    const holes = smoothstep(0.32, 0.62, texture(laceTex, q.sub(drift).div(1.5).add(0.71)).g);
+    let foam: N = smoothstep(0, 0.2, pat.sub(float(0.95).sub(cover.mul(mix(float(0.85), float(1.2), l1.b)).mul(0.7))))
+      .mul(mix(float(0.25), float(1), holes));
     // the boil itself, as wide as the falling water: solid where it lands, breaking into churning clumps a few metres out
     const rCore = length(vec2(ra, max(abs(rc).sub(this.impactW * 0.3), 0)));
     const churn = texture(laceTex, q.div(1.6).add(vec2(t.mul(0.9), t.mul(-0.7)))).g;
     const churn2 = texture(laceTex, q.div(3.3).sub(vec2(t.mul(0.55), t.mul(0.8))).add(0.27)).r;
-    const boilK = smoothstep(6.5, 1.5, rCore);
-    foam = max(foam, smoothstep(0.45, 0.75, boilK.mul(0.75).add(churn.mul(0.55).add(churn2.mul(0.45)).mul(0.5)))).clamp(0, 1);
+    // (solid under the drum of white water, out past it in churning clumps with the water showing between them)
+    const boilK = smoothstep(7.5, 2.0, rCore);
+    const churnF = smoothstep(0.45, 0.75, boilK.mul(0.75).add(churn.mul(0.55).add(churn2.mul(0.45)).mul(0.5)));
+    foam = max(foam, churnF.mul(mix(holes.mul(0.6).add(0.4), float(1), smoothstep(3.5, 2.0, rCore)))).clamp(0, 1);
     // under the churn the water is full of bubbles: a paler, milkier green, not white
     const aerated = exp(rImp.mul(-0.2)).mul(0.85);
     // ---- what the calm water mirrors
