@@ -139,7 +139,12 @@ async function render(only: Set<string> | null, stills: boolean) {
       mkdirSync(dir, { recursive: true });
       const n = Math.round(s.dur * FPS), log: FrameLog[] = [], writes: Promise<void>[] = [], t0 = Date.now();
       for (let f = 0; f < n; f++) {
-        const r = await frame(shotPose(s, f / FPS), ACCUM);
+        let r = await frame(shotPose(s, f / FPS), ACCUM);
+        // the clock reset at the shot start recompiles a few pipelines; frame 0 would render black
+        for (let k = 0; r.pending && k < 40; k++) {
+          await sleep(250);
+          r = await frame(shotPose(s, f / FPS), ACCUM, 0);
+        }
         if (r.pending) console.warn(`\n  frame ${f}: ${r.pending} pipelines still compiling`);
         log.push({ t: f / FPS, cam: r.cam, layers: r.layers });
         writes.push(writeFile(join(dir, `f_${String(f).padStart(5, '0')}.png`), await capture()));
