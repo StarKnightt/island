@@ -11,7 +11,9 @@
  * then the same loops are mixed offline under those envelopes, high-passed (no rumble), smoothed, evened out,
  * compressed, limited and normalised (-20 LUFS, -3 dBTP).
  *
- *   pnpm flyover                          render, mix, encode E:\shots\island\update-r7\update-r7.mp4 (+ review JPGs)
+ *   pnpm flyover                          render (supersampled: --dsf, default 1.5, a 2880x1620 render), mix, encode
+ *                                         E:\shots\island\update-r7\update-r7.mp4 and update-r7_1440.mp4 (--no-1440:
+ *                                         not that one), review JPGs; a previous update-r7.mp4 is kept as _v1
  *   pnpm flyover --meter                  the metering pass (640x360, 20 fps, one render a frame): mean luma along the
  *                                         flight, from which the render sets its exposure (below); run it first
  *   pnpm flyover --preview --from 13 --to 19   a cheap look at part of it: 1280x720, 30 fps, 2 renders a frame
@@ -26,7 +28,7 @@
  *   (default 120 and 8): the GPU is shared (someone may be playing a game). Everything runs at Idle priority (Chrome
  *   and ffmpeg inherit it). [--keep] keep the PNG frames; [--dev] against the dev server
  */
-import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, statSync, existsSync, renameSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -41,6 +43,8 @@ const meter = a.has('meter');
 const FPS = meter ? 20 : preview ? 30 : 60;
 const W = meter ? 640 : preview ? 1280 : 1920, H = meter ? 360 : preview ? 720 : 1080;
 const ACCUM = meter ? 1 : preview ? 2 : 8;
+/** supersampling: the page renders at DSF x its CSS size (2880x1620 for the video) and the encode scales it down */
+const DSF = meter || preview ? 1 : Number(a.get('dsf', '1.5'));
 /** the metering pass's mean luma per video time */
 const METER = 'E:\\tmp\\island\\flyover-meter.json';
 const OUT_DIR = 'E:\\shots\\island\\update-r7';
@@ -69,15 +73,17 @@ function gpuBusy() {
 
 /**
  * The camera's exposure on top of the game's metering (ctx.exposureBias, a multiplier on the exposure): from the
- * metering pass, pulled toward a steady mean luma (88 % of the way in exposure, lifting the dark stretches up to 3x, never darkening) and
- * smoothed over about a second each way, so the frame holds its brightness from the late sun through dusk into night
- * and under the canopy, changing only slowly. 1 without a metering pass.
+ * metering pass, pulled toward a steady mean luma (88 % of the way in exposure, lifting the dark stretches up to 3x)
+ * and smoothed over about a second each way, so the frame holds its brightness from the late sun through dusk into
+ * night and under the canopy, changing only slowly. Stretches metered over `bright` (flying into the low sun's glow
+ * in the haze) are held back a little, as a camera exposing for the land would (they came out washed out). 1 without
+ * a metering pass.
  */
 const bias = (() => {
   if (meter || !existsSync(METER)) return () => 1;
   const m = JSON.parse(readFileSync(METER, 'utf8')) as { fps: number; luma: number[] };
-  const want = 44;
-  const raw = m.luma.map((l) => Math.min(3, Math.max(1, Math.pow(want / Math.max(l, 4), 1.4 * 0.88))));
+  const want = 44, bright = 100;
+  const raw = m.luma.map((l) => (l > bright ? Math.max(0.7, Math.pow(bright / l, 0.9)) : Math.min(3, Math.max(1, Math.pow(want / Math.max(l, 4), 1.4 * 0.88)))));
   const sm = smooth(raw, m.fps, 1.1);
   return (t: number) => {
     const f = t * m.fps, i = Math.min(sm.length - 1, Math.floor(f)), j = Math.min(sm.length - 1, i + 1);
@@ -103,7 +109,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function render() {
   const server = await ensureServer(a.has('dev') ? 'dev' : 'preview');
-  const L = await launch({ width: W, height: H, profile: 'E:\\tmp\\island\\chrome-dev' });
+  const L = await launch({ width: W, height: H, dsf: DSF, profile: 'E:\\tmp\\island\\chrome-dev' });
   await L.context.addInitScript({ content: 'globalThis.__name = (f) => f' });
   const cdp = await L.context.newCDPSession(L.page);
   const p0 = pose(from);
@@ -114,7 +120,7 @@ async function render() {
     await L.page.waitForFunction(() => typeof (window as unknown as { __island?: { ready?: unknown } }).__island?.ready === 'function', null, { timeout: 180000 });
     await L.page.evaluate(() => (window as unknown as { __island: { ready: () => Promise<boolean> } }).__island.ready());
     const dims = await L.page.evaluate(() => [innerWidth, innerHeight, devicePixelRatio]);
-    if (dims[0] !== W || dims[1] !== H || dims[2] !== 1) throw new Error(`viewport ${dims.join('x')}, want ${W}x${H} at dpr 1`);
+    if (dims[0] !== W || dims[1] !== H || dims[2] !== DSF) throw new Error(`viewport ${dims.join('x')}, want ${W}x${H} at dpr ${DSF}`);
     const cam = (t: number) => {
       const p = pose(t);
       const r = (v: { toArray: () => number[] }) => v.toArray().map((x) => +x.toFixed(4));
@@ -171,8 +177,9 @@ async function render() {
       mkdirSync(FRAMES, { recursive: true });
     }
     const checkDir = join(FRAMES, 'resume-check');
+    // (W x H CSS pixels at DSF: the PNG holds every rendered pixel)
     const capture = async () => {
-      const r = (await cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true, clip: { x: 0, y: 0, width: W, height: H, scale: 1 } })) as { data: string };
+      const r = (await cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true, clip: { x: 0, y: 0, width: W, height: H, scale: DSF } })) as { data: string };
       return Buffer.from(r.data, 'base64');
     };
     const writes: Promise<void>[] = [];
@@ -315,35 +322,42 @@ function mixAudio(wav: string) {
   }
   const raw = wav.replace(/\.wav$/, '.raw.wav');
   writeWav(raw, out);
-  const m = spawnSync('ffmpeg', ['-hide_banner', '-i', raw, '-af', `${MASTER},loudnorm=I=${LUFS}:TP=-3:LRA=7:print_format=json`, '-f', 'null', '-'], { encoding: 'utf8' }).stderr;
+  const m = spawnSync('ffmpeg', ['-hide_banner', '-i', raw, '-af', `${MASTER},loudnorm=I=${LUFS}:TP=-3.5:LRA=7:print_format=json`, '-f', 'null', '-'], { encoding: 'utf8' }).stderr;
   const js = JSON.parse(m.slice(m.lastIndexOf('{'), m.lastIndexOf('}') + 1)) as Record<string, string>;
-  const ln = `${MASTER},loudnorm=I=${LUFS}:TP=-3:LRA=7:measured_I=${js.input_i}:measured_TP=${js.input_tp}:measured_LRA=${js.input_lra}:measured_thresh=${js.input_thresh}:offset=${js.target_offset}:linear=true`;
+  const ln = `${MASTER},loudnorm=I=${LUFS}:TP=-3.5:LRA=7:measured_I=${js.input_i}:measured_TP=${js.input_tp}:measured_LRA=${js.input_lra}:measured_thresh=${js.input_thresh}:offset=${js.target_offset}:linear=true`;
   ff(['-i', raw, '-af', `${ln},aresample=48000,atrim=0:${len.toFixed(4)}`, '-c:a', 'pcm_s24le', wav], 'loudnorm');
   rmSync(raw, { force: true });
   const peaks = Object.fromEntries(LAYERS.map((l) => [l.name, +Math.max(...env.get(l.name)!).toFixed(3)]));
   console.log(`audio: ${len.toFixed(2)} s, layer peaks ${JSON.stringify(peaks)} -> ${wav}`);
 }
 
-/** H.264 two-pass at the bitrate that lands the file at about TARGET_MB (CRF 21 on this much foliage at 60 fps
- *  runs ~30 Mbit/s, ~170 MB for the flight), AAC 192k */
-const TARGET_MB = 95;
-function encode(wav: string) {
+/**
+ * H.264 (High, yuv420p, for X) two-pass at the bitrate that lands the file at about TARGET_MB, AAC 192k. The
+ * supersampled frames are scaled down with lanczos; the conversion to 8-bit 4:2:0 is error-diffusion dithered (the
+ * downscale carries more than 8 bits: no banding in the sky, no visible grain), and x264's variance AQ biased to dark,
+ * flat areas keeps bits on the sky and the night. No tune (film and grain spend bits on noise there is none of).
+ */
+const TARGET_MB = 97;
+function encode(wav: string, out: string, height: number) {
   const n = readdirSync(FRAMES).filter((f) => f.endsWith('.png')).length;
   if (n !== N) throw new Error(`${n} frames on disk, want ${N}`);
-  const kbps = Math.floor((TARGET_MB * 8e3) / (N / FPS) - 192 - 150);
+  const kbps = Math.floor((TARGET_MB * 8e3) / (N / FPS) - 192 - 120);
   const log = join(FRAMES, 'x264');
+  const width = Math.round((height * 16) / 9);
   const v = ['-framerate', String(FPS), '-start_number', '0', '-i', join(FRAMES, 'f_%05d.png')];
-  const x = ['-c:v', 'libx264', '-preset', 'slow', '-b:v', `${kbps}k`, '-maxrate', `${Math.round(kbps * 1.6)}k`, '-bufsize', `${kbps * 2}k`,
-    '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-r', String(FPS), '-g', String(FPS * 2), '-passlogfile', log];
-  ff([...v, ...x, '-pass', '1', '-an', '-f', 'mp4', 'NUL'], 'encode pass 1');
-  ff([...v, '-i', wav, '-map', '0:v', '-map', '1:a', ...x, '-pass', '2', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', '-shortest', OUT], 'encode pass 2');
+  const vf = ['-vf', `scale=${width}:${height}:flags=lanczos+accurate_rnd+full_chroma_int:sws_dither=ed,format=yuv420p`];
+  const x = ['-c:v', 'libx264', '-preset', 'slower', '-b:v', `${kbps}k`, '-maxrate', `${kbps * 2}k`, '-bufsize', `${kbps * 2}k`,
+    '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-x264-params', 'aq-mode=3:aq-strength=0.9', '-r', String(FPS), '-g', String(FPS * 2),
+    '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-passlogfile', log];
+  ff([...v, ...vf, ...x, '-pass', '1', '-an', '-f', 'mp4', 'NUL'], 'encode pass 1');
+  ff([...v, '-i', wav, '-map', '0:v', '-map', '1:a', ...vf, ...x, '-pass', '2', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', '-shortest', out], 'encode pass 2');
   for (const f of readdirSync(FRAMES)) if (f.startsWith('x264')) rmSync(join(FRAMES, f));
-  console.log(`video: ${(N / FPS).toFixed(3)} s at ${kbps} kbit/s -> ${OUT} (${(statSync(OUT).size / 1e6).toFixed(1)} MB)`);
+  console.log(`video: ${width}x${height}, ${(N / FPS).toFixed(3)} s at ${kbps} kbit/s -> ${out} (${(statSync(out).size / 1e6).toFixed(1)} MB)`);
 }
 
 /** review frames as JPGs (video time in s), and a 12-frame contact sheet */
 function stills() {
-  const at = preview ? [0.25, 0.5, 0.75].map((k) => (N / FPS) * k) : [3, 18.6, 25.6, 36.6, 45];
+  const at = preview ? [0.25, 0.5, 0.75].map((k) => (N / FPS) * k) : [3, 25.6, 31, 32.6, 40];
   at.forEach((t, i) => ff(['-ss', t.toFixed(3), '-i', OUT, '-frames:v', '1', '-q:v', '2', join(OUT_DIR, `${preview ? 'preview' : 'frame'}_${i + 1}_${t.toFixed(1)}s.jpg`)], 'still'));
   ff(['-i', OUT, '-vf', `fps=12/${(N / FPS).toFixed(3)},scale=480:-1,tile=4x3`, '-frames:v', '1', '-q:v', '3', OUT.replace(/\.mp4$/, '_contact.jpg')], 'contact sheet');
 }
@@ -358,6 +372,12 @@ if (meter) {
 }
 const wav = join(FRAMES, 'flight.wav');
 mixAudio(wav);
-encode(wav);
+// (the previous cut is kept once, as <name>_v1.mp4)
+const V1 = OUT.replace(/\.mp4$/, '_v1.mp4');
+if (!preview && existsSync(OUT) && !existsSync(V1)) renameSync(OUT, V1);
+encode(wav, OUT, preview ? H : 1080);
+const OUT1440 = OUT.replace(/\.mp4$/, '_1440.mp4');
+if (!preview && !a.has('no-1440')) encode(wav, OUT1440, 1440);
 stills();
-if (!a.has('keep') && existsSync(OUT) && statSync(OUT).size <= MAX_BYTES) for (const f of readdirSync(FRAMES)) if (f.endsWith('.png')) rmSync(join(FRAMES, f));
+const fits = (p: string) => existsSync(p) && statSync(p).size <= MAX_BYTES;
+if (!a.has('keep') && fits(OUT) && (preview || a.has('no-1440') || fits(OUT1440))) for (const f of readdirSync(FRAMES)) if (f.endsWith('.png')) rmSync(join(FRAMES, f));

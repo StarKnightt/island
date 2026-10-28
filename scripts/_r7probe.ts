@@ -23,10 +23,21 @@ const server = await ensureServer(a.has('preview') ? 'preview' : 'dev');
 const L = await launch({ width: 1920, height: 1080, dsf, profile: a.get('profile', 'E:\\tmp\\island\\chrome-r7probe') });
 await L.context.addInitScript({ content: 'globalThis.__name = (f) => f' });
 const cdp = await L.context.newCDPSession(L.page);
+// --bias: the flyover's metered exposure lift (as flyover.ts works it out) on flyover poses
+const meterBias = (() => {
+  if (!a.has('bias')) return () => 1;
+  const m = JSON.parse(readFileSync('E:\\tmp\\island\\flyover-meter.json', 'utf8')) as { fps: number; luma: number[] };
+  const raw = m.luma.map((l) => (l > 100 ? Math.max(0.7, Math.pow(100 / l, 0.9)) : Math.min(3, Math.max(1, Math.pow(44 / Math.max(l, 4), 1.4 * 0.88)))));
+  const k = 1 - Math.exp(-1 / (m.fps * 1.1));
+  const o = raw.slice();
+  for (let i = 1; i < o.length; i++) o[i] = o[i - 1] + (o[i] - o[i - 1]) * k;
+  for (let i = o.length - 2; i >= 0; i--) o[i] = o[i + 1] + (o[i] - o[i + 1]) * k;
+  return (t: number) => o[Math.min(o.length - 1, Math.round(t * m.fps))];
+})();
 const camOf = (j: (typeof jobs)[number], t: number) => {
-  if (j.cam) return { pos: j.cam.pos, target: j.cam.target, fov: j.cam.fov, up: j.up ?? [0, 1, 0], hour: j.hour ?? 13 };
+  if (j.cam) return { pos: j.cam.pos, target: j.cam.target, fov: j.cam.fov, up: j.up ?? [0, 1, 0], hour: j.hour ?? 13, bias: 1 };
   const p = pose(t);
-  return { pos: p.pos.toArray(), target: p.target.toArray(), fov: p.fov, up: p.up.toArray(), hour: j.hour ?? p.hour };
+  return { pos: p.pos.toArray(), target: p.target.toArray(), fov: p.fov, up: p.up.toArray(), hour: j.hour ?? p.hour, bias: meterBias(t) };
 };
 try {
   const c0 = camOf(jobs[0], jobs[0].t ?? 0);
@@ -46,10 +57,11 @@ try {
     const api = (window as any).__island;
     api.ctx.tod.setHour(o.c.hour);
     api.ctx.tod.frozen = true;
+    api.ctx.exposureBias = o.c.bias;
     api.ctx.engine.camera.up.set(o.c.up[0], o.c.up[1], o.c.up[2]);
     return api.shotFrame({ cam: { pos: o.c.pos, target: o.c.target, fov: o.c.fov }, walk: null, accum: o.accum, dt: 1 / 60 }).pending;
   }, { c, accum });
-  const capture = async () => Buffer.from(((await cdp.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1920, height: 1080, scale: 1 } })) as { data: string }).data, 'base64');
+  const capture = async () => Buffer.from(((await cdp.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1920, height: 1080, scale: dsf } })) as { data: string }).data, 'base64');
   for (const j of jobs) {
     const t0 = j.t ?? 0;
     if (j.eval) console.log(j.name, 'eval', JSON.stringify(await L.page.evaluate(j.eval)));
