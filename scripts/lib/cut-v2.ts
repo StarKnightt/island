@@ -34,20 +34,21 @@ export const SHOTS: Shot[] = [
   // 3. low over the sea along the north cliffs, the surf and the spray at their foot
   {
     name: 'cliffs', dur: 7, fov: 52, hour: [12.6, 12.6], bias: 1,
-    from: { pos: [-305, 16, -670], target: [-214, 27, -615] },
-    to: { pos: [-250, 17, -670], target: [-159, 28, -615] },
+    from: { pos: [-268, 16, -671], target: [-176, 28, -618] },
+    to: { pos: [-205, 19, -669], target: [-114, 32, -611] },
   },
   // 4. the west shore at golden hour: rising from just over the beach above the shore trees, looking out to sea
   {
     name: 'rise', dur: 6, fov: 55, hour: [17.25, 17.35], bias: 1,
-    from: { pos: [-745, 7, 175], target: [-1130, 9, 80] },
-    to: { pos: [-752, 30, 173], target: [-1137, 18, 78] },
+    from: { pos: [-750, 7, 179], target: [-1135, 9, 84] },
+    to: { pos: [-757, 31, 177], target: [-1142, 18, 82] },
   },
-  // 5. the golden beach, gliding toward the sea as the sun goes down into it; ends on the sun on the horizon
+  // 5. over the top of the golden beach, its palms against the low sun, gliding toward the sea as the sun goes down;
+  //    ends with the disc on the horizon
   {
-    name: 'sunset', dur: 9, fov: 55, hour: [17.45, 17.74], bias: 1,
-    from: { pos: [-748, 14, 190], target: [-1150, 4, 88] },
-    to: { pos: [-776, 10, 183], target: [-1150, 2, 88] },
+    name: 'sunset', dur: 9, fov: 55, hour: [17.45, 17.7], bias: 1,
+    from: { pos: [-738, 13, 193], target: [-1136, -30, 99] },
+    to: { pos: [-756, 11, 189], target: [-1154, -30, 95] },
   },
 ];
 
