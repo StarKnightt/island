@@ -537,3 +537,35 @@ Captures in `E:\shots\island\round-07\` (`before\` = round-06 master, `after\`, 
   previous bundle) after a rebuild: pass `--fresh`, or use `pnpm shots` (always a fresh profile), to check a change.
 * Don't `pnpm build` while a harness job runs from the same folder: the preview serves `dist\` and the next page load
   picks up the new build mid-run.
+
+## Round 7b (the update video's three faults: white pool, lines in the sky, a soft milky picture)
+
+Before/after crops in `E:\shots\island\update-r7\fix\`; probes in `E:\tmp\island\r7fix\` (`scripts/_r7probe.ts`: capture
+mode at flyover poses or set cameras, hidden objects, `--dsf`, `--bias`); interleaved perf in `r7fix\perf-ab-*`.
+
+* **Lines in the sky.** The birds: three r186 applies the instance matrix *before* `positionNode`, so the wing beat's
+  `positionLocal` was a world position. Every vertex was lifted by |world x| sin(stroke): a gull at the village
+  (x ~ -470) became a sliver ~100 m tall, sub-pixel wide, dashed, flickering with the beat, in play and in capture.
+  The stroke is now worked out on `attribute('position')` and turned into the world by the bird's own quaternion and
+  size (per-instance attributes).
+* **White pool.** Rounds 6-7 raised the foam: a scatter term over the whole pool (`exp(-0.03 r) * 0.9`, still ~0.5 at the
+  banks) with a 1.42 gain put the threshold under most of the lace pattern, and the foam got 2.2x the sky. The lace
+  pattern's values sit around 0.3 (`R` median 0.30, p90 0.63; `A` is a web of lines, zero for half the texture) and its
+  mips average toward that, so any threshold near the mean is all-or-nothing. Now: a churn solid under the white-water
+  drum and broken into clumps past it, a band of streaks (the `A` web drawn out 32 x 7 m along the flow, holed by
+  bubbles) drifting toward the outflow, the rest clear; a darker tea-green body, paler where the plunge fills it with
+  bubbles; foam at 1.1x the sky. `E:\tmp\island\r7fix\foamplan.py` previews the mask in plan from the real texture.
+* **Falls seam.** GTAO sees only opaque depth: over the falls it computed the rock's occlusion behind the water, and
+  the mist sprites replaced the normal target with "up" over their whole screen squares, so the AO cut the sheet into
+  lighter and darker blocks with a hard horizontal edge. A per-pixel AO weight target (`aow`, RGBA8): opaque surfaces
+  write 1, it is blended premultiplied at the pass level, and the falls sheets, splash, mist and churn write
+  (0, cover), leaving w (1 - cover). A material's own `mrt().setBlendMode()` is ignored (three builds the pipeline from
+  the pass's MRT), and an R8 target fails (the blend reads the fragment's alpha).
+* **Haze.** 1.4e-4 -> 1.0e-4 /m (~30 km visibility): seen from the air the sea went milky a couple of kilometres out.
+  The veil flying into the low sun at 32-34 s is the aerial perspective's in-scatter toward the sun (bloom and Mie g
+  barely change it); the flyover's exposure bias now also holds back stretches metered over luma 100.
+* **Video.** `pnpm flyover` renders at dpr 1.5 (2880x1620; `Page.captureScreenshot` needs `clip.scale = dpr` or it
+  resamples to CSS pixels), downscales with lanczos and error diffusion to 1080p and 1440p, x264 `slower` 2-pass to
+  ~97 MB with `aq-mode=3`, no tune.
+* Not a render fault: the dark strip at the left edge of the reported pool screenshot is in neither the frames nor
+  the encode (column means checked over the whole video).
