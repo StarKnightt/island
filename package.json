@@ -14,6 +14,7 @@
     "clip": "tsx scripts/clip.ts",
     "record": "tsx scripts/record.ts",
     "flyover": "tsx scripts/flyover.ts",
+    "flyover-v2": "tsx scripts/flyover-v2.ts",
     "assets:fetch": "tsx scripts/fetch-assets.ts",
     "assets:build": "tsx scripts/build-assets.ts",
     "gen:island": "tsx tools/gen-island.ts"
