@@ -6,6 +6,7 @@ import {
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { traa } from 'three/addons/tsl/display/TRAANode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { aoWeightBlend } from './fx';
 import { params } from './params';
 import { Q, gpuName, preset } from './quality';
 import { grade, toneAndGrade } from './grade';
@@ -239,9 +240,17 @@ export class Engine {
     const useAO = Q.ao && !params.noAO;
     const useTAA = Q.taa && !params.noTAA;
     const outs: Record<string, unknown> = { output };
-    if (useAO) outs.normal = packNormalToRGB(normalView);
+    if (useAO) {
+      outs.normal = packNormalToRGB(normalView);
+      // the occlusion's weight: 1 under opaque surfaces, less under the falls and the white water (fx.ts)
+      outs.aow = vec4(1, 0, 0, 1);
+    }
     if (useTAA) outs.velocity = velocity;
-    scenePass.setMRT(mrt(outs));
+    const sceneMRT = mrt(outs);
+    if (useAO) sceneMRT.setBlendMode('aow', aoWeightBlend);
+    scenePass.setMRT(sceneMRT);
+    // (8 bits are plenty; the blend reads the fragment's alpha, so the target keeps one)
+    if (useAO) scenePass.getTexture('aow').type = THREE.UnsignedByteType;
     const color = scenePass.getTextureNode('output');
     const depthTex = scenePass.getTextureNode('depth');
     let hdr = color;
@@ -260,7 +269,7 @@ export class Engine {
       const aoV = aoPass.getTextureNode().sample(screenUV).r;
       // reversed depth: the sky is the cleared far plane (0) and gets no AO
       const isSky = depthTex.sample(screenUV).x.lessThan(1e-7);
-      const k = isSky.select(float(0), grade.aoStrength);
+      const k = isSky.select(float(0), grade.aoStrength.mul(scenePass.getTextureNode('aow').sample(screenUV).r));
       hdr = vec4(color.rgb.mul(mix(float(1), aoV, k)), color.a);
     }
     let aa = hdr;

@@ -5,7 +5,7 @@
  * into the turn and rise and fall) are computed on the CPU. By day only: they roost at night.
  */
 import * as THREE from 'three/webgpu';
-import { abs, attribute, float, mix, positionLocal, sin, smoothstep, uniform, vec3 } from '../core/tsl';
+import { abs, attribute, cross, float, mix, positionLocal, sin, smoothstep, uniform, vec3 } from '../core/tsl';
 import { sunLit } from '../core/lighting';
 
 export const birdU = { time: uniform(0) };
@@ -46,6 +46,7 @@ export class Birds {
   readonly mesh: THREE.InstancedMesh;
   private birds: Bird[] = [];
   private flap: THREE.InstancedBufferAttribute;
+  private rot: THREE.InstancedBufferAttribute;
   private m4 = new THREE.Matrix4();
   private q = new THREE.Quaternion();
   private e = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -71,18 +72,25 @@ export class Birds {
     }
     const n = this.birds.length;
     const g = birdGeometry();
-    this.flap = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
+    this.flap = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
     g.setAttribute('iFlap', this.flap);
+    this.rot = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
+    g.setAttribute('iRot', this.rot);
     const m = new THREE.MeshStandardNodeMaterial({ side: THREE.DoubleSide, roughness: 0.85, metalness: 0 });
     // the wings beat about the body's axis, the outer wing more than the inner (a flexing stroke)
-    const fl = attribute('iFlap', 'vec3');
+    const fl = attribute('iFlap', 'vec4');
     const sp = attribute('span', 'float');
     const ax = abs(sp);
     const beat = sin(birdU.time.mul(18.0).add(fl.x)).mul(fl.y).add(0.1);
     const ang = beat.mul(float(1).add(smoothstep(0.45, 1.0, ax).mul(0.6)));
-    const p = positionLocal;
-    const off = abs(p.x).mul(sin(ang)).mul(smoothstep(0.04, 0.12, abs(p.x)));
-    m.positionNode = vec3(mix(p.x, p.x.mul(ang.cos()), smoothstep(0.04, 0.12, abs(p.x))), p.y.add(off), p.z);
+    // (three applies the instance matrix before positionNode, so positionLocal is already in world space: the stroke
+    // is worked out on the bird's own vertex, then turned and scaled into the world by its rotation and size)
+    const p = attribute('position', 'vec3');
+    const wing = smoothstep(0.04, 0.12, abs(p.x));
+    const d = vec3(p.x.mul(ang.cos().sub(1)).mul(wing), abs(p.x).mul(sin(ang)).mul(wing), 0).mul(fl.w);
+    const q = attribute('iRot', 'vec4');
+    const turned = d.add(cross(q.xyz, cross(q.xyz, d).add(d.mul(q.w))).mul(2));
+    m.positionNode = positionLocal.add(turned);
     const key = attribute('shade', 'float');
     const gull = mix(vec3(0.03, 0.03, 0.035), vec3(0.82, 0.83, 0.85), key);
     const frigate = mix(vec3(0.02, 0.02, 0.022), vec3(0.09, 0.085, 0.08), key);
@@ -122,13 +130,16 @@ export class Birds {
       this.s.setScalar(b.scale * Math.max(far, 1e-4));
       this.m4.compose(this.p, this.q, this.s);
       this.mesh.setMatrixAt(i, this.m4);
+      (this.rot.array as Float32Array).set([this.q.x, this.q.y, this.q.z, this.q.w], i * 4);
       // flapping in bursts between glides (frigatebirds hardly ever beat)
       const burst = THREE.MathUtils.smoothstep(Math.sin(t * 0.27 + b.seed * 3.1), 0.15, 0.55);
-      f[i * 3] = b.seed * 7.3;
-      f[i * 3 + 1] = b.dark ? 0.03 + 0.2 * burst * 0.3 : 0.05 + 0.5 * burst;
-      f[i * 3 + 2] = b.dark;
+      f[i * 4] = b.seed * 7.3;
+      f[i * 4 + 1] = b.dark ? 0.03 + 0.2 * burst * 0.3 : 0.05 + 0.5 * burst;
+      f[i * 4 + 2] = b.dark;
+      f[i * 4 + 3] = this.s.x;
     });
     this.mesh.instanceMatrix.needsUpdate = true;
     this.flap.needsUpdate = true;
+    this.rot.needsUpdate = true;
   }
 }
