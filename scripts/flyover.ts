@@ -156,6 +156,8 @@ async function render() {
       if (k > 3 && !r.pending) break;
       await sleep(50);
     }
+    // (two averaged frames: the averaging passes compile here, not on the first captured frame, which came out black)
+    for (let k = 0; k < 2; k++) await frame(from, false);
     await L.page.evaluate((w) => (window as unknown as { __island: any }).__island.ctx.engine.time = w, WORLD + from);
 
     // --resume: the frames already on disk (a run from 0, contiguous, each a whole PNG) stay
@@ -341,7 +343,7 @@ function encode(wav: string) {
 
 /** review frames as JPGs (video time in s), and a 12-frame contact sheet */
 function stills() {
-  const at = preview ? [0.25, 0.5, 0.75].map((k) => (N / FPS) * k) : [3, 14.2, 18.5, 23.6, 34.6, 43.5];
+  const at = preview ? [0.25, 0.5, 0.75].map((k) => (N / FPS) * k) : [3, 18.6, 25.6, 36.6, 45];
   at.forEach((t, i) => ff(['-ss', t.toFixed(3), '-i', OUT, '-frames:v', '1', '-q:v', '2', join(OUT_DIR, `${preview ? 'preview' : 'frame'}_${i + 1}_${t.toFixed(1)}s.jpg`)], 'still'));
   ff(['-i', OUT, '-vf', `fps=12/${(N / FPS).toFixed(3)},scale=480:-1,tile=4x3`, '-frames:v', '1', '-q:v', '3', OUT.replace(/\.mp4$/, '_contact.jpg')], 'contact sheet');
 }
