@@ -132,7 +132,9 @@ export class River {
     const tongue = smoothstep(this.alongLip - 10, this.alongLip - 3, along).mul(smoothstep(this.alongLip + 2, this.alongLip + 0.5, along));
     const fast = smoothstep(0.9, 2.2, flowSpeed).mul(float(1).sub(tongue));
     const fn = fl.r.mul(0.55).add(fl2.a.mul(0.45));
-    let foam: N = fast.mul(smoothstep(0.52, 0.8, fn));
+    // (white lace on the peaks only: from the lace's middle up it covered the riffles in a pale film, and the clear
+    // water in its holes, dark against it and darker in the canopy's dapple, read as black specks all over the stream)
+    let foam: N = fast.mul(smoothstep(0.74, 0.92, fn));
     // the edge against the banks: only the riffles leave a line; elsewhere the water thins to nothing
     foam = max(foam, smoothstep(0.12, 0.0, thick).mul(fast).mul(0.4));
     const F = float(0.02).add(float(0.98).mul(pow(float(1).sub(NdotV), 5)));

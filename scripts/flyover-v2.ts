@@ -11,6 +11,8 @@
  *   pnpm flyover-v2 --stills            the checkpoint: full-quality stills (STILLS) to update-r7\v2-preview\NN.jpg
  *   pnpm flyover-v2 [--shots pool,cliffs] render shots (all by default) to E:\tmp\island\flyover-v2\<shot>\
  *   pnpm flyover-v2 --encode-only       mix and encode from the frames on disk to update-r7\update-r7-v2.mp4
+ *   --cut v3                            the third cut (scripts/lib/cut-v3.ts): its own frames, check stills in
+ *                                       update-r7\v3-check\ and update-r7-v3.mp4
  *   [--rest <ms>] idle after each frame (default 60); a rest of PAUSE s after every BATCH frames; Idle priority
  */
 import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
@@ -20,14 +22,19 @@ import { spawnSync } from 'node:child_process';
 import { setPriority, constants } from 'node:os';
 import sharp from 'sharp';
 import { argv, ensureServer, launch, ROOT } from './lib/browser';
-import { SHOTS, XFADE, shotPose, shotStarts, cutLength, type Shot } from './lib/cut-v2';
+import * as cutV2 from './lib/cut-v2';
+import * as cutV3 from './lib/cut-v3';
 
 const a = argv();
+const CUT = a.get('cut', 'v2');
+if (CUT !== 'v2' && CUT !== 'v3') throw new Error(`--cut ${CUT}: v2 or v3`);
+const { SHOTS, XFADE, shotPose, shotStarts, cutLength } = CUT === 'v3' ? cutV3 : cutV2;
+type Shot = cutV2.Shot;
 const FPS = 60, W = 1920, H = 1080, ACCUM = 8, DSF = Number(a.get('dsf', '1.5'));
 const OUT_DIR = 'E:\\shots\\island\\update-r7';
-const OUT = join(OUT_DIR, 'update-r7-v2.mp4');
-const PREVIEW_DIR = join(OUT_DIR, 'v2-preview');
-const FRAMES = 'E:\\tmp\\island\\flyover-v2';
+const OUT = join(OUT_DIR, `update-r7-${CUT}.mp4`);
+const PREVIEW_DIR = join(OUT_DIR, CUT === 'v3' ? 'v3-check' : 'v2-preview');
+const FRAMES = `E:\\tmp\\island\\flyover-${CUT}`;
 const AUDIO_DIR = join(ROOT, 'public', 'assets', 'audio');
 const WORLD = 2400, SEED = 7007;
 const REST = Number(a.get('rest', '60')), BATCH = 120, PAUSE = 8;
@@ -35,7 +42,9 @@ const MAX_BYTES = 99e6, TARGET_MB = 96;
 /** share of pixels allowed to change by > 24 levels between two renders of a frozen frame a second apart */
 const STABLE = 0.0005;
 /** checkpoint stills: shot, seconds into it */
-const STILLS: [string, number][] = [['jungle', 2.0], ['jungle', 7.0], ['pool', 4.5], ['cliffs', 3.5], ['rise', 5.0], ['sunset', 8.6]];
+const STILLS: [string, number][] = CUT === 'v3'
+  ? [['open', 0], ['jungle', 5.5]]
+  : [['jungle', 2.0], ['jungle', 7.0], ['pool', 4.5], ['cliffs', 3.5], ['rise', 5.0], ['sunset', 8.6]];
 setPriority(0, constants.priority.PRIORITY_LOW);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -119,7 +128,11 @@ async function render(only: Set<string> | null, stills: boolean) {
         await prewarm(s, i);
         // (the world runs from the shot's start to the still, as the render will run it)
         for (let f = 0; f < Math.round(at * FPS); f++) await frame(shotPose(s, f / FPS), 1);
-        await frame(shotPose(s, at), ACCUM);
+        let r = await frame(shotPose(s, at), ACCUM);
+        for (let k = 0; r.pending && k < 40; k++) {
+          await sleep(250);
+          r = await frame(shotPose(s, at), ACCUM, 0);
+        }
         const file = join(PREVIEW_DIR, `${String(++n).padStart(2, '0')}.jpg`);
         await sharp(await capture()).resize(W, H, { kernel: 'lanczos3' }).jpeg({ quality: 93, chromaSubsampling: '4:4:4' }).toFile(file);
         console.log(`still ${n}: ${name} +${at} s -> ${file}`);
