@@ -14,6 +14,7 @@
  *   pnpm flyover-v2 --audio-only        only the soundtrack, from the flight logs, to <frames>\cut.wav
  *   --cut v3                            the third cut (scripts/lib/cut-v3.ts): its own frames, check stills in
  *                                       update-r7\v3-check\ and update-r7-v3.mp4
+ *   --name v4                           render a cut under another name: update-r7-v4.mp4, flyover-v4\, v4-check\
  *   [--rest <ms>] idle after each frame (default 60); a rest of PAUSE s after every BATCH frames; Idle priority
  */
 import { mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
@@ -33,9 +34,11 @@ const { SHOTS, XFADE, shotPose, shotStarts, cutLength } = CUT === 'v3' ? cutV3 :
 type Shot = cutV2.Shot;
 const FPS = 60, W = 1920, H = 1080, ACCUM = 8, DSF = Number(a.get('dsf', '1.5'));
 const OUT_DIR = 'E:\\shots\\island\\update-r7';
-const OUT = join(OUT_DIR, `update-r7-${CUT}.mp4`);
-const PREVIEW_DIR = join(OUT_DIR, CUT === 'v3' ? 'v3-check' : 'v2-preview');
-const FRAMES = `E:\\tmp\\island\\flyover-${CUT}`;
+/** the render's name (its video, frames and check stills): the cut's by default */
+const NAME = a.get('name', CUT);
+const OUT = join(OUT_DIR, `update-r7-${NAME}.mp4`);
+const PREVIEW_DIR = join(OUT_DIR, NAME === 'v2' ? 'v2-preview' : `${NAME}-check`);
+const FRAMES = `E:\\tmp\\island\\flyover-${NAME}`;
 const AUDIO_DIR = join(ROOT, 'public', 'assets', 'audio');
 const WORLD = 2400, SEED = 7007;
 const REST = Number(a.get('rest', '60')), BATCH = 120, PAUSE = 8;
