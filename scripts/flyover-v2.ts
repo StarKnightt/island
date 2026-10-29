@@ -11,6 +11,7 @@
  *   pnpm flyover-v2 --stills            the checkpoint: full-quality stills (STILLS) to update-r7\v2-preview\NN.jpg
  *   pnpm flyover-v2 [--shots pool,cliffs] render shots (all by default) to E:\tmp\island\flyover-v2\<shot>\
  *   pnpm flyover-v2 --encode-only       mix and encode from the frames on disk to update-r7\update-r7-v2.mp4
+ *   pnpm flyover-v2 --audio-only        only the soundtrack, from the flight logs, to <frames>\cut.wav
  *   --cut v3                            the third cut (scripts/lib/cut-v3.ts): its own frames, check stills in
  *                                       update-r7\v3-check\ and update-r7-v3.mp4
  *   [--rest <ms>] idle after each frame (default 60); a rest of PAUSE s after every BATCH frames; Idle priority
@@ -229,7 +230,7 @@ function mixAudio(wav: string) {
   const level = (si: number, name: string, t: number) => {
     const fr = logs[si].frames, f = fr[Math.min(fr.length - 1, Math.max(0, Math.round((t - starts[si]) * FPS)))];
     const l = LAYERS.find((x) => x.name === name)!;
-    let g = f.layers[name] ?? 0;
+    let g = (f.layers[name] ?? 0) * (SHOTS[si].mix?.[name] ?? 1);
     if (l.at) {
       const d = Math.hypot(f.cam[0] - l.at[0], f.cam[1] - l.at[1], f.cam[2] - l.at[2]);
       g *= 12 / (12 + 1.1 * (Math.max(d, 12) - 12));
@@ -314,6 +315,8 @@ mkdirSync(OUT_DIR, { recursive: true });
 mkdirSync(FRAMES, { recursive: true });
 if (a.has('stills')) {
   await render(null, true);
+} else if (a.has('audio-only')) {
+  mixAudio(join(FRAMES, 'cut.wav'));
 } else {
   if (!a.has('encode-only')) await render(a.has('shots') ? new Set(a.get('shots', '').split(',')) : null, false);
   if (SHOTS.every((s) => existsSync(join(FRAMES, s.name, 'flight.json')))) {

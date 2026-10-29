@@ -261,8 +261,12 @@ export function createTerrainMaterial(hf: Heightfield) {
   const detailN = normalize(vec3(n.x.add(dn.x.mul(flat).mul(0.9)), n.y, n.z.sub(dn.y.mul(flat).mul(0.9))));
   // relief on rock faces the 1 m heightmap cannot carry: the large-scale stone height and the strata joints as a bump
   // (surface-gradient bump mapping from screen derivatives, faded out before it would alias in the distance)
-  const reliefH = rockBig.a.mul(1.5).sub(groove.mul(0.35).mul(steepW));
   const dpx = dFdx(p), dpy = dFdy(p);
+  // (the stone height only where its texels are smaller than a pixel: magnified, a bilinear height's slope is constant
+  // across each texel and jumps at its edges, and the bump drew the texels as a fine grid on the walls close up)
+  const stoneTexel = (SCALE[5] * 4.6) / 1024;
+  const stoneW = smoothstep(1.0, 2.0, max(length(dpx), length(dpy)).div(stoneTexel));
+  const reliefH = rockBig.a.mul(1.5).mul(stoneW).sub(groove.mul(0.35).mul(steepW));
   const r1 = cross(dpy, detailN), r2 = cross(detailN, dpx);
   const det = dot(dpx, r1);
   const grad = sign(det).mul(r1.mul(dFdx(reliefH)).add(r2.mul(dFdy(reliefH))));

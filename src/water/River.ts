@@ -113,11 +113,25 @@ export class River {
     // flow: uv.x runs downstream in metres; speed from the attribute (m/s)
     const flowSpeed = attribute('flow', 'float');
     const along = uv().x, across = uv().y;
-    const n1 = mx_noise_float(vec3(along.mul(0.55).sub(t.mul(flowSpeed).mul(0.55)), across.mul(0.8), t.mul(0.15)));
-    const n2 = mx_noise_float(vec3(along.mul(1.6).sub(t.mul(flowSpeed).mul(1.7)), across.mul(2.2).add(3.1), t.mul(0.3)));
-    // fine chop and the riffles' foam from the lace texture, scrolled with the flow and drawn out along it
-    const fl = texture(laceTex, vec2(along.sub(t.mul(flowSpeed)).div(5.2), across.div(1.7)));
-    const fl2 = texture(laceTex, vec2(along.sub(t.mul(flowSpeed).mul(1.3)).div(11), across.div(4.2)).add(0.41));
+    // the patterns are scrolled by flow x time, but the speed varies along the river: after minutes of play a small
+    // change in speed was a large change in offset over a few metres and squeezed the ripples into fine bands across
+    // the stream. So each scroll restarts every FLOW_PERIOD seconds, two copies half a period apart crossfading
+    const FLOW_PERIOD = 4;
+    const ph0 = fract(t.div(FLOW_PERIOD)), ph1 = fract(t.div(FLOW_PERIOD).add(0.5));
+    const w1 = abs(ph0.mul(2).sub(1));
+    const layer = (ph: N, seed: number) => {
+      const ft = ph.sub(0.5).mul(FLOW_PERIOD).mul(flowSpeed);
+      return {
+        n1: mx_noise_float(vec3(along.mul(0.55).sub(ft.mul(0.55)).add(seed), across.mul(0.8), t.mul(0.15))),
+        n2: mx_noise_float(vec3(along.mul(1.6).sub(ft.mul(1.7)).add(seed), across.mul(2.2).add(3.1), t.mul(0.3))),
+        // fine chop and the riffles' foam from the lace texture, scrolled with the flow and drawn out along it
+        fl: texture(laceTex, vec2(along.sub(ft).add(seed).div(5.2), across.div(1.7))),
+        fl2: texture(laceTex, vec2(along.sub(ft.mul(1.3)).add(seed).div(11), across.div(4.2)).add(0.41)),
+      };
+    };
+    const L0 = layer(ph0, 0), L1 = layer(ph1, 7.3);
+    const n1 = mix(L0.n1, L1.n1, w1), n2 = mix(L0.n2, L1.n2, w1);
+    const fl = mix(L0.fl, L1.fl, w1), fl2 = mix(L0.fl2, L1.fl2, w1);
     const rough = clamp(flowSpeed.mul(0.45), 0.15, 1.4);
     let slope: N = vec2(n1.mul(0.5).add(n2.mul(0.35)), n2.mul(0.5).sub(n1.mul(0.3))).mul(rough.mul(0.18)).add(vec2(fl.g.sub(0.5), fl.b.sub(0.5)).mul(0.06));
     slope = slope.add(rainRings(p.xz, t).mul(wetness.intensity.mul(0.35)));

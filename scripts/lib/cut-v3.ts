@@ -33,6 +33,8 @@ const open: Shot = (() => {
 
 const jungle = byName('jungle');
 
+const SHORE = { waves: 0.9, surf: 0.8, wind: 0.35, birds: 0.2, jungle: 0, night: 0, gulls: 0.5 };
+
 export const SHOTS: Shot[] = [
   open,
   {
@@ -42,8 +44,9 @@ export const SHOTS: Shot[] = [
   },
   { ...pool, dur: 8.5 },
   byName('cliffs'),
-  byName('rise'),
-  byName('sunset'),
+  // the evening shore: the wash of the waves on the sand, the cliffs' breakers and the land's birds and wind let go
+  { ...byName('rise'), mix: SHORE },
+  { ...byName('sunset'), mix: { ...SHORE, gulls: 0.25 } },
 ];
 
 /** where each shot starts in the cut (s): the dissolves overlap consecutive shots */

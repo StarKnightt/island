@@ -13,6 +13,8 @@ export interface Shot {
   hour: [number, number];
   /** exposure multiplier on the game's metering for this shot */
   bias: number;
+  /** gain on the game's logged ambience layers for this shot (a layer not named keeps its level) */
+  mix?: Record<string, number>;
 }
 
 /** frames of dissolve between consecutive shots */
