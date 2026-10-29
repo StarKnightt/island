@@ -14,6 +14,8 @@
  *   pnpm flyover-v2 --audio-only        only the soundtrack, from the flight logs, to <frames>\cut.wav
  *   --cut v3                            the third cut (scripts/lib/cut-v3.ts): its own frames, check stills in
  *                                       update-r7\v3-check\ and update-r7-v3.mp4
+ *   --cut v5 --name v5 --frames v4 --encode-only   a re-cut of v4's frames (shots may skip their start)
+ *   [--threads n]                       cap ffmpeg's threads
  *   --name v4                           render a cut under another name: update-r7-v4.mp4, flyover-v4\, v4-check\
  *   [--rest <ms>] idle after each frame (default 60); a rest of PAUSE s after every BATCH frames; Idle priority
  */
@@ -26,11 +28,13 @@ import sharp from 'sharp';
 import { argv, ensureServer, launch, ROOT } from './lib/browser';
 import * as cutV2 from './lib/cut-v2';
 import * as cutV3 from './lib/cut-v3';
+import * as cutV5 from './lib/cut-v5';
 
 const a = argv();
 const CUT = a.get('cut', 'v2');
-if (CUT !== 'v2' && CUT !== 'v3') throw new Error(`--cut ${CUT}: v2 or v3`);
-const { SHOTS, XFADE, shotPose, shotStarts, cutLength } = CUT === 'v3' ? cutV3 : cutV2;
+const CUTS = { v2: cutV2, v3: cutV3, v5: cutV5 };
+if (!(CUT in CUTS)) throw new Error(`--cut ${CUT}: ${Object.keys(CUTS).join(', ')}`);
+const { SHOTS, XFADE, shotPose, shotStarts, cutLength } = CUTS[CUT as keyof typeof CUTS];
 type Shot = cutV2.Shot;
 const FPS = 60, W = 1920, H = 1080, ACCUM = 8, DSF = Number(a.get('dsf', '1.5'));
 const OUT_DIR = 'E:\\shots\\island\\update-r7';
@@ -38,7 +42,11 @@ const OUT_DIR = 'E:\\shots\\island\\update-r7';
 const NAME = a.get('name', CUT);
 const OUT = join(OUT_DIR, `update-r7-${NAME}.mp4`);
 const PREVIEW_DIR = join(OUT_DIR, NAME === 'v2' ? 'v2-preview' : `${NAME}-check`);
-const FRAMES = `E:\\tmp\\island\\flyover-${NAME}`;
+/** where the shot frames are (--frames: another render's, for a re-cut) and where this one's soundtrack and encode logs go */
+const FRAMES = `E:\\tmp\\island\\flyover-${a.get('frames', NAME)}`;
+const WORK = `E:\\tmp\\island\\flyover-${NAME}`;
+/** ffmpeg threads (0: its default) */
+const THREADS = a.get('threads', '0');
 const AUDIO_DIR = join(ROOT, 'public', 'assets', 'audio');
 const WORLD = 2400, SEED = 7007;
 const REST = Number(a.get('rest', '60')), BATCH = 120, PAUSE = 8;
@@ -182,7 +190,7 @@ async function render(only: Set<string> | null, stills: boolean) {
 }
 
 function ff(args: string[], what: string) {
-  const r = spawnSync('ffmpeg', ['-hide_banner', '-v', 'error', '-y', ...args], { encoding: 'utf8', maxBuffer: 1 << 26 });
+  const r = spawnSync('ffmpeg', ['-hide_banner', '-v', 'error', '-y', '-threads', THREADS, ...args], { encoding: 'utf8', maxBuffer: 1 << 26 });
   if (r.status !== 0) throw new Error(`${what}: ffmpeg failed\n${r.stderr}`);
   return r.stderr;
 }
@@ -231,7 +239,7 @@ function mixAudio(wav: string) {
   const starts = shotStarts(FPS);
   const logs = SHOTS.map((s) => JSON.parse(readFileSync(join(FRAMES, s.name, 'flight.json'), 'utf8')) as { frames: FrameLog[] });
   const level = (si: number, name: string, t: number) => {
-    const fr = logs[si].frames, f = fr[Math.min(fr.length - 1, Math.max(0, Math.round((t - starts[si]) * FPS)))];
+    const fr = logs[si].frames, f = fr[Math.min(fr.length - 1, Math.max(0, Math.round((t - starts[si] + (SHOTS[si].skip ?? 0)) * FPS)))];
     const l = LAYERS.find((x) => x.name === name)!;
     let g = (f.layers[name] ?? 0) * (SHOTS[si].mix?.[name] ?? 1);
     if (l.at) {
@@ -294,7 +302,7 @@ function encode(wav: string) {
   const len = cutLength(FPS), starts = shotStarts(FPS);
   const kbps = Math.floor((TARGET_MB * 8e3) / len - 192 - 120);
   const inputs: string[] = [];
-  for (const s of SHOTS) inputs.push('-framerate', String(FPS), '-start_number', '0', '-i', join(FRAMES, s.name, 'f_%05d.png'));
+  for (const s of SHOTS) inputs.push('-framerate', String(FPS), '-start_number', String(Math.round((s.skip ?? 0) * FPS)), '-i', join(FRAMES, s.name, 'f_%05d.png'));
   const d = (XFADE / FPS).toFixed(4);
   let chain = '', last = '[0:v]';
   for (let i = 1; i < SHOTS.length; i++) {
@@ -303,27 +311,28 @@ function encode(wav: string) {
     last = tag;
   }
   chain += `${last}scale=${W}:${H}:flags=lanczos+accurate_rnd+full_chroma_int:sws_dither=ed,format=yuv420p[v]`;
-  const log = join(FRAMES, 'x264');
+  const log = join(WORK, 'x264');
   const x = ['-c:v', 'libx264', '-preset', 'slower', '-b:v', `${kbps}k`, '-maxrate', `${kbps * 2}k`, '-bufsize', `${kbps * 2}k`,
     '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-x264-params', 'aq-mode=3:aq-strength=0.9', '-r', String(FPS), '-g', String(FPS * 2),
     '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-passlogfile', log];
   ff([...inputs, '-filter_complex', chain, '-map', '[v]', ...x, '-pass', '1', '-an', '-f', 'mp4', 'NUL'], 'encode pass 1');
   ff([...inputs, '-i', wav, '-filter_complex', chain, '-map', '[v]', '-map', `${SHOTS.length}:a`, ...x, '-pass', '2', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', '-shortest', OUT], 'encode pass 2');
-  for (const f of readdirSync(FRAMES)) if (f.startsWith('x264')) rmSync(join(FRAMES, f));
+  for (const f of readdirSync(WORK)) if (f.startsWith('x264')) rmSync(join(WORK, f));
   console.log(`video: ${len.toFixed(3)} s at ${kbps} kbit/s -> ${OUT} (${(statSync(OUT).size / 1e6).toFixed(1)} MB)`);
   if (statSync(OUT).size > MAX_BYTES) console.warn('over 99 MB: lower TARGET_MB and run --encode-only');
 }
 
 mkdirSync(OUT_DIR, { recursive: true });
 mkdirSync(FRAMES, { recursive: true });
+mkdirSync(WORK, { recursive: true });
 if (a.has('stills')) {
   await render(null, true);
 } else if (a.has('audio-only')) {
-  mixAudio(join(FRAMES, 'cut.wav'));
+  mixAudio(join(WORK, 'cut.wav'));
 } else {
   if (!a.has('encode-only')) await render(a.has('shots') ? new Set(a.get('shots', '').split(',')) : null, false);
   if (SHOTS.every((s) => existsSync(join(FRAMES, s.name, 'flight.json')))) {
-    const wav = join(FRAMES, 'cut.wav');
+    const wav = join(WORK, 'cut.wav');
     mixAudio(wav);
     encode(wav);
   }

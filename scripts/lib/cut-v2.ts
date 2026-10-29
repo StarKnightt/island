@@ -15,6 +15,8 @@ export interface Shot {
   bias: number;
   /** gain on the game's logged ambience layers for this shot (a layer not named keeps its level) */
   mix?: Record<string, number>;
+  /** seconds of the rendered shot left out at its start (a re-cut of frames already on disk); its length is dur - skip */
+  skip?: number;
 }
 
 /** frames of dissolve between consecutive shots */
