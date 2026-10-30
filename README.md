@@ -199,6 +199,10 @@ It was built in Cursor by AI agents working in rounds: a builder implemented eac
 frames from fixed camera spots against reference photos, and the findings went into the next round. The user
 steered it throughout.
 
+## Prompt
+
+The original prompt the game was built from is in [PROMPT.md](PROMPT.md), exactly as written.
+
 ## Licence and credits
 
 The game's own code is MIT. See [LICENSE](LICENSE).
