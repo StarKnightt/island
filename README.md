@@ -211,5 +211,3 @@ The third-party assets keep their own licences: the Poly Haven textures and mode
 character (MIT), the Quaternius animations (CC0), the sound recordings, and the Marcellus font (SIL OFL 1.1).
 [CREDITS.md](CREDITS.md) lists each one with its author, source and licence. Everything else, from the island's
 geography to the shaders, the procedural plants, the buildings and the loading screen, was made for this project.
-
-☕ like it? [buy me a coffee](https://buymeacoffee.com/prasenx) or [sponsor on github](https://github.com/sponsors/StarKnightt)
